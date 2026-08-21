@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Http;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using Synesthesia_Audio.Core;
 using Synesthesia_Audio.Models;
 
 namespace Synesthesia_Audio.Services;
@@ -13,16 +14,18 @@ public class ScanFolderService : IDisposable
     private readonly DLsiteService _dlsiteService;
     private readonly LibraryCacheService _cacheService;
     private readonly SettingsService _settingsService;
+    private readonly ScanStateService _scanStateService;
     private readonly Services.Cloud.ICloudProvider _cloudProvider;
     private readonly HttpClient _httpClient = new();
     private List<string> _failedFolders = new();
     private readonly ILogger<ScanFolderService> _logger;
 
-    public ScanFolderService(DLsiteService dlsiteService, LibraryCacheService cacheService, SettingsService settingsService, Services.Cloud.ICloudProvider cloudProvider, ILogger<ScanFolderService> logger)
+    public ScanFolderService(DLsiteService dlsiteService, LibraryCacheService cacheService, SettingsService settingsService, ScanStateService scanStateService, Services.Cloud.ICloudProvider cloudProvider, ILogger<ScanFolderService> logger)
     {
         _dlsiteService = dlsiteService;
         _cacheService = cacheService;
         _settingsService = settingsService;
+        _scanStateService = scanStateService;
         _cloudProvider = cloudProvider;
         _logger = logger;
     }
@@ -222,10 +225,12 @@ public class ScanFolderService : IDisposable
         var settings = _settingsService.CurrentSettings;
         bool isCloud = settings.StorageType == "WebDAV";
         _logger.LogInformation("Library scan started — isCloud: {IsCloud}, path: {BasePath}", isCloud, basePath);
+        _scanStateService.MarkRunning("Scan Library Found 0 Work, 0 Audio Files");
 
         void Report(double pct, string msg)
         {
             progress?.Report((pct, msg));
+            _scanStateService.UpdateProgress(pct, msg);
         }
 
         Report(0, "Scan Library Found 0 Work, 0 Audio Files");
@@ -235,7 +240,11 @@ public class ScanFolderService : IDisposable
 
         if (isCloud)
         {
-            if (!_cloudProvider.IsConfigured) return new ScanResult();
+            if (!_cloudProvider.IsConfigured)
+            {
+                _scanStateService.MarkFailed("WebDAV is not configured. Add your server details in Settings.");
+                return new ScanResult();
+            }
             await ScanCloudDirectoryRecursiveAsync(basePath, basePath, allAudioFiles, workGroups, (worksCount, filesCount) =>
             {
                 Report(0.15 * Math.Min(1.0, filesCount / 500.0),
@@ -244,7 +253,11 @@ public class ScanFolderService : IDisposable
         }
         else
         {
-            if (!Directory.Exists(basePath)) return new ScanResult();
+            if (!Directory.Exists(basePath))
+            {
+                _scanStateService.MarkFailed($"The configured folder no longer exists: {basePath}");
+                return new ScanResult();
+            }
             await ScanLocalDirectoryRecursiveAsync(basePath, basePath, allAudioFiles, workGroups, (worksCount, filesCount) =>
             {
                 Report(0.15 * Math.Min(1.0, filesCount / 500.0),
@@ -460,6 +473,7 @@ public class ScanFolderService : IDisposable
             if (work.SubAlbums.Any())
             {
                 finalWorks.Add(work);
+                _cacheService.UpdateWork(work);
             }
         }
 
@@ -467,6 +481,17 @@ public class ScanFolderService : IDisposable
 
         Report(1.0, "scan: done");
         _logger.LogInformation("Library scan complete — {Count} works, {AudioFiles} audio files, {Failures} failed folders", finalWorks.Count, allAudioFiles.Count, _failedFolders.Count);
+
+        if (_failedFolders.Count > 0)
+        {
+            var failedMsg = $"Scan finished but {_failedFolders.Count} folder{( _failedFolders.Count == 1 ? "" : "s")} could not be accessed:\n{string.Join("\n", _failedFolders.Take(5))}{( _failedFolders.Count > 5 ? $"\n...and {_failedFolders.Count - 5} more" : "")}";
+            _scanStateService.MarkFailed(failedMsg, _failedFolders.Count, _failedFolders);
+        }
+        else
+        {
+            _scanStateService.MarkCompleted(finalWorks.Count, allAudioFiles.Count);
+        }
+
         return new ScanResult { Works = finalWorks, FailedFolders = _failedFolders, TotalFiles = allAudioFiles.Count };
     }
 

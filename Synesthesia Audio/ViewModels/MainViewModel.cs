@@ -4,6 +4,7 @@ using System.Linq;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
+using Synesthesia_Audio.Core;
 using Synesthesia_Audio.Models;
 using Synesthesia_Audio.Services;
 using Synesthesia_Audio.Views;
@@ -15,6 +16,7 @@ public partial class MainViewModel : BaseViewModel
 {
     private readonly ScanFolderService _scanService;
     private readonly SettingsService _settingsService;
+    private readonly ScanStateService _scanStateService;
     private List<WorkMetadata> _allWorks = new();
 
     private readonly LibraryCacheService _cacheService;
@@ -45,9 +47,13 @@ public partial class MainViewModel : BaseViewModel
     [ObservableProperty]
     private bool _isScanning;
 
+    public bool IsScanStatusVisible => IsScanning;
+
+    partial void OnIsScanningChanged(bool value) => OnPropertyChanged(nameof(IsScanStatusVisible));
+
     public bool HasFolderSelected => !string.IsNullOrEmpty(_settingsService.CurrentSettings.BaseAudioFolderPath);
 
-    public MainViewModel(ScanFolderService scanService, SettingsService settingsService, LibraryCacheService cacheService, ILogger<MainViewModel> logger)
+    public MainViewModel(ScanFolderService scanService, SettingsService settingsService, LibraryCacheService cacheService, ScanStateService scanStateService, ILogger<MainViewModel> logger)
     {
         _logger = logger;
         var savedFilter = Preferences.Get("LastSelectedFilter", "SFW");
@@ -58,6 +64,7 @@ public partial class MainViewModel : BaseViewModel
         _scanService = scanService;
         _settingsService = settingsService;
         _cacheService = cacheService;
+        _scanStateService = scanStateService;
 
         _logger.LogInformation("MainViewModel initialized — filter: {Filter}, sort: {Sort}", savedFilter, SortOption);
     }
@@ -77,6 +84,7 @@ public partial class MainViewModel : BaseViewModel
     }
 
     private bool _isInitializing;
+    private Timer? _scanPollTimer;
 
     public async Task InitializeAsync()
     {
@@ -124,11 +132,210 @@ public partial class MainViewModel : BaseViewModel
                     ApplyFilters();
                 }
             }
+
+            await HandleScanStateOnReturnAsync();
         }
         finally
         {
             _isInitializing = false;
         }
+    }
+
+    public async Task HandleResumeAsync()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_settingsService.CurrentSettings.BaseAudioFolderPath)) return;
+            if (_isInitializing) return;
+            await HandleScanStateOnReturnAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Resume scan-state handling failed");
+        }
+    }
+
+    private async Task HandleScanStateOnReturnAsync()
+    {
+        var state = _scanStateService.Snapshot();
+
+        if (state.Status == ScanStatus.Running)
+        {
+#if ANDROID
+            if (Platforms.Android.ScanForegroundService.IsRunning)
+            {
+                IsScanning = true;
+                ScanProgress = state.Progress;
+                ScanProgressText = state.ProgressText;
+                StartScanPolling();
+                return;
+            }
+#endif
+            _logger.LogWarning("Scan state is Running but no background service is alive — previous scan was interrupted");
+            await PromptResumeScanAsync(state);
+            return;
+        }
+
+        if (state.Status == ScanStatus.Failed)
+        {
+            if (!state.AlertShown)
+            {
+                _scanStateService.MarkAlertShown();
+                await Shell.Current.DisplayAlert("Scan Failed",
+                    state.ErrorMessage ?? "The last library scan failed for an unknown reason.", "OK");
+            }
+            return;
+        }
+
+        if (state.Status == ScanStatus.Completed)
+        {
+            if (!state.AlertShown)
+            {
+                _scanStateService.MarkAlertShown();
+                await Shell.Current.DisplayAlert("Scan Complete",
+                    $"Found {state.WorksFound} works ({state.TotalFiles} audio files).", "OK");
+            }
+        }
+    }
+
+    private async Task PromptResumeScanAsync(ScanState state)
+    {
+        _scanStateService.MarkInterrupted("The previous scan was interrupted while the app was closed.");
+
+        var resume = await Shell.Current.DisplayAlert("Scan Interrupted",
+            $"The previous library scan was interrupted while the app was closed.\n\nIt had reached {Math.Round(state.Progress * 100)}% before stopping.\n\nResume the scan now?",
+            "Resume Scan", "Later");
+
+        if (resume)
+        {
+            await StartBackgroundScanAsync();
+        }
+    }
+
+    private async Task StartBackgroundScanAsync()
+    {
+        if (IsScanning) return;
+
+        var basePath = _settingsService.CurrentSettings.BaseAudioFolderPath;
+        if (string.IsNullOrEmpty(basePath))
+        {
+            await Shell.Current.DisplayAlert("Not Configured", "Please pick a library folder in Settings first.", "OK");
+            return;
+        }
+
+        _scanStateService.MarkRunning("Scan Library Found 0 Work, 0 Audio Files");
+        IsScanning = true;
+        ScanProgress = 0;
+        ScanProgressText = "Scan Library Found 0 Work, 0 Audio Files";
+        StartScanPolling();
+
+#if ANDROID
+        Platforms.Android.ScanForegroundService.StartScanService();
+#else
+        RunInProcessScan(basePath);
+#endif
+    }
+
+    private void RunInProcessScan(string pathToScan)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var progress = new Progress<(double, string)>(p =>
+                {
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
+                        ScanProgress = p.Item1;
+                        ScanProgressText = p.Item2;
+                    });
+                });
+
+                await _scanService.ScanLibraryAsync(pathToScan, progress);
+                MainThread.BeginInvokeOnMainThread(OnScanFinishedInProcess);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Library scan failed — path: {Path}", pathToScan);
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    _scanStateService.MarkFailed($"Scan failed: {ex.Message}");
+                    OnScanFinishedInProcess();
+                });
+            }
+        });
+    }
+
+    private void OnScanFinishedInProcess()
+    {
+        StopScanPolling();
+        IsScanning = false;
+        ReloadFromCache();
+        HandleScanFinished(_scanStateService.Snapshot());
+    }
+
+    private void HandleScanFinished(ScanState state)
+    {
+        SetStatusLine(state);
+        if (state.AlertShown) return;
+
+        _scanStateService.MarkAlertShown();
+
+        if (state.Status == ScanStatus.Failed)
+        {
+            _ = Shell.Current.DisplayAlert("Scan Failed",
+                state.ErrorMessage ?? "The library scan failed.", "OK");
+        }
+        else if (state.Status == ScanStatus.Completed)
+        {
+            _ = Shell.Current.DisplayAlert("Scan Complete",
+                $"Found {state.WorksFound} works ({state.TotalFiles} audio files).", "OK");
+        }
+    }
+
+    private void ReloadFromCache()
+    {
+        _allWorks = _cacheService.GetAllWorks();
+        _logger.LogInformation("Library reloaded from cache — {Count} works", _allWorks.Count);
+        ApplyFilters();
+    }
+
+    private void SetStatusLine(ScanState state)
+    {
+        if (state.Status == ScanStatus.Running)
+        {
+            ScanProgress = state.Progress;
+            ScanProgressText = state.ProgressText;
+        }
+    }
+
+    private void StartScanPolling()
+    {
+        _scanPollTimer ??= new Timer(_ => PollScanStatus(), null, 500, 500);
+    }
+
+    private void StopScanPolling()
+    {
+        _scanPollTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+    }
+
+    private void PollScanStatus()
+    {
+        var state = _scanStateService.Snapshot();
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!state.IsRunning)
+            {
+                StopScanPolling();
+                IsScanning = false;
+                ReloadFromCache();
+                HandleScanFinished(state);
+                return;
+            }
+
+            ScanProgress = state.Progress;
+            ScanProgressText = state.ProgressText;
+        });
     }
 
     private void ApplyFilters()
@@ -241,52 +448,37 @@ public partial class MainViewModel : BaseViewModel
             }
         }
 
+        if (IsScanning)
+        {
+            return;
+        }
+
         try
         {
+            _scanStateService.MarkRunning("Scan Library Found 0 Work, 0 Audio Files");
+
+#if ANDROID
+            IsScanning = true;
+            ScanProgress = 0;
+            ScanProgressText = "Scan Library Found 0 Work, 0 Audio Files";
+            StartScanPolling();
+            Platforms.Android.ScanForegroundService.StartScanService();
+#else
             IsScanning = true;
             _logger.LogInformation("Library scan started — isCloud: {IsCloud}, path: {Path}", isCloud, pathToScan);
             ScanProgress = 0;
             ScanProgressText = "Scan Library Found 0 Work, 0 Audio Files";
-
-            var startTime = DateTime.UtcNow;
-
-            var progress = new Progress<(double, string)>(p =>
-            {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    ScanProgress = p.Item1;
-                    ScanProgressText = p.Item2;
-                });
-            });
-
-            var result = await Task.Run(() => _scanService.ScanLibraryAsync(pathToScan, progress));
-            var works = result.Works;
-            var elapsed = DateTime.UtcNow - startTime;
-            _logger.LogInformation("Library scan completed — {Count} works, {Failures} failed folders, duration: {Duration:F1}s",
-                works.Count, result.FailedFolders.Count, elapsed.TotalSeconds);
-            _allWorks = works;
-            ApplyFilters();
-
-            if (result.FailedFolders.Count > 0)
-            {
-                var failedList = string.Join("\n", result.FailedFolders.Take(5));
-                var suffix = result.FailedFolders.Count > 5 ? $"\n...and {result.FailedFolders.Count - 5} more" : "";
-                await Shell.Current.DisplayAlert("Scan Complete",
-                    $"Found {works.Count} works ({result.TotalFiles} files).\n\n{result.FailedFolders.Count} folder(s) could not be accessed:\n{failedList}{suffix}",
-                    "OK");
-            }
+            RunInProcessScan(pathToScan);
+#endif
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Library scan failed — path: {Path}", pathToScan);
-            await Shell.Current.DisplayAlert("Scan Error",
-                $"Scan failed. Check your connection and folder permissions.\n\nPath: {pathToScan}",
-                "OK");
-        }
-        finally
-        {
+            _logger.LogError(ex, "Failed to start library scan — path: {Path}", pathToScan);
             IsScanning = false;
-            ScanProgress = 0;
+            _scanStateService.MarkFailed($"Scan could not be started: {ex.Message}");
+            await Shell.Current.DisplayAlert("Scan Error",
+                $"Scan failed to start. Check your connection and folder permissions.\n\nPath: {pathToScan}",
+                "OK");
         }
     }
 

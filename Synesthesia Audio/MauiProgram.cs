@@ -62,6 +62,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<DLsiteService>();
         builder.Services.AddSingleton<Synesthesia_Audio.Services.Cloud.ICloudProvider, Synesthesia_Audio.Services.Cloud.WebDavCloudProvider>();
         builder.Services.AddSingleton<Synesthesia_Audio.Services.Cloud.LocalHttpProxy>();
+        builder.Services.AddSingleton<ScanStateService>();
         builder.Services.AddSingleton<ScanFolderService>();
 #if ANDROID
         builder.Services.AddSingleton<IAudioPlatformService, AndroidAudioPlatformService>();

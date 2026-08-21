@@ -143,7 +143,7 @@ public class MainPage : ContentPage
                     }
                 }
                 .AppThemeBinding(VisualElement.BackgroundColorProperty, Color.FromArgb("#F0FFFFFF"), Color.FromArgb("#F0112A3E"))
-                .Bind(VisualElement.IsVisibleProperty, nameof(MainViewModel.IsScanning)),
+                .Bind(VisualElement.IsVisibleProperty, nameof(MainViewModel.IsScanStatusVisible)),
 
                 new FloatingPlayerBar(audioService)
             }
