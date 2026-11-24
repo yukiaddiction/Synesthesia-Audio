@@ -18,6 +18,12 @@ public class WorkMetadata
     public string FolderPath { get; set; } = string.Empty;
     public ObservableCollection<SubAlbum> SubAlbums { get; set; } = new();
 
+    /// <summary>
+    /// Set when the last metadata fetch failed, so the next scan retries instead of keeping a
+    /// folder-name-only work forever.
+    /// </summary>
+    public bool NeedsMetadataRefresh { get; set; }
+
     [JsonIgnore]
     public string CoverUrl { get; set; } = string.Empty;
 }

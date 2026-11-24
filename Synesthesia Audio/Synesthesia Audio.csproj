@@ -32,9 +32,11 @@
 		     2.0.0: major bump for the glassmorphism redesign - the layout and theme of every
 		     page changed, so this is a breaking visual release rather than a patch.
 		     2.1.0: desktop-first composition (sidebar, preview pane, transport dock) added above
-		     the wide breakpoint; the compact phone layout is unchanged, hence a minor bump. -->
-		<ApplicationDisplayVersion>2.1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>3</ApplicationVersion>
+		     the wide breakpoint; the compact phone layout is unchanged, hence a minor bump.
+		     2.1.1: patch - metadata scraping no longer stores blocked/consent pages as works, and
+		     failed fetches are retried instead of being cached forever. -->
+		<ApplicationDisplayVersion>2.1.1</ApplicationDisplayVersion>
+		<ApplicationVersion>4</ApplicationVersion>
 
 		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
 		<WindowsPackageType>None</WindowsPackageType>

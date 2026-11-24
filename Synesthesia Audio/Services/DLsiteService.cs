@@ -23,6 +23,7 @@ public class DLsiteService
     private readonly ILogger<DLsiteService> _logger;
 
     private static volatile bool _dlsiteUnreachableAlerted;
+    private static volatile bool _nonProductPageWarned;
     private static readonly ConcurrentDictionary<string, Task> _englishTagFetches = new();
 
     public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, ILogger<DLsiteService> logger)
@@ -34,11 +35,46 @@ public class DLsiteService
         _httpClient = new HttpClient(handler);
         _httpClient.DefaultRequestHeaders.Add("User-Agent", DefaultUserAgent);
         _httpClient.DefaultRequestHeaders.Add("Accept-Language", "ja,en-US;q=0.9,en;q=0.8");
-        _httpClient.DefaultRequestHeaders.Add("Cookie", "adultchecked=1; work_view_mode=2;");
+        _httpClient.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        _httpClient.DefaultRequestHeaders.Add("Referer", "https://www.dlsite.com/");
+        // age_check_done is what DLsite's R-18 sections check; without it they answer with the
+        // age-consent page, whose og:title is the bare site name.
+        _httpClient.DefaultRequestHeaders.Add("Cookie", "age_check_done=1; adultchecked=1; work_view_mode=2;");
         _httpClient.Timeout = TimeSpan.FromSeconds(AppConstants.DlsiteClientTimeoutSeconds);
     }
 
     public static void ResetUnreachableAlert() => _dlsiteUnreachableAlerted = false;
+
+    /// <summary>
+    /// Called at the start of each scan so the detailed "not a product page" warning is emitted
+    /// once per scan instead of once per work.
+    /// </summary>
+    public static void ResetScanDiagnostics() => _nonProductPageWarned = false;
+
+    /// <summary>
+    /// One compact line describing which fields a parsed page yielded, so a layout change on
+    /// DLsite can be diagnosed from the log instead of guessed at.
+    /// </summary>
+    private static string DescribeFields(DLsiteParser.RawWorkPageData raw)
+    {
+        var summary =
+            $"title={raw.TitleSource}({(raw.TitleFound ? "ok" : "no")}) " +
+            $"circle={(raw.CircleFound ? "ok" : "no")} va={(raw.VaFound ? "ok" : "no")} " +
+            $"genre={(raw.GenreFound ? "ok" : "no")} cover={(raw.CoverFound ? "ok" : "no")} " +
+            $"jsonld={(raw.HasJsonLd ? "yes" : "no")} table={(raw.HasMetaTable ? "yes" : "no")} age={raw.AgeRating}";
+
+        // Only spill the raw evidence when something is still missing, so normal scans stay quiet.
+        if (!raw.VaFound || !raw.GenreFound)
+        {
+            summary += $" th=[{raw.TableLabels}]";
+            if (!string.IsNullOrEmpty(raw.JsonldKeys))
+                summary += $" keys=[{raw.JsonldKeys}]";
+            if (!string.IsNullOrEmpty(raw.TitleRaw))
+                summary += $" titleRaw='{raw.TitleRaw}'";
+        }
+
+        return summary;
+    }
 
     public async Task<(string CoverUrl, string Title, string TranslatedTitle, string Circle, string VA, string AgeRating, string Genre)> GetWorkMetadataAsync(string rjCode)
     {
@@ -145,6 +181,28 @@ public class DLsiteService
             var html = await response.Content.ReadAsStringAsync();
             var raw = DLsiteParser.ParseWorkPageHtml(html, url);
 
+            // The JSON endpoints gate on TitleFound; the HTML fallback did not, so a blocked or
+            // consent page was stored as a work titled "DLsite" with every other field empty.
+            if (!raw.TitleFound)
+            {
+                var detail = $"HTTP {(int)response.StatusCode}, <title>='{DLsiteParser.ExtractDocumentTitle(html)}', og:title='{raw.ParsedTitle}', {DescribeFields(raw)}";
+
+                // One warning per scan; the rest stay at Information so the log stays readable.
+                if (!_nonProductPageWarned)
+                {
+                    _nonProductPageWarned = true;
+                    _logger.LogWarning(
+                        "DLsite did not return a product page for {RjCode} ({Detail}) from {Url} - keeping folder metadata",
+                        rjCode, detail, url);
+                }
+                else
+                {
+                    _logger.LogInformation("DLsite non-product page for {RjCode} ({Detail})", rjCode, detail);
+                }
+
+                return ("", "", "", "", "", "SFW", "");
+            }
+
             string title;
             string translatedTitle;
 
@@ -160,6 +218,7 @@ public class DLsiteService
             }
 
             var mappedGenres = await ResolveAndTranslateGenresAsync(raw.Genre, rjCode);
+            _logger.LogInformation("DLsite fields for {RjCode}: {Fields}", rjCode, DescribeFields(raw));
             _logger.LogDebug("DLsite HTML parse success for {RjCode}", rjCode);
             return (raw.CoverUrl, title, translatedTitle, raw.Circle, raw.VaRaw, raw.AgeRating, mappedGenres);
         }

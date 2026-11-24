@@ -484,6 +484,237 @@ public class DLsiteParseWorkPageHtmlTests
     }
 
     [Fact]
+    public void ExtractDocumentTitle_ReadsTitleTag()
+    {
+        var html = WrapInDlsiteShell("", @"<title>DLsite</title>");
+
+        Assert.Equal("DLsite", DLsiteParser.ExtractDocumentTitle(html));
+    }
+
+    [Fact]
+    public void ExtractDocumentTitle_EmptyHtml_ReturnsEmpty()
+    {
+        Assert.Equal("", DLsiteParser.ExtractDocumentTitle(""));
+    }
+
+    [Fact]
+    public void AgeGatePage_IsNotTreatedAsAWork()
+    {
+        // What DLsite actually served for every work: the age-consent page, whose only title is
+        // the bare site name. It must never be stored as a work.
+        var html = WrapInDlsiteShell(
+            "<div class=\"age_check\">Are you over 18?</div>",
+            @"<title>DLsite</title><meta property=""og:title"" content=""DLsite"" />");
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ277878.html");
+
+        Assert.False(result.TitleFound);
+        Assert.Equal("Unknown Title", result.ParsedTitle);
+        Assert.Equal("DLsite", DLsiteParser.ExtractDocumentTitle(html));
+    }
+
+    [Fact]
+    public void CurrentTemplate_TitleComesFromDocumentTitle()
+    {
+        // The real page: og:title is the bare site name and there is no usable work_name heading,
+        // so the only place the work title survives is the document title.
+        var html = WrapInDlsiteShell(
+            "",
+            @"<title>【6時間ASMR】溺れるまで甘やかしたい [ななしぃんく] | DLsite 同人 - R18</title>" +
+            @"<meta property=""og:title"" content=""DLsite"" />");
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ01510352.html");
+
+        Assert.True(result.TitleFound);
+        Assert.Equal("【6時間ASMR】溺れるまで甘やかしたい [ななしぃんく]", result.ParsedTitle);
+        Assert.Equal("document-title", result.TitleSource);
+    }
+
+    [Fact]
+    public void WorkNameHeading_WithNestedTags_IsParsed()
+    {
+        var html = WrapInDlsiteShell(@"<h1 id=""work_name""><span>Nested</span> Title</h1>");
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/eng/work/=/product_id/RJ123456.html");
+
+        Assert.True(result.TitleFound);
+        Assert.Equal("Nested Title", result.ParsedTitle);
+        Assert.Equal("h1", result.TitleSource);
+    }
+
+    [Fact]
+    public void ErrorPage_TitleIsRejected()
+    {
+        var html = WrapInDlsiteShell("", @"<title>ページが見つかりません | DLsite</title>");
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ000000.html");
+
+        Assert.False(result.TitleFound);
+        Assert.Equal("Unknown Title", result.ParsedTitle);
+    }
+
+    [Fact]
+    public void FieldFlags_ReflectWhatWasParsed()
+    {
+        var html = WrapInDlsiteShell(@"
+            <h1 id=""work_name"">Flagged Work</h1>
+            <span class=""maker_name""><a href=""/maker/1"">Some Circle</a></span>
+            <table>
+              <tr><th>Voice Actor</th><td><a href=""/va/1"">Someone</a></td></tr>
+              <tr><th>Genre</th><td><a href=""/genre/1"">Tag One</a></td></tr>
+            </table>
+        ");
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/eng/work/=/product_id/RJ123456.html");
+
+        Assert.True(result.CircleFound);
+        Assert.True(result.VaFound);
+        Assert.True(result.GenreFound);
+        Assert.True(result.HasMetaTable);
+        Assert.False(result.HasJsonLd);
+    }
+
+    [Fact]
+    public void JsonLdRootSiteName_DoesNotBlockNestedProductNode()
+    {
+        var jsonLd = @"
+<script type=""application/ld+json"">
+{
+  ""@context"": ""https://schema.org"",
+  ""name"": ""DLsite"",
+  ""@graph"": [
+    { ""@type"": ""WebSite"", ""name"": ""DLsite"" },
+    {
+      ""@type"": ""Product"",
+      ""name"": ""Real Work Name"",
+      ""image"": ""//img.example/cover.jpg"",
+      ""brand"": { ""@type"": ""Brand"", ""name"": ""Some Circle"" },
+      ""keywords"": [""Tag One"", ""Tag Two""]
+    }
+  ]
+}
+</script>";
+
+        var html = WrapInDlsiteShell("", jsonLd);
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ123456.html");
+
+        Assert.True(result.TitleFound);
+        Assert.Equal("Real Work Name", result.ParsedTitle);
+        Assert.Equal("jsonld", result.TitleSource);
+        Assert.Equal("Some Circle", result.Circle);
+        Assert.True(result.GenreFound);
+        Assert.Equal("Tag One, Tag Two", result.Genre);
+        Assert.Equal("https://img.example/cover.jpg", result.CoverUrl);
+    }
+
+    [Fact]
+    public void InvalidJsonLdTitle_DoesNotBlockDocumentTitle()
+    {
+        // The regression that shipped: a rejected JSON-LD name occupied the title field and every
+        // later strategy was skipped because it only checked for emptiness.
+        var head = @"<script type=""application/ld+json"">{""@type"":""WebSite"",""name"":""DLsite""}</script>" +
+                   @"<title>Fallback Work Name | DLsite 同人 - R18</title>";
+
+        var html = WrapInDlsiteShell("", head);
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ123456.html");
+
+        Assert.True(result.TitleFound);
+        Assert.Equal("Fallback Work Name", result.ParsedTitle);
+        Assert.Equal("document-title", result.TitleSource);
+    }
+
+    [Fact]
+    public void CastInTitle_IsUsedWhenNoCastRowExists()
+    {
+        var head = @"<title>【百合体験】はつこいリターンズ!～ミステリアス声優は上手く喋れない～【CV:土屋李央】 | DLsite 同人 - R18</title>";
+
+        var html = WrapInDlsiteShell("", head);
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ01026607.html");
+
+        Assert.True(result.TitleFound);
+        Assert.True(result.VaFound);
+        Assert.Equal("土屋李央", result.VaRaw);
+    }
+
+    [Fact]
+    public void CastRowWins_OverCastInTitle()
+    {
+        var head = @"<title>Some Work【CV:タイトル内】 | DLsite 同人 - R18</title>";
+        var body = @"<table><tr><th>声優</th><td><a href=""/va/9"">表の声優</a></td></tr></table>";
+
+        var html = WrapInDlsiteShell(body, head);
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ123456.html");
+
+        Assert.Equal("表の声優", result.VaRaw);
+    }
+
+    [Fact]
+    public void CurrentTemplate_ReadsCastFromDefinitionList()
+    {
+        // Shape taken from a real 2026 DLsite product page.
+        var body = @"
+            <div class=""c-productInfo__item"">
+              <dt class=""c-productInfo__key"">声優</dt>
+              <dd class=""c-productInfo__value""><span><a href=""https://www.dlsite.com/maniax/fsr/=/keyword_creater/x"">土屋李央</a></span></dd>
+            </div>";
+
+        var html = WrapInDlsiteShell(body);
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ01026607.html");
+
+        Assert.True(result.VaFound);
+        Assert.Equal("土屋李央", result.VaRaw);
+    }
+
+    [Fact]
+    public void CurrentTemplate_ReadsGenreFromGenreLinks()
+    {
+        var body = @"
+            <a href=""https://www.dlsite.com/maniax/fsr/=/genre/305/from/work.genre/"">百合</a>
+            <a href=""https://www.dlsite.com/maniax/fsr/=/genre/102/from/work.genre/"">ASMR</a>";
+
+        var html = WrapInDlsiteShell(body);
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ01026607.html");
+
+        Assert.True(result.GenreFound);
+        Assert.Equal("百合, ASMR", result.Genre);
+    }
+
+    [Fact]
+    public void BlockedPage_WithSiteNameAsOgTitle_IsNotTreatedAsAWork()
+    {
+        // Region-block and age-consent pages return HTTP 200 with the site's own name in
+        // og:title, which used to be stored as the work title.
+        var html = WrapInDlsiteShell(
+            "",
+            @"<meta property=""og:title"" content=""DLsite"" />");
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ123456.html");
+
+        Assert.False(result.TitleFound);
+        Assert.NotEqual("DLsite", result.ParsedTitle);
+        Assert.Equal("Unknown Title", result.ParsedTitle);
+    }
+
+    [Fact]
+    public void NonEnglishPage_WithGenuineOgTitle_StillAcceptsTheTitle()
+    {
+        var html = WrapInDlsiteShell(
+            "",
+            @"<meta property=""og:title"" content=""Genuine Work Title"" />");
+
+        var result = DLsiteParser.ParseWorkPageHtml(html, "https://www.dlsite.com/maniax/work/=/product_id/RJ123456.html");
+
+        Assert.True(result.TitleFound);
+        Assert.Equal("Genuine Work Title", result.ParsedTitle);
+    }
+
+    [Fact]
     public void MinimalHtml_OnlyTitle()
     {
         var html = WrapInDlsiteShell(@"

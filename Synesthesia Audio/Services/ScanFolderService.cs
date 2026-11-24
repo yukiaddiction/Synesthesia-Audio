@@ -227,6 +227,9 @@ public class ScanFolderService : IDisposable
         _logger.LogInformation("Library scan started — isCloud: {IsCloud}, path: {BasePath}", isCloud, basePath);
         _scanStateService.MarkRunning("Scan Library Found 0 Work, 0 Audio Files");
 
+        // One detailed scraper warning per scan instead of one per work.
+        DLsiteService.ResetScanDiagnostics();
+
         void Report(double pct, string msg)
         {
             progress?.Report((pct, msg));
@@ -272,6 +275,7 @@ public class ScanFolderService : IDisposable
 
         var pendingWorks = new List<(WorkMetadata Work, string WorkPath, string? RjCode, List<string> Files)>();
         var readyWorks = new List<(WorkMetadata Work, List<string> Files)>();
+        int failedMetadata = 0;
 
         foreach (var kvp in workGroups)
         {
@@ -303,12 +307,20 @@ public class ScanFolderService : IDisposable
             };
 
             var cachedWork = _cacheService.GetWork(workPath);
+
+            // A failed fetch must not be frozen into the cache, and entries already carrying the
+            // old placeholder titles are treated as stale so existing libraries heal by themselves.
+            if (cachedWork != null && IsStaleCachedWork(cachedWork))
+                cachedWork = null;
+
             string? rjCode = null;
 
             if (cachedWork == null && match.Success)
             {
                 rjCode = match.Groups[1].Value.ToUpper();
-                cachedWork = _cacheService.GetWorkByProductId(rjCode);
+                var cachedByRj = _cacheService.GetWorkByProductId(rjCode);
+                if (cachedByRj != null && !IsStaleCachedWork(cachedByRj))
+                    cachedWork = cachedByRj;
             }
 
             if (cachedWork != null)
@@ -331,6 +343,9 @@ public class ScanFolderService : IDisposable
             }
             else
             {
+                // No RJ code in the folder path means there is nothing to look up, which is a
+                // legitimate reason for empty metadata - say so instead of failing silently.
+                _logger.LogInformation("Work has no RJ code and cannot be scraped: {Folder}", folderName);
                 readyWorks.Add((work, files));
             }
         }
@@ -351,6 +366,9 @@ public class ScanFolderService : IDisposable
 
                     try
                     {
+                        // Assume failure until a validated title comes back, so an outage is
+                        // retried on the next scan instead of being cached forever.
+                        work.NeedsMetadataRefresh = true;
                         var meta = await _dlsiteService.GetWorkMetadataAsync(rjCode!);
                         if (!string.IsNullOrEmpty(meta.Title))
                         {
@@ -360,6 +378,7 @@ public class ScanFolderService : IDisposable
                             work.VA = meta.VA;
                             work.AgeRating = meta.AgeRating;
                             work.Genre = meta.Genre;
+                            work.NeedsMetadataRefresh = false;
 
                             if (!string.IsNullOrEmpty(meta.CoverUrl))
                             {
@@ -394,6 +413,9 @@ public class ScanFolderService : IDisposable
                         _logger.LogWarning(ex, "Metadata fetch failed for {RjCode}, keeping folder name", rjCode);
                     }
 
+                    if (work.NeedsMetadataRefresh)
+                        Interlocked.Increment(ref failedMetadata);
+
                     var done = Interlocked.Increment(ref completedMeta);
                     Report(0.15 + 0.80 * done / totalMeta, $"scan: fetching metadata ({done}/{totalMeta})");
                 }
@@ -404,6 +426,13 @@ public class ScanFolderService : IDisposable
             });
 
             await Task.WhenAll(tasks);
+
+            if (failedMetadata > 0)
+            {
+                _logger.LogWarning(
+                    "Metadata could not be fetched for {Failed} of {Total} works; they will be retried on the next scan",
+                    failedMetadata, pendingWorks.Count);
+            }
 
             // Move pending works to ready
             foreach (var pw in pendingWorks)
@@ -553,6 +582,15 @@ public class ScanFolderService : IDisposable
         }
         return cleanPath;
     }
+
+    /// <summary>
+    /// A cached work is stale when its last fetch failed, or when it still carries a title that
+    /// only a non-product page could have produced (the site name, or the parser's placeholder).
+    /// </summary>
+    private static bool IsStaleCachedWork(WorkMetadata work) =>
+        work.NeedsMetadataRefresh ||
+        string.Equals(work.Title, "DLsite", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(work.Title, "Unknown Title", StringComparison.OrdinalIgnoreCase);
 
     private string DetermineWorkFolder(string filePath, string basePath, bool isCloud)
     {
