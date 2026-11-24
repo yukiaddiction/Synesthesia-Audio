@@ -10,22 +10,32 @@ using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 namespace Synesthesia_Audio.Views.Components;
 
 /// <summary>
-/// The glass page frame: aurora backdrop, floating glass app bar, a body slot, and an overlay
-/// slot for floating chrome such as the player bar.
+/// The glass page frame. Above <see cref="AppBreakpoints.Wide"/> it adds a persistent sidebar and
+/// drops the menu button; below it behaves exactly like the compact phone layout.
 /// </summary>
 /// <remarks>
-/// The app bar replaces the Shell navigation bar, so pages using this scaffold must call
-/// <c>Shell.SetNavBarIsVisible(this, false)</c> and rely on <c>back: true</c> for pushed routes.
+/// One composition reflows rather than two layouts being built: the sidebar column animates
+/// between 0 and its full width, and pages subscribe to <see cref="LayoutModeChanged"/> to toggle
+/// optional panes. Pages must also call <c>Shell.SetNavBarIsVisible(this, false)</c>.
 /// </remarks>
 public sealed class GlassScaffold : Grid
 {
+    private readonly ColumnDefinition _sidebarColumn;
+    private readonly GlassSidebar _sidebar;
+    private readonly Button? _menuButton;
     private readonly Grid _bodyHost;
     private readonly Grid _overlayHost;
     private readonly HorizontalStackLayout _actionBar;
 
+    private bool _isWide;
+    private bool _modeInitialized;
+
+    /// <summary>Raised when the window crosses the wide breakpoint.</summary>
+    public event EventHandler<bool>? LayoutModeChanged;
+
     public GlassScaffold(string title, string? subtitle = null, bool back = false, bool menu = true)
     {
-        RowDefinitions = Rows.Define(Auto, Star);
+        RowDefinitions = Rows.Define(Star);
         ColumnDefinitions = Columns.Define(Star);
         BackgroundColor = Colors.Transparent;
 
@@ -52,33 +62,54 @@ public sealed class GlassScaffold : Grid
             VerticalOptions = LayoutOptions.Center
         };
 
-        _bodyHost = new Grid();
-        _overlayHost = new Grid { InputTransparent = true, CascadeInputTransparent = false };
-
         Backdrop = new GlassBackdrop();
         Backdrop.AppThemeBinding(GlassBackdrop.IsDarkProperty, false, true);
 
-        var bar = BuildBar(back, menu);
+        _bodyHost = new Grid();
+        _overlayHost = new Grid { InputTransparent = true, CascadeInputTransparent = false };
+
+        var main = new Grid { RowDefinitions = Rows.Define(Auto, Star) };
+        var appBar = BuildBar(back, menu, out _menuButton);
+
+        main.Children.Add(appBar);
+        appBar.Row(0);
+        main.Children.Add(_bodyHost);
+        _bodyHost.Row(1);
+        main.Children.Add(_overlayHost);
+        _overlayHost.Row(1);
+
+        _sidebar = new GlassSidebar { IsVisible = false };
+        _sidebarColumn = new ColumnDefinition(new GridLength(0));
+
+        var shell = new Grid
+        {
+            ColumnDefinitions = { _sidebarColumn, new ColumnDefinition(GridLength.Star) }
+        };
+        shell.Children.Add(_sidebar);
+        _sidebar.Column(0);
+        shell.Children.Add(main);
+        main.Column(1);
 
         Children.Add(Backdrop);
-        Children.Add(bar);
-        Children.Add(_bodyHost);
-        Children.Add(_overlayHost);
+        Children.Add(shell);
 
-        Backdrop.Row(0).RowSpan(2);
-        bar.Row(0);
-        _bodyHost.Row(1);
-        _overlayHost.Row(1);
+        SizeChanged += OnSizeChanged;
     }
 
     /// <summary>Primary page heading shown in the app bar.</summary>
     public Label TitleLabel { get; }
 
-    /// <summary>Supporting caption under the heading. Hidden until it has text.</summary>
+    /// <summary>Supporting caption under the heading.</summary>
     public Label SubtitleLabel { get; }
 
     /// <summary>The theme-bound aurora background.</summary>
     public GlassBackdrop Backdrop { get; }
+
+    /// <summary>The desktop navigation rail (hidden while compact).</summary>
+    public GlassSidebar Sidebar => _sidebar;
+
+    /// <summary>True while the window is wide enough for the desktop composition.</summary>
+    public bool IsWide => _isWide;
 
     /// <summary>Right-aligned app bar actions.</summary>
     public IList<IView> Actions => _actionBar.Children;
@@ -90,10 +121,50 @@ public sealed class GlassScaffold : Grid
         _bodyHost.Children.Add(body);
     }
 
-    /// <summary>Adds a floating element on top of the body (player bar, scan toast).</summary>
+    /// <summary>Adds a floating element on top of the body (player, toast).</summary>
     public void AddOverlay(View overlay) => _overlayHost.Children.Add(overlay);
 
-    private View BuildBar(bool back, bool menu)
+    private void OnSizeChanged(object? sender, EventArgs e) => ApplyWidth(Width);
+
+    private void ApplyWidth(double width)
+    {
+        if (width <= 0)
+            return;
+
+        var wide = AppBreakpoints.IsWide(width);
+        if (_modeInitialized && wide == _isWide)
+            return;
+
+        _isWide = wide;
+        _modeInitialized = true;
+
+        _sidebarColumn.Width = new GridLength(wide ? AppBreakpoints.SidebarWidth : 0);
+        _sidebar.IsVisible = wide;
+        if (_menuButton != null)
+            _menuButton.IsVisible = !wide;
+
+        SyncFlyoutBehavior(wide);
+        LayoutModeChanged?.Invoke(this, wide);
+    }
+
+    /// <summary>
+    /// Shell's own flyout is redundant once the sidebar is visible, and disabling it also removes
+    /// the stray pane toggle Shell draws into the Windows title bar.
+    /// </summary>
+    private static void SyncFlyoutBehavior(bool wide)
+    {
+        try
+        {
+            if (Shell.Current is { } shell)
+                shell.FlyoutBehavior = wide ? FlyoutBehavior.Disabled : FlyoutBehavior.Flyout;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Get<GlassScaffold>().LogWarning(ex, "Could not switch the shell flyout behaviour");
+        }
+    }
+
+    private Border BuildBar(bool back, bool menu, out Button? menuButton)
     {
         var titleStack = new VerticalStackLayout
         {
@@ -108,13 +179,15 @@ public sealed class GlassScaffold : Grid
             ColumnSpacing = AppLayout.SpacingMedium
         };
 
+        menuButton = null;
         if (back)
         {
             barGrid.Children.Add(CreateBackButton().Column(0));
         }
         else if (menu)
         {
-            barGrid.Children.Add(CreateMenuButton().Column(0));
+            menuButton = CreateMenuButton();
+            barGrid.Children.Add(menuButton.Column(0));
         }
 
         barGrid.Children.Add(titleStack.Column(1));
@@ -133,6 +206,7 @@ public sealed class GlassScaffold : Grid
     {
         var button = GlassTheme.IconButton("\u2190");
         button.AutomationId = "GlassBackButton";
+        ToolTipProperties.SetText(button, "Back");
         SemanticProperties.SetDescription(button, "Back");
         button.Clicked += async (_, _) => await GoBackAsync();
         return button;
@@ -142,6 +216,7 @@ public sealed class GlassScaffold : Grid
     {
         var button = GlassTheme.IconButton("\u2630");
         button.AutomationId = "GlassMenuButton";
+        ToolTipProperties.SetText(button, "Open navigation menu");
         SemanticProperties.SetDescription(button, "Open navigation menu");
         button.Clicked += (_, _) =>
         {

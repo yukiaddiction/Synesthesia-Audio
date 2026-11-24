@@ -7,6 +7,7 @@ using Synesthesia_Audio.Models;
 using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 using Synesthesia_Audio.Styles;
 using Synesthesia_Audio.Converters;
+using Synesthesia_Audio.Services;
 using Synesthesia_Audio.Views.Components;
 
 namespace Synesthesia_Audio.Views;
@@ -16,6 +17,7 @@ public class MainPage : ContentPage
     private readonly CollectionView _collectionView;
     private readonly MainViewModel _viewModel;
     private readonly Label _subtitleLabel;
+    private GlassScaffold? _scaffold;
 
     public MainPage(MainViewModel viewModel, Services.AudioService audioService)
     {
@@ -23,7 +25,7 @@ public class MainPage : ContentPage
         _collectionView = new CollectionView
         {
             ItemsLayout = new GridItemsLayout(2, ItemsLayoutOrientation.Vertical),
-            ItemTemplate = new DataTemplate(() => { return new AlbumCardView(viewModel); })
+            ItemTemplate = new DataTemplate(() => new AlbumCardView(viewModel, () => _scaffold?.IsWide ?? false))
         };
         BindingContext = viewModel;
 
@@ -31,20 +33,21 @@ public class MainPage : ContentPage
         Shell.SetNavBarIsVisible(this, false);
 
         var scaffold = new GlassScaffold("Library");
+        _scaffold = scaffold;
         _subtitleLabel = scaffold.SubtitleLabel;
         scaffold.TitleLabel.Bind(Label.TextProperty, nameof(MainViewModel.Title));
 
         var sortButton = GlassTheme.IconButton("\u21C5", AppFontSizes.ButtonLarge)
             .Bind(Button.CommandProperty, nameof(MainViewModel.ShowSortOptionsCommand))
             .Bind(VisualElement.IsVisibleProperty, nameof(MainViewModel.HasFolderSelected))
-            .Invoke(b => b.AutomationId = "SortButton")
-            .Invoke(b => SemanticProperties.SetDescription(b, "Sort library"));
+            .Invoke(b => b.AutomationId = "SortButton");
+        ToolTipProperties.SetText(sortButton, "Sort library");
 
         var rescanButton = GlassTheme.IconButton("\u27F3", AppFontSizes.ButtonLarge)
             .Bind(Button.CommandProperty, nameof(MainViewModel.ScanLibraryCommand))
             .Bind(VisualElement.IsVisibleProperty, nameof(MainViewModel.HasFolderSelected))
-            .Invoke(b => b.AutomationId = "RescanButton")
-            .Invoke(b => SemanticProperties.SetDescription(b, "Rescan library"));
+            .Invoke(b => b.AutomationId = "RescanButton");
+        ToolTipProperties.SetText(rescanButton, "Rescan library");
 
         scaffold.Actions.Add(sortButton);
         scaffold.Actions.Add(rescanButton);
@@ -68,6 +71,8 @@ public class MainPage : ContentPage
         }
         .Bind(VisualElement.IsVisibleProperty, nameof(MainViewModel.HasFolderSelected))
         .Glass();
+
+        SearchHost = searchBar;
 
         var emptyState = new Border
         {
@@ -142,8 +147,14 @@ public class MainPage : ContentPage
         .Bind(VisualElement.IsVisibleProperty, nameof(MainViewModel.IsScanStatusVisible))
         .Glass(strong: true, elevated: true);
 
-        var content = new Grid
+        var previewPane = new AlbumPreviewPane { IsVisible = false };
+        PreviewPane = previewPane;
+
+        // Column 1 collapses to zero while compact, so the grid gets the full width back.
+        var contentGrid = new Grid
         {
+            ColumnDefinitions = Columns.Define(Star, new GridLength(0)),
+            ColumnSpacing = AppLayout.SpacingSection,
             Children =
             {
                 _collectionView
@@ -152,9 +163,11 @@ public class MainPage : ContentPage
                     .Bind(View.MarginProperty,
                         path: nameof(audioService.CurrentTrack),
                         source: audioService,
-                        convert: (Track? track) => track != null ? new Thickness(0, 0, 0, 120) : new Thickness(0, 0, 0, 16)),
+                        convert: (Track? track) => track != null ? new Thickness(0, 0, 0, 120) : new Thickness(0, 0, 0, 16))
+                    .Column(0),
 
-                emptyState
+                emptyState.Column(0),
+                previewPane.Column(1)
             }
         };
 
@@ -164,13 +177,32 @@ public class MainPage : ContentPage
             Children =
             {
                 searchPill.Row(0),
-                content.Row(1)
+                contentGrid.Row(1)
             }
+        };
+
+        // The two players are independent components; only one is ever visible, chosen by mode.
+        var compactPlayerHost = new Grid { Children = { new FloatingPlayerBar(audioService) } };
+        var dockHost = new Grid { Children = { new TransportDock(audioService) }, IsVisible = false };
+
+        scaffold.LayoutModeChanged += (_, wide) =>
+        {
+            contentGrid.ColumnDefinitions[1].Width = wide
+                ? new GridLength(AppBreakpoints.PreviewPaneWidth)
+                : new GridLength(0);
+
+            previewPane.IsVisible = wide;
+            compactPlayerHost.IsVisible = !wide;
+            dockHost.IsVisible = wide;
+
+            if (wide)
+                SelectFirstIfNone();
         };
 
         scaffold.SetBody(body);
         scaffold.AddOverlay(scanToast);
-        scaffold.AddOverlay(new FloatingPlayerBar(audioService));
+        scaffold.AddOverlay(compactPlayerHost);
+        scaffold.AddOverlay(dockHost);
 
         Content = scaffold;
 
@@ -178,12 +210,27 @@ public class MainPage : ContentPage
         UpdateSubtitle();
     }
 
+    /// <summary>The search box, so the Ctrl+F shortcut can focus it.</summary>
+    public SearchBar? SearchHost { get; }
+
+    private AlbumPreviewPane PreviewPane { get; }
+
+    private void SelectFirstIfNone()
+    {
+        if (_viewModel.SelectedWork == null && _viewModel.Albums.Count > 0)
+            _viewModel.SelectedWork = _viewModel.Albums[0];
+    }
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         // Albums is replaced wholesale on every refresh, so the caption follows the
         // view-model properties rather than subscribing to a collection instance.
         if (e.PropertyName is nameof(MainViewModel.Albums) or nameof(MainViewModel.SelectedFilter))
+        {
             UpdateSubtitle();
+            if (_scaffold?.IsWide == true)
+                SelectFirstIfNone();
+        }
     }
 
     private void UpdateSubtitle()
@@ -197,6 +244,8 @@ public class MainPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+
+        UiEvents.FocusSearchRequested += OnFocusSearchRequested;
 
         try
         {
@@ -227,11 +276,33 @@ public class MainPage : ContentPage
         }
     }
 
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        UiEvents.FocusSearchRequested -= OnFocusSearchRequested;
+    }
+
+    /// <summary>Ctrl+F from the desktop keyboard handler.</summary>
+    private void OnFocusSearchRequested()
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (SearchHost is { IsVisible: true } search)
+                search.Focus();
+        });
+    }
+
     protected override void OnSizeAllocated(double width, double height)
     {
         base.OnSizeAllocated(width, height);
         if (width <= 0) return;
-        var span = width > 900 ? 4 : width > 600 ? 3 : 2;
+
+        // Reserve the chrome the grid no longer occupies when the desktop panes are up.
+        var available = width;
+        if (AppBreakpoints.IsWide(width))
+            available -= AppBreakpoints.SidebarWidth + AppBreakpoints.PreviewPaneWidth + 48;
+
+        var span = available > 900 ? 4 : available > 640 ? 3 : 2;
         _collectionView.ItemsLayout = new GridItemsLayout(span, ItemsLayoutOrientation.Vertical);
     }
 }

@@ -35,6 +35,9 @@ public partial class AudioService : ObservableObject, IDisposable
         _sessionService = sessionService;
         _platformService = platformService;
         _logger = logger;
+
+        // Set the backing field rather than the property so startup does not re-persist it.
+        _volume = Preferences.Get("PlayerVolume", 0.8d);
     }
 
     [ObservableProperty]
@@ -84,6 +87,58 @@ public partial class AudioService : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _isFullScreen;
+
+    /// <summary>Playback volume, 0..1. Persisted so the transport dock keeps its level.</summary>
+    [ObservableProperty]
+    private double _volume = 0.8;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(VolumeIcon))]
+    private bool _isMuted;
+
+    /// <summary>Glyph for the desktop dock's mute button.</summary>
+    public string VolumeIcon => IsMuted || Volume <= 0.001 ? "\uD83D\uDD07" : "\uD83D\uDD0A";
+
+    partial void OnVolumeChanged(double value)
+    {
+        ApplyVolume();
+        Preferences.Set("PlayerVolume", value);
+        OnPropertyChanged(nameof(VolumeIcon));
+    }
+
+    partial void OnIsMutedChanged(bool value) => ApplyVolume();
+
+    private void ApplyVolume()
+    {
+        if (_mediaElement is null)
+            return;
+
+        _mediaElement.Volume = IsMuted ? 0 : Volume;
+        _mediaElement.ShouldMute = IsMuted;
+    }
+
+    [RelayCommand]
+    private void ToggleMute() => IsMuted = !IsMuted;
+
+    /// <summary>
+    /// Seeks by a relative offset, clamped to the track bounds. Used by the desktop keyboard
+    /// shortcuts so they share the same path as the seek slider.
+    /// </summary>
+    public void SeekBy(TimeSpan delta)
+    {
+        var me = _mediaElement;
+        if (me is null || Duration.TotalSeconds <= 0)
+            return;
+
+        var target = Position + delta;
+        if (target < TimeSpan.Zero) target = TimeSpan.Zero;
+        if (target > Duration) target = Duration;
+
+        var wasPlaying = IsPlaying;
+        Position = target;
+        me.SeekTo(target);
+        if (wasPlaying) me.Play();
+    }
 
     public bool IsVideoOverlayVisible => IsVideoTrack && IsVideoVisible && IsPlaying;
 
@@ -161,6 +216,8 @@ public partial class AudioService : ObservableObject, IDisposable
             _mediaElement.MediaOpened += OnMediaOpened;
             _mediaElement.MediaEnded += OnMediaEnded;
         }
+
+        ApplyVolume();
     }
 
     public async Task TryRestoreSessionAsync()

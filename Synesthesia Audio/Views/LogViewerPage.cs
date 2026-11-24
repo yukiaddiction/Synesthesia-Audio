@@ -49,6 +49,8 @@ public class LogViewerPage : ContentPage
         {
             StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassCardRadius },
             Padding = new Thickness(14),
+            HorizontalOptions = LayoutOptions.Center,
+            MaximumWidthRequest = AppBreakpoints.ReaderMaxWidth,
             Content = new ScrollView
             {
                 Content = new Label

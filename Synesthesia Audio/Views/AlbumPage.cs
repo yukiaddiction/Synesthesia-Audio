@@ -113,6 +113,14 @@ public class AlbumPage : ContentPage
             }
         };
 
+        var editButton = GlassTheme.PillButton("Edit Work Info", AppFontSizes.Body, height: 34)
+            .Bind(Button.CommandProperty, nameof(AlbumViewModel.OpenEditDialogCommand));
+        ToolTipProperties.SetText(editButton, "Edit this work's metadata");
+
+        var translateButton = GlassTheme.PillButton("Translate Info", AppFontSizes.Body, height: 34)
+            .Bind(Button.CommandProperty, nameof(AlbumViewModel.TranslateCommand));
+        ToolTipProperties.SetText(translateButton, "Translate metadata to English");
+
         var actions = new HorizontalStackLayout
         {
             Spacing = AppLayout.SpacingExtraLarge,
@@ -122,16 +130,12 @@ public class AlbumPage : ContentPage
                 new ActivityIndicator { HeightRequest = 20, WidthRequest = 20, IsVisible = false, Color = AppColors.PrimaryLight }
                     .Bind(ActivityIndicator.IsRunningProperty, nameof(AlbumViewModel.IsBusy))
                     .Bind(VisualElement.IsVisibleProperty, nameof(AlbumViewModel.IsBusy)),
-
-                GlassTheme.PillButton("Edit Work Info", AppFontSizes.Body, height: 34)
-                    .Bind(Button.CommandProperty, nameof(AlbumViewModel.OpenEditDialogCommand)),
-
-                GlassTheme.PillButton("Translate Info", AppFontSizes.Body, height: 34)
-                    .Bind(Button.CommandProperty, nameof(AlbumViewModel.TranslateCommand))
+                editButton,
+                translateButton
             }
         };
 
-        var sheet = new Border
+        var metaSheet = new Border
         {
             StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassSheetRadius },
             Margin = AppLayout.GlassSheetOverlap,
@@ -175,10 +179,21 @@ public class AlbumPage : ContentPage
                             .Bind(Label.TextProperty, ".")
                             .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark))
                             .Margin(new Thickness(3));
-                    })),
+                    }))
+                }
+            }
+        }.Glass(strong: true, elevated: true);
 
-                    new BoxView { HeightRequest = 1 }
-                        .AppThemeBinding(BoxView.ColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark),
+        var tracksPanel = new Border
+        {
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassSheetRadius },
+            Padding = new Thickness(18),
+            Content = new VerticalStackLayout
+            {
+                Spacing = AppLayout.SpacingSection,
+                Children =
+                {
+                    GlassTheme.SectionLabel("TRACKS"),
 
                     new VerticalStackLayout
                     {
@@ -271,6 +286,13 @@ public class AlbumPage : ContentPage
                                     .Column(1)
                                 }
                             };
+
+                            // Row hover makes the long desktop track list readable.
+                            var pointer = new PointerGestureRecognizer();
+                            pointer.PointerEntered += (_, _) => trackGrid.Opacity = 0.82;
+                            pointer.PointerExited += (_, _) => trackGrid.Opacity = 1;
+                            trackGrid.GestureRecognizers.Add(pointer);
+
                             trackGrid.GestureRecognizers.Add(trackTap);
                             return trackGrid;
                         }));
@@ -284,13 +306,24 @@ public class AlbumPage : ContentPage
             }
         }.Glass(strong: true, elevated: true);
 
+        var metaColumn = new VerticalStackLayout
+        {
+            Spacing = AppLayout.GlassSectionGap,
+            VerticalOptions = LayoutOptions.Start,
+            Children = { hero, metaSheet }
+        };
+
+        // One grid reflows: stacked in compact, two panes above the breakpoint.
+        var contentGrid = new Grid();
+        contentGrid.Children.Add(metaColumn);
+        contentGrid.Children.Add(tracksPanel);
+
         var scroll = new ScrollView
         {
             Content = new VerticalStackLayout
             {
                 Padding = AppLayout.GlassContentPadding,
-                Spacing = AppLayout.GlassSectionGap,
-                Children = { hero, sheet }
+                Children = { contentGrid }
             }
         };
 
@@ -298,7 +331,40 @@ public class AlbumPage : ContentPage
         scaffold.SetBody(new Grid { Children = { scroll, loading } });
         scaffold.AddOverlay(new FloatingPlayerBar(audioService));
 
+        scaffold.LayoutModeChanged += (_, wide) => ApplyAlbumLayout(contentGrid, metaColumn, tracksPanel, wide);
+
         Content = scaffold;
+    }
+
+    private static void ApplyAlbumLayout(Grid grid, View metaColumn, View tracksPanel, bool wide)
+    {
+        grid.RowDefinitions.Clear();
+        grid.ColumnDefinitions.Clear();
+
+        if (wide)
+        {
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            grid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(AppBreakpoints.AlbumMetaWidth)));
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            grid.ColumnSpacing = AppLayout.GlassSectionGap;
+
+            Grid.SetRow(metaColumn, 0);
+            Grid.SetColumn(metaColumn, 0);
+            Grid.SetRow(tracksPanel, 0);
+            Grid.SetColumn(tracksPanel, 1);
+        }
+        else
+        {
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            grid.ColumnSpacing = 0;
+
+            Grid.SetRow(metaColumn, 0);
+            Grid.SetColumn(metaColumn, 0);
+            Grid.SetRow(tracksPanel, 1);
+            Grid.SetColumn(tracksPanel, 0);
+        }
     }
 }
 

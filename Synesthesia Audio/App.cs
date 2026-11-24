@@ -17,6 +17,7 @@ public class App : Application
     private readonly ScanStateService _scanStateService;
     private readonly MainViewModel _mainViewModel;
     private readonly ILogger<App> _logger;
+    private bool _desktopChromeApplied;
 
     public App(
         AppShell shell,
@@ -66,10 +67,40 @@ public class App : Application
     protected override Window CreateWindow(IActivationState? activationState)
     {
         var window = new Window(_shell);
+
+#if WINDOWS
+        // Desktop window contract: open at a comfortable size, never below what the wide
+        // composition needs, and remember whatever the user resized it to.
+        window.Width = Preferences.Get("WindowWidth", 1440d);
+        window.Height = Preferences.Get("WindowHeight", 900d);
+        window.MinimumWidth = 880;
+        window.MinimumHeight = 640;
+
+        window.HandlerChanged += (_, _) =>
+        {
+            if (_desktopChromeApplied)
+                return;
+
+            if (window.Handler?.PlatformView is Microsoft.UI.Xaml.Window native)
+            {
+                _desktopChromeApplied = true;
+                Desktop.WindowChrome.Apply(native, Application.Current?.RequestedTheme == AppTheme.Dark);
+                Desktop.KeyboardShortcuts.Attach(native);
+            }
+        };
+
+        if (Application.Current != null)
+        {
+            Application.Current.RequestedThemeChanged += (_, _) =>
+                MainThread.BeginInvokeOnMainThread(() => ApplyDesktopChrome(window));
+        }
+#endif
+
         window.Destroying += (s, e) =>
         {
             try
             {
+                SaveWindowBounds(window);
                 _cacheService.FlushPendingSave();
                 _scanStateService.FlushPendingSave();
                 _audioService.Dispose();
@@ -83,6 +114,7 @@ public class App : Application
         {
             try
             {
+                SaveWindowBounds(window);
                 _cacheService.FlushPendingSave();
                 _scanStateService.FlushPendingSave();
             }
@@ -104,4 +136,33 @@ public class App : Application
         };
         return window;
     }
+
+    /// <summary>
+    /// Persists the current window size so the next launch reopens at the same place.
+    /// Only the Windows target has a resizable desktop window.
+    /// </summary>
+    private static void SaveWindowBounds(Window window)
+    {
+#if WINDOWS
+        try
+        {
+            if (window.Width > 0)
+                Preferences.Set("WindowWidth", window.Width);
+            if (window.Height > 0)
+                Preferences.Set("WindowHeight", window.Height);
+        }
+        catch
+        {
+            // Window bounds are a convenience, never a failure path.
+        }
+#endif
+    }
+
+#if WINDOWS
+    private static void ApplyDesktopChrome(Window window)
+    {
+        if (window.Handler?.PlatformView is Microsoft.UI.Xaml.Window native)
+            Desktop.WindowChrome.Apply(native, Application.Current?.RequestedTheme == AppTheme.Dark);
+    }
+#endif
 }

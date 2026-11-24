@@ -12,6 +12,15 @@ namespace Synesthesia_Audio.Views;
 public class SettingsPage : ContentPage
 {
     private readonly SettingsViewModel _viewModel;
+    private readonly GlassScaffold _scaffold;
+    private readonly VerticalStackLayout _libraryGroup;
+    private readonly VerticalStackLayout _appearanceGroup;
+    private readonly VerticalStackLayout _diagnosticsGroup;
+    private readonly GlassNavItem _libraryNav;
+    private readonly GlassNavItem _appearanceNav;
+    private readonly GlassNavItem _diagnosticsNav;
+
+    private int _activeGroupIndex;
 
     public SettingsPage(SettingsViewModel viewModel, AudioService audioService, TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel)
     {
@@ -20,37 +29,101 @@ public class SettingsPage : ContentPage
         this.Bind(ContentPage.TitleProperty, nameof(SettingsViewModel.Title));
         Shell.SetNavBarIsVisible(this, false);
 
-        var scaffold = new GlassScaffold("Settings", "Manage library source, appearance and diagnostics", back: true);
+        _scaffold = new GlassScaffold("Settings", "Manage library source, appearance and diagnostics", back: true);
+
+        _libraryGroup = new VerticalStackLayout
+        {
+            Spacing = AppLayout.GlassSectionGap,
+            Children = { GlassTheme.SectionLabel("LIBRARY"), CreateLibrarySourceCard(), CreateScrapingCard() }
+        };
+
+        _appearanceGroup = new VerticalStackLayout
+        {
+            Spacing = AppLayout.GlassSectionGap,
+            Children = { GlassTheme.SectionLabel("APPEARANCE"), CreateTagManagementCard(tagService, cacheService, mainViewModel) }
+        };
+
+        _diagnosticsGroup = new VerticalStackLayout
+        {
+            Spacing = AppLayout.GlassSectionGap,
+            Children = { GlassTheme.SectionLabel("DIAGNOSTICS"), CreateCacheCard(), CreateBatteryCard(), CreateLogsCard() }
+        };
 
         var scroll = new ScrollView
         {
             Content = new VerticalStackLayout
             {
-                Padding = AppLayout.GlassContentPadding,
                 Spacing = AppLayout.GlassSectionGap,
-                Children =
-                {
-                    CreateIdentityCard(),
-
-                    GlassTheme.SectionLabel("LIBRARY"),
-                    CreateLibrarySourceCard(),
-                    CreateScrapingCard(),
-
-                    GlassTheme.SectionLabel("APPEARANCE"),
-                    CreateTagManagementCard(tagService, cacheService, mainViewModel),
-
-                    GlassTheme.SectionLabel("DIAGNOSTICS"),
-                    CreateCacheCard(),
-                    CreateBatteryCard(),
-                    CreateLogsCard()
-                }
+                Children = { CreateIdentityCard(), _libraryGroup, _appearanceGroup, _diagnosticsGroup }
             }
         };
 
-        scaffold.SetBody(scroll);
-        scaffold.AddOverlay(new FloatingPlayerBar(audioService));
+        _libraryNav = new GlassNavItem("Library", (_, _) => SelectGroup(0));
+        _appearanceNav = new GlassNavItem("Appearance", (_, _) => SelectGroup(1));
+        _diagnosticsNav = new GlassNavItem("Diagnostics", (_, _) => SelectGroup(2));
 
-        Content = scaffold;
+        var rail = new Border
+        {
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassCardRadius },
+            Padding = new Thickness(10),
+            IsVisible = false,
+            VerticalOptions = LayoutOptions.Start,
+            Content = new VerticalStackLayout
+            {
+                Spacing = 0,
+                Children = { _libraryNav, _appearanceNav, _diagnosticsNav }
+            }
+        }.Glass(strong: true, elevated: true);
+
+        var body = new Grid
+        {
+            Padding = AppLayout.GlassContentPadding,
+            ColumnDefinitions = { new ColumnDefinition(new GridLength(0)), new ColumnDefinition(GridLength.Star) },
+            ColumnSpacing = AppLayout.SpacingSection,
+            Children =
+            {
+                rail.Column(0),
+                scroll.Column(1)
+            }
+        };
+
+        _scaffold.LayoutModeChanged += (_, wide) =>
+        {
+            body.ColumnDefinitions[0].Width = wide
+                ? new GridLength(AppBreakpoints.SettingsRailWidth)
+                : new GridLength(0);
+
+            rail.IsVisible = wide;
+            ApplyGroupVisibility(wide);
+        };
+
+        _scaffold.SetBody(body);
+        _scaffold.AddOverlay(new FloatingPlayerBar(audioService));
+
+        Content = _scaffold;
+
+        SelectGroup(0);
+    }
+
+    private void SelectGroup(int index)
+    {
+        _activeGroupIndex = index;
+
+        _libraryNav.SetActive(index == 0);
+        _appearanceNav.SetActive(index == 1);
+        _diagnosticsNav.SetActive(index == 2);
+
+        ApplyGroupVisibility(_scaffold.IsWide);
+    }
+
+    /// <summary>
+    /// Compact keeps every group stacked; wide shows only the group picked on the rail.
+    /// </summary>
+    private void ApplyGroupVisibility(bool wide)
+    {
+        var groups = new[] { _libraryGroup, _appearanceGroup, _diagnosticsGroup };
+        for (var i = 0; i < groups.Length; i++)
+            groups[i].IsVisible = !wide || i == _activeGroupIndex;
     }
 
     protected override void OnAppearing()

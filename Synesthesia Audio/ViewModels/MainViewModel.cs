@@ -47,6 +47,20 @@ public partial class MainViewModel : BaseViewModel
     [ObservableProperty]
     private bool _isScanning;
 
+    /// <summary>
+    /// The work highlighted in the desktop preview pane. Null until something is picked; the
+    /// compact layout never shows the pane, so this stays unused there.
+    /// </summary>
+    [ObservableProperty]
+    private WorkMetadata? _selectedWork;
+
+    public bool HasSelectedWork => SelectedWork != null;
+
+    partial void OnSelectedWorkChanged(WorkMetadata? value) => OnPropertyChanged(nameof(HasSelectedWork));
+
+    [RelayCommand]
+    private void SelectWork(WorkMetadata? work) => SelectedWork = work;
+
     public bool IsScanStatusVisible => IsScanning;
 
     partial void OnIsScanningChanged(bool value) => OnPropertyChanged(nameof(IsScanStatusVisible));
