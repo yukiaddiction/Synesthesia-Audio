@@ -1,7 +1,9 @@
 using CommunityToolkit.Maui.Markup;
 using Microsoft.Extensions.Logging;
+using Microsoft.Maui.Controls.Shapes;
 using Synesthesia_Audio.ViewModels;
 using Synesthesia_Audio.Styles;
+using Synesthesia_Audio.Views.Components;
 using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 
 namespace Synesthesia_Audio.Views;
@@ -15,60 +17,70 @@ public class LogViewerPage : ContentPage
         BindingContext = _viewModel = viewModel;
 
         this.Bind(ContentPage.TitleProperty, nameof(LogViewerViewModel.Title));
-        this.AppThemeBinding(ContentPage.BackgroundColorProperty, AppColors.BackgroundLight, AppColors.BackgroundDark);
+        Shell.SetNavBarIsVisible(this, false);
 
-        Content = new Grid
+        var scaffold = new GlassScaffold("Application Logs", "Tail or full diagnostics", back: true);
+
+        scaffold.Actions.Add(GlassTheme.IconButton("\u21BB", AppFontSizes.ButtonLarge)
+            .Bind(Button.CommandProperty, nameof(LogViewerViewModel.RefreshCommand))
+            .Invoke(b => b.AutomationId = "RefreshLogsButton")
+            .Invoke(b => SemanticProperties.SetDescription(b, "Refresh logs")));
+
+        scaffold.Actions.Add(GlassTheme.IconButton("\uD83D\uDCC2", AppFontSizes.SmallText)
+            .Bind(Button.CommandProperty, nameof(LogViewerViewModel.OpenFileCommand))
+            .Invoke(b => b.AutomationId = "OpenLogFileButton")
+            .Invoke(b => SemanticProperties.SetDescription(b, "Open log file")));
+
+        scaffold.Actions.Add(GlassTheme.IconButton("\uD83D\uDCCB", AppFontSizes.SmallText)
+            .Bind(Button.CommandProperty, nameof(LogViewerViewModel.CopyCommand))
+            .Invoke(b => b.AutomationId = "CopyLogsButton")
+            .Invoke(b => SemanticProperties.SetDescription(b, "Copy logs")));
+
+        var busy = new ActivityIndicator { HeightRequest = 22, WidthRequest = 22, Color = AppColors.PrimaryLight, VerticalOptions = LayoutOptions.Center }
+            .Bind(ActivityIndicator.IsRunningProperty, nameof(LogViewerViewModel.IsBusy))
+            .Bind(VisualElement.IsVisibleProperty, nameof(LogViewerViewModel.IsBusy));
+
+        var modeToggle = GlassTheme.PillButton(string.Empty, AppFontSizes.SmallText, height: 34)
+            .Bind(Button.TextProperty, nameof(LogViewerViewModel.ModeLabel))
+            .Bind(Button.CommandProperty, nameof(LogViewerViewModel.ToggleModeCommand))
+            .Invoke(b => b.HorizontalOptions = LayoutOptions.Start);
+
+        var logPanel = new Border
         {
-            RowDefinitions = Rows.Define(Auto, Auto, Star),
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassCardRadius },
+            Padding = new Thickness(14),
+            Content = new ScrollView
+            {
+                Content = new Label
+                {
+                    FontFamily = AppFonts.Regular,
+                    FontSize = AppFontSizes.Caption,
+                    LineBreakMode = LineBreakMode.WordWrap
+                }
+                .Bind(Label.TextProperty, nameof(LogViewerViewModel.LogContent))
+                .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryDark, AppColors.TextPrimaryDark)
+            }
+        }.GlassDeep();
+
+        var body = new Grid
+        {
+            RowDefinitions = Rows.Define(Auto, Star),
+            Padding = new Thickness(16, 0, 16, 16),
+            RowSpacing = AppLayout.SpacingLarge,
             Children =
             {
                 new HorizontalStackLayout
                 {
-                    Padding = new Thickness(16, 12, 16, 4),
-                    Spacing = AppLayout.SpacingExtraLarge,
-                    Children =
-                    {
-                        new Button { Text = "↻ Refresh", HeightRequest = AppLayout.ButtonHeightCompact, FontSize = AppFontSizes.Body }
-                            .Bind(Button.CommandProperty, nameof(LogViewerViewModel.RefreshCommand))
-                            .AppThemeBinding(Button.TextColorProperty, Colors.White, AppColors.TextPrimaryLight)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark),
+                    Spacing = AppLayout.SpacingLarge,
+                    Children = { modeToggle, busy }
+                }.Row(0),
 
-                        new Button { Text = "📂 Open File", HeightRequest = AppLayout.ButtonHeightCompact, FontSize = AppFontSizes.Body }
-                            .Bind(Button.CommandProperty, nameof(LogViewerViewModel.OpenFileCommand))
-                            .AppThemeBinding(Button.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.ControlBgDark),
-
-                        new Button { Text = "📋 Copy", HeightRequest = AppLayout.ButtonHeightCompact, FontSize = AppFontSizes.Body }
-                            .Bind(Button.CommandProperty, nameof(LogViewerViewModel.CopyCommand))
-                            .AppThemeBinding(Button.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.ControlBgDark),
-
-                        new ActivityIndicator { HeightRequest = 24, WidthRequest = 24, Color = AppColors.PrimaryLight }
-                            .Bind(ActivityIndicator.IsRunningProperty, nameof(LogViewerViewModel.IsBusy))
-                            .Bind(VisualElement.IsVisibleProperty, nameof(LogViewerViewModel.IsBusy))
-                    }
-                }
-                .Row(0)
-                .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.SurfaceLight, AppColors.SurfaceDark),
-
-                new Button { Margin = new Thickness(16, 6, 16, 8), HeightRequest = 34, FontSize = AppFontSizes.SmallText }
-                    .Bind(Button.TextProperty, nameof(LogViewerViewModel.ModeLabel))
-                    .Bind(Button.CommandProperty, nameof(LogViewerViewModel.ToggleModeCommand))
-                    .AppThemeBinding(Button.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.StrokeAltLight, AppColors.SurfaceDark)
-                    .Row(1),
-
-                new ScrollView
-                {
-                    Padding = new Thickness(16, 0, 16, 16),
-                    Content = new Label { FontFamily = AppFonts.Regular, FontSize = AppFontSizes.Caption, Padding = new Thickness(14), LineBreakMode = LineBreakMode.WordWrap }
-                        .Bind(Label.TextProperty, nameof(LogViewerViewModel.LogContent))
-                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-                        .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.SurfaceLight, AppColors.SurfaceDark)
-                }
-                .Row(2)
+                logPanel.Row(1)
             }
         };
+
+        scaffold.SetBody(body);
+        Content = scaffold;
     }
 
     protected override async void OnAppearing()

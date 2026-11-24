@@ -1,0 +1,126 @@
+using Microsoft.Maui;
+using Microsoft.Maui.Controls;
+using Microsoft.Maui.Graphics;
+using Synesthesia_Audio.Styles;
+
+namespace Synesthesia_Audio.Views.Components;
+
+/// <summary>
+/// Full-bleed "aurora" backdrop: a flat palette base with soft radial blobs painted over it.
+/// The blobs are gradients rather than blurred shapes, so the frost reads correctly without a
+/// backdrop-blur primitive (which MAUI does not expose).
+/// </summary>
+/// <remarks>
+/// <see cref="IsDark"/> is a bindable property bound through <c>AppThemeBinding</c> by the owner,
+/// so MAUI updates it when the user switches theme and the repaint happens in
+/// <see cref="OnIsDarkChanged"/>. Subscribing to <c>Application.RequestedThemeChanged</c> directly
+/// would leak, because transient pages are never unsubscribed.
+/// </remarks>
+public sealed class GlassBackdrop : GraphicsView
+{
+    public static readonly BindableProperty IsDarkProperty = BindableProperty.Create(
+        nameof(IsDark),
+        typeof(bool),
+        typeof(GlassBackdrop),
+        false,
+        propertyChanged: OnIsDarkChanged);
+
+    public GlassBackdrop()
+    {
+        Drawable = new AuroraDrawable(this);
+        BackgroundColor = Colors.Transparent;
+        InputTransparent = true;
+        Loaded += (_, _) => Invalidate();
+    }
+
+    /// <summary>True when the dark palette is in effect.</summary>
+    public bool IsDark
+    {
+        get => (bool)GetValue(IsDarkProperty);
+        set => SetValue(IsDarkProperty, value);
+    }
+
+    private static void OnIsDarkChanged(BindableObject bindable, object? oldValue, object? newValue)
+    {
+        if (bindable is GlassBackdrop backdrop)
+            backdrop.Invalidate();
+    }
+}
+
+/// <summary>Paints the palette-derived aurora blobs behind the glass panels.</summary>
+internal sealed class AuroraDrawable : IDrawable
+{
+    // Normalised blob centres and diameters (fraction of the view's shorter side).
+    private static readonly (double X, double Y, double Size)[] BlobLayout =
+    {
+        (0.06, -0.04, 1.20),
+        (0.98, 0.08, 0.90),
+        (0.84, 0.94, 1.05),
+        (0.12, 0.88, 0.80),
+        (0.50, 0.38, 0.70)
+    };
+
+    private readonly GlassBackdrop _owner;
+
+    public AuroraDrawable(GlassBackdrop owner) => _owner = owner;
+
+    public void Draw(ICanvas canvas, RectF dirtyRect)
+    {
+        if (dirtyRect.Width <= 0 || dirtyRect.Height <= 0)
+            return;
+
+        var isDark = _owner.IsDark;
+        canvas.FillColor = isDark ? AppColors.BackgroundDark : AppColors.BackgroundLight;
+        canvas.FillRectangle(dirtyRect.X, dirtyRect.Y, dirtyRect.Width, dirtyRect.Height);
+
+        var blobs = isDark ? DarkBlobs() : LightBlobs();
+        var shortSide = MathF.Min(dirtyRect.Width, dirtyRect.Height);
+        canvas.Antialias = true;
+
+        for (var i = 0; i < BlobLayout.Length; i++)
+        {
+            var (normalizedX, normalizedY, normalizedSize) = BlobLayout[i];
+            var size = shortSide * (float)normalizedSize;
+            var centreX = dirtyRect.X + (dirtyRect.Width * (float)normalizedX);
+            var centreY = dirtyRect.Y + (dirtyRect.Height * (float)normalizedY);
+            var blob = new RectF(centreX - (size / 2f), centreY - (size / 2f), size, size);
+            var colour = blobs[i];
+
+            // The gradient is fitted to the blob's own bounds, so it stays smooth and
+            // correctly scaled whatever the platform does with gradient normalisation.
+            canvas.SetFillPaint(
+                new RadialGradientPaint
+                {
+                    Center = new Point(0.5, 0.5),
+                    Radius = 0.5,
+                    GradientStops = new[]
+                    {
+                        new PaintGradientStop(0f, colour),
+                        new PaintGradientStop(0.72f, colour.WithAlpha(colour.Alpha * 0.35f)),
+                        new PaintGradientStop(1f, colour.WithAlpha(0f))
+                    }
+                },
+                blob);
+
+            canvas.FillEllipse(blob.X, blob.Y, blob.Width, blob.Height);
+        }
+    }
+
+    private static Color[] LightBlobs() => new[]
+    {
+        AppColors.ControlBgLight.WithAlpha(0.85f),
+        AppColors.SurfaceLight.WithAlpha(1.00f),
+        AppColors.StrokeLight.WithAlpha(0.60f),
+        AppColors.PrimaryLight.WithAlpha(0.22f),
+        Colors.White.WithAlpha(0.55f)
+    };
+
+    private static Color[] DarkBlobs() => new[]
+    {
+        AppColors.BackgroundAltDark.WithAlpha(0.95f),
+        AppColors.SurfaceDark.WithAlpha(0.85f),
+        AppColors.PrimaryLight.WithAlpha(0.42f),
+        AppColors.StrokeDark.WithAlpha(0.30f),
+        AppColors.BackgroundDark.WithAlpha(0.70f)
+    };
+}

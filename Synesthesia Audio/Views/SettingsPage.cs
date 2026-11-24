@@ -4,6 +4,7 @@ using Microsoft.Maui.Controls.Shapes;
 using Synesthesia_Audio.ViewModels;
 using Synesthesia_Audio.Services;
 using Synesthesia_Audio.Styles;
+using Synesthesia_Audio.Views.Components;
 using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 
 namespace Synesthesia_Audio.Views;
@@ -16,45 +17,40 @@ public class SettingsPage : ContentPage
     {
         BindingContext = _viewModel = viewModel;
 
-        this.AppThemeBinding(ContentPage.BackgroundColorProperty, AppColors.BackgroundLight, AppColors.BackgroundDark);
         this.Bind(ContentPage.TitleProperty, nameof(SettingsViewModel.Title));
+        Shell.SetNavBarIsVisible(this, false);
 
-        Content = new Grid
+        var scaffold = new GlassScaffold("Settings", "Manage library source, appearance and diagnostics", back: true);
+
+        var scroll = new ScrollView
         {
-            Children =
+            Content = new VerticalStackLayout
             {
-                new Grid
+                Padding = AppLayout.GlassContentPadding,
+                Spacing = AppLayout.GlassSectionGap,
+                Children =
                 {
-                    RowDefinitions = Rows.Define(Auto, Star),
-                    Children =
-                    {
-                        CreateBanner().Row(0),
+                    CreateIdentityCard(),
 
-                        new ScrollView
-                        {
-                            Padding = AppLayout.PagePadding,
-                            Content = new VerticalStackLayout
-                            {
-                                Spacing = AppLayout.SpacingSection,
-                                Children =
-                                {
-                                    CreateThemeCard(),
-                                    CreateLibrarySourceCard(),
-                                    CreateScrapingCard(),
-                                    CreateTagManagementCard(tagService, cacheService, mainViewModel),
-                                    CreateCacheCard(),
-                                    CreateBatteryCard(),
-                                    CreateLogsCard()
-                                }
-                            }
-                        }
-                        .Row(1)
-                    }
-                },
+                    GlassTheme.SectionLabel("LIBRARY"),
+                    CreateLibrarySourceCard(),
+                    CreateScrapingCard(),
 
-                new FloatingPlayerBar(audioService)
+                    GlassTheme.SectionLabel("APPEARANCE"),
+                    CreateTagManagementCard(tagService, cacheService, mainViewModel),
+
+                    GlassTheme.SectionLabel("DIAGNOSTICS"),
+                    CreateCacheCard(),
+                    CreateBatteryCard(),
+                    CreateLogsCard()
+                }
             }
         };
+
+        scaffold.SetBody(scroll);
+        scaffold.AddOverlay(new FloatingPlayerBar(audioService));
+
+        Content = scaffold;
     }
 
     protected override void OnAppearing()
@@ -70,38 +66,53 @@ public class SettingsPage : ContentPage
         }
     }
 
-    private View CreateBanner()
+    private View CreateIdentityCard()
     {
-        return new Border
+        return CreateCard(new Grid
         {
-            StrokeThickness = 0,
-            Padding = new Thickness(20, 18),
-            Content = new VerticalStackLayout
+            ColumnDefinitions = Columns.Define(Star, Auto),
+            ColumnSpacing = AppLayout.SpacingSection,
+            Children =
             {
-                Spacing = AppLayout.SpacingSmall,
-                Children =
+                new VerticalStackLayout
                 {
-                    new Label { Text = "Settings", FontSize = AppFontSizes.PageTitle, FontAttributes = AppFonts.Bold }
-                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
-                    new Label { Text = "Manage library source, appearance and diagnostics", FontSize = AppFontSizes.Subtitle }
-                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark)
+                    Spacing = AppLayout.SpacingExtraSmall,
+                    VerticalOptions = LayoutOptions.Center,
+                    Children =
+                    {
+                        new Label { Text = "Synesthesia Audio", FontSize = AppFontSizes.GroupTitle, FontAttributes = AppFonts.Bold }
+                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
+                        CreateCardCaption(_viewModel.AppVersionText)
+                    }
                 }
+                .Column(0),
+
+                new VerticalStackLayout
+                {
+                    Spacing = AppLayout.SpacingSmall,
+                    VerticalOptions = LayoutOptions.Center,
+                    HorizontalOptions = LayoutOptions.End,
+                    Children =
+                    {
+                        CreateCardCaption("Dark mode"),
+                        new Switch { VerticalOptions = LayoutOptions.Center }
+                            .Bind(Switch.IsToggledProperty, nameof(SettingsViewModel.IsDarkMode))
+                            .GlassSwitch()
+                    }
+                }
+                .Column(1)
             }
-        }
-        .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.SurfaceLight, AppColors.SurfaceDark);
+        });
     }
 
     private Border CreateCard(View content)
     {
         return new Border
         {
-            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.CardCornerRadius },
-            StrokeThickness = 1,
-            Padding = new Thickness(16),
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassCardRadius },
+            Padding = AppLayout.GlassCardPadding,
             Content = content
-        }
-        .AppThemeBinding(Border.StrokeProperty, AppColors.StrokeAltLight, AppColors.SurfaceDark)
-        .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.SurfaceLight, AppColors.SurfaceDark);
+        }.Glass();
     }
 
     private Label CreateCardTitle(string text)
@@ -116,41 +127,10 @@ public class SettingsPage : ContentPage
             .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark);
     }
 
-    private View CreateThemeCard()
+    private Label CreateFormLabel(string text)
     {
-        return CreateCard(new Grid
-        {
-            ColumnDefinitions = Columns.Define(Star, Auto),
-            Children =
-            {
-                new VerticalStackLayout
-                {
-                    Spacing = AppLayout.SpacingExtraSmall,
-                    Children =
-                    {
-                        CreateCardTitle("App Theme Mode"),
-                        CreateCardCaption("Switch between light and dark UI color schemes")
-                    }
-                }
-                .Column(0),
-
-                new HorizontalStackLayout
-                {
-                    Spacing = AppLayout.SpacingLarge,
-                    VerticalOptions = LayoutOptions.Center,
-                    Children =
-                    {
-                        new Label { Text = "Light", VerticalOptions = LayoutOptions.Center }
-                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextSecondaryDark),
-                        new Switch { VerticalOptions = LayoutOptions.Center }
-                            .Bind(Switch.IsToggledProperty, nameof(SettingsViewModel.IsDarkMode)),
-                        new Label { Text = "Dark", VerticalOptions = LayoutOptions.Center }
-                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextPrimaryDark)
-                    }
-                }
-                .Column(1)
-            }
-        });
+        return new Label { Text = text, FontSize = AppFontSizes.Body }
+            .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark);
     }
 
     private View CreateLibrarySourceCard()
@@ -163,8 +143,7 @@ public class SettingsPage : ContentPage
                 CreateCardTitle("Library Source"),
                 CreateCardCaption("Choose where your audio works library is stored"),
 
-                new Label { Text = "Storage Source" }
-                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark),
+                CreateFormLabel("Storage Source"),
 
                 new Picker
                 {
@@ -173,30 +152,27 @@ public class SettingsPage : ContentPage
                 }
                 .Bind(Picker.SelectedItemProperty, nameof(SettingsViewModel.StorageType))
                 .AppThemeBinding(Picker.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.PickerBgDark),
+                .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
 
                 new VerticalStackLayout
                 {
                     Spacing = AppLayout.SpacingExtraLarge,
                     Children =
                     {
-                        new Label { Text = "Base Audio Folder Path" }
-                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark),
+                        CreateFormLabel("Base Audio Folder Path"),
 
                         new HorizontalStackLayout
                         {
-                            Spacing = AppLayout.SpacingExtraLarge,
+                            Spacing = AppLayout.SpacingLarge,
                             Children =
                             {
                                 new Entry { Placeholder = "e.g. D:\\Audio", IsReadOnly = true, HorizontalOptions = LayoutOptions.Fill }
                                     .Bind(Entry.TextProperty, nameof(SettingsViewModel.BaseAudioFolderPath))
                                     .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.PickerBgDark),
+                                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
 
-                                new Button { Text = "Browse" }
+                                GlassTheme.PillButton("Browse", AppFontSizes.Body)
                                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.PickFolderCommand))
-                                    .AppThemeBinding(Button.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-                                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.ControlBgDark)
                             }
                         }
                     }
@@ -208,59 +184,51 @@ public class SettingsPage : ContentPage
                     Spacing = AppLayout.SpacingExtraLarge,
                     Children =
                     {
-                        new Label { Text = "WebDAV Server URL" }
-                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark),
+                        CreateFormLabel("WebDAV Server URL"),
                         new Entry { Placeholder = "e.g. https://webdav.pcloud.com" }
                             .Bind(Entry.TextProperty, nameof(SettingsViewModel.CloudServerUrl))
                             .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.PickerBgDark),
+                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
 
-                        new Label { Text = "Username" }
-                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark),
-                        new Entry { Placeholder = "e.g. user@email.com" }
+                        CreateFormLabel("Username"),
+                        new Entry { Placeholder = "WebDAV username" }
                             .Bind(Entry.TextProperty, nameof(SettingsViewModel.CloudUsername))
                             .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.PickerBgDark),
+                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
 
-                        new Label { Text = "Password / Token" }
-                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark),
+                        CreateFormLabel("Password / Token"),
                         new Entry { IsPassword = true, Placeholder = "App-specific password" }
                             .Bind(Entry.TextProperty, nameof(SettingsViewModel.CloudPassword))
                             .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.PickerBgDark),
+                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
 
-                        new Label { Text = "Remote Library Folder Path" }
-                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark),
+                        CreateFormLabel("Remote Library Folder Path"),
 
                         new HorizontalStackLayout
                         {
-                            Spacing = AppLayout.SpacingExtraLarge,
+                            Spacing = AppLayout.SpacingLarge,
                             Children =
                             {
                                 new Entry { Placeholder = "e.g. /Audio (leave blank for root)", HorizontalOptions = LayoutOptions.Fill }
                                     .Bind(Entry.TextProperty, nameof(SettingsViewModel.BaseAudioFolderPath))
                                     .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.PickerBgDark),
+                                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
 
-                                new Button { Text = "Browse" }
+                                GlassTheme.PillButton("Browse", AppFontSizes.Body)
                                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.BrowseCloudFolderCommand))
-                                    .AppThemeBinding(Button.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-                                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.ControlBgDark)
                             }
                         },
 
-                        new Button { Text = "Test Connection", HorizontalOptions = LayoutOptions.Start }
+                        GlassTheme.PillButton("Test Connection", AppFontSizes.Body, accent: true)
                             .Bind(Button.CommandProperty, nameof(SettingsViewModel.TestCloudConnectionCommand))
-                            .AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.SuccessLight, AppColors.SuccessAccentDark)
+                            .Invoke(b => b.HorizontalOptions = LayoutOptions.Start)
                     }
                 }
                 .Bind(VisualElement.IsVisibleProperty, nameof(SettingsViewModel.IsWebDavSelected)),
 
-                new Button { Text = "Save & Rescan Library", Margin = new Thickness(0, 5, 0, 0) }
+                GlassTheme.PillButton("Save & Rescan Library", AppFontSizes.BodyBold, accent: true, height: AppLayout.ButtonHeightDefault)
                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.SaveSettingsCommand))
-                    .AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
+                    .Invoke(b => b.Margin = new Thickness(0, 4, 0, 0))
             }
         });
     }
@@ -270,6 +238,7 @@ public class SettingsPage : ContentPage
         return CreateCard(new Grid
         {
             ColumnDefinitions = Columns.Define(Star, Auto),
+            ColumnSpacing = AppLayout.SpacingSection,
             Children =
             {
                 new VerticalStackLayout
@@ -285,6 +254,7 @@ public class SettingsPage : ContentPage
 
                 new Switch { VerticalOptions = LayoutOptions.Center }
                     .Bind(Switch.IsToggledProperty, nameof(SettingsViewModel.TranslateDlsiteTags))
+                    .GlassSwitch()
                     .Column(1)
             }
         });
@@ -302,10 +272,10 @@ public class SettingsPage : ContentPage
 
                 new HorizontalStackLayout
                 {
-                    Spacing = AppLayout.SpacingExtraLarge,
+                    Spacing = AppLayout.SpacingLarge,
                     Children =
                     {
-                        new Button { Text = "Manage Tag Mappings" }
+                        GlassTheme.PillButton("Manage Tag Mappings", AppFontSizes.Body, accent: true)
                             .Invoke(b => b.Clicked += async (_, _) =>
                             {
                                 try
@@ -316,11 +286,9 @@ public class SettingsPage : ContentPage
                                 {
                                     Services.Logging.AppLog.Get<SettingsPage>().LogError(ex, "Failed to open tag mapping page");
                                 }
-                            })
-                            .AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark),
+                            }),
 
-                        new Button { Text = "Clean & Reset Bad Tags" }
+                        GlassTheme.PillButton("Clean & Reset Bad Tags", AppFontSizes.Body)
                             .Invoke(b => b.Clicked += async (_, _) =>
                             {
                                 try
@@ -334,8 +302,6 @@ public class SettingsPage : ContentPage
                                     Services.Logging.AppLog.Get<SettingsPage>().LogError(ex, "Tag clean failed");
                                 }
                             })
-                            .AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.WarningLight, AppColors.WarningDark)
                     }
                 }
             }
@@ -352,8 +318,10 @@ public class SettingsPage : ContentPage
                 CreateCardTitle("Cache Management"),
                 CreateCardCaption("Clear scraped DLsite metadata so it is fetched again on the next scan"),
 
-                new Button { Text = "Reset RJ Works Cache", BackgroundColor = Colors.DarkRed, TextColor = Colors.White, HorizontalOptions = LayoutOptions.Start }
+                new Button { Text = "Reset RJ Works Cache", HorizontalOptions = LayoutOptions.Start }
                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.ResetRjCacheCommand))
+                    .AppThemeBinding(Button.TextColorProperty, AppColors.DangerTextLight, AppColors.DangerTextDark)
+                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.DangerBgLight, AppColors.DangerBgDark)
             }
         });
     }
@@ -390,10 +358,9 @@ public class SettingsPage : ContentPage
                 }
                 .Column(0),
 
-                new Button { Text = "Configure", VerticalOptions = LayoutOptions.Center }
+                GlassTheme.PillButton("Configure", AppFontSizes.Body, accent: true)
                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.RequestBatteryExemptionCommand))
-                    .AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
+                    .Invoke(b => b.VerticalOptions = LayoutOptions.Center)
                     .Column(1)
             }
         })
@@ -428,15 +395,13 @@ public class SettingsPage : ContentPage
                     VerticalOptions = LayoutOptions.Center,
                     Children =
                     {
-                        new Button { Text = "View Logs", WidthRequest = 110, HeightRequest = AppLayout.ButtonHeightCompact, FontSize = AppFontSizes.ButtonMedium }
+                        GlassTheme.PillButton("View Logs", AppFontSizes.ButtonMedium, accent: true, height: AppLayout.ButtonHeightCompact)
                             .Bind(Button.CommandProperty, nameof(SettingsViewModel.ViewLogsCommand))
-                            .AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark),
+                            .Invoke(b => b.WidthRequest = 110),
 
-                        new Button { Text = "Copy Logs", WidthRequest = 110, HeightRequest = AppLayout.ButtonHeightCompact, FontSize = AppFontSizes.ButtonMedium }
+                        GlassTheme.PillButton("Copy Logs", AppFontSizes.ButtonMedium, height: AppLayout.ButtonHeightCompact)
                             .Bind(Button.CommandProperty, nameof(SettingsViewModel.CopyLogsCommand))
-                            .AppThemeBinding(Button.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.ControlBgDark)
+                            .Invoke(b => b.WidthRequest = 110)
                     }
                 }
                 .Column(1)

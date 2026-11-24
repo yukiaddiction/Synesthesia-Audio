@@ -6,6 +6,7 @@ using Synesthesia_Audio.Models;
 using Synesthesia_Audio.ViewModels;
 using Synesthesia_Audio.Styles;
 using Synesthesia_Audio.Converters;
+using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 
 namespace Synesthesia_Audio.Views.Components;
 
@@ -13,13 +14,13 @@ public class AlbumCardView : Border
 {
     public AlbumCardView(object parentBindingContext)
     {
-        StrokeShape = new RoundRectangle { CornerRadius = AppLayout.CardCornerRadius };
+        StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassCardRadius };
         Padding = 0;
         Margin = AppLayout.WorkCardMargin;
 
-        Content = new Grid
+        var cover = new Grid
         {
-            RowDefinitions = GridRowsColumns.Rows.Define(AppLayout.CoverGridHeight, GridRowsColumns.Auto, GridRowsColumns.Auto),
+            HeightRequest = AppLayout.GlassCardCoverHeight,
             Children =
             {
                 new Grid
@@ -38,41 +39,61 @@ public class AlbumCardView : Border
                         }
                     }
                 }
-                .Row(0)
                 .Bind(VisualElement.IsVisibleProperty, nameof(WorkMetadata.CoverImagePath), converter: new EmptyStringToTrueConverter()),
 
-                new Image { Aspect = Aspect.AspectFill, HeightRequest = AppLayout.CoverGridHeight }
-                    .Row(0)
+                new Image { Aspect = Aspect.AspectFill, HeightRequest = AppLayout.GlassCardCoverHeight }
                     .Bind(Image.SourceProperty, nameof(WorkMetadata.CoverImagePath))
-                    .Bind(VisualElement.IsVisibleProperty, nameof(WorkMetadata.CoverImagePath), converter: new EmptyStringToFalseConverter()),
-
-                new VerticalStackLayout
-                {
-                    Margin = AppLayout.TextStackMargin,
-                    Spacing = AppLayout.SpacingExtraSmall,
-                    Children =
-                    {
-                        new Label { FontAttributes = AppFonts.Bold, FontSize = AppFontSizes.FloatingPlayerTitle, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 2 }
-                            .Bind(Label.TextProperty, nameof(WorkMetadata.Title))
-                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
-
-                        new Label { FontSize = AppFontSizes.Caption }
-                            .Bind(Label.TextProperty, nameof(WorkMetadata.TranslatedTitle))
-                            .Bind(VisualElement.IsVisibleProperty, nameof(WorkMetadata.TranslatedTitle), converter: new EmptyStringToFalseConverter())
-                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark)
-                    }
-                }
-                .Row(1),
-
-                new Label { FontSize = AppFontSizes.Caption, Margin = AppLayout.TextCircleMargin, LineBreakMode = LineBreakMode.TailTruncation }
-                    .Row(2)
-                    .Bind(Label.TextProperty, nameof(WorkMetadata.VA))
-                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark)
+                    .Bind(VisualElement.IsVisibleProperty, nameof(WorkMetadata.CoverImagePath), converter: new EmptyStringToFalseConverter())
             }
         };
 
-        this.AppThemeBinding(Border.BackgroundColorProperty, AppColors.SurfaceLight, AppColors.SurfaceDark);
-        this.AppThemeBinding(Border.StrokeProperty, AppColors.StrokeLight, AppColors.StrokeDark);
+        // The footer rides up over the cover; the overlap is what makes the panel read as glass
+        // sitting above the artwork rather than as a plain stacked card.
+        var footer = new Border
+        {
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassFooterRadius },
+            Margin = AppLayout.GlassCardFooterMargin,
+            Padding = new Thickness(10, 8),
+            Content = new VerticalStackLayout
+            {
+                Spacing = AppLayout.SpacingExtraSmall,
+                Children =
+                {
+                    new Label
+                    {
+                        FontAttributes = AppFonts.Bold,
+                        FontSize = AppFontSizes.FloatingPlayerTitle,
+                        LineBreakMode = LineBreakMode.TailTruncation,
+                        MaxLines = 2
+                    }
+                    .Bind(Label.TextProperty, nameof(WorkMetadata.Title))
+                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
+
+                    new Label { FontSize = AppFontSizes.Caption }
+                        .Bind(Label.TextProperty, nameof(WorkMetadata.TranslatedTitle))
+                        .Bind(VisualElement.IsVisibleProperty, nameof(WorkMetadata.TranslatedTitle), converter: new EmptyStringToFalseConverter())
+                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark),
+
+                    new Label { FontSize = AppFontSizes.Caption, LineBreakMode = LineBreakMode.TailTruncation }
+                        .Bind(Label.TextProperty, nameof(WorkMetadata.VA))
+                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark)
+                }
+            }
+        }.Glass(strong: true);
+
+        Content = new Grid
+        {
+            RowDefinitions = Rows.Define(AppLayout.GlassCardCoverHeight, Auto),
+            Children =
+            {
+                cover.Row(0),
+                footer.Row(1)
+            }
+        };
+
+        // Grid items live in a virtualised CollectionView: no Shadow here, the stroke and the
+        // translucent fill carry the depth instead, which keeps scrolling cheap on Android.
+        this.Glass(elevated: false);
 
         var tapGesture = new TapGestureRecognizer();
         tapGesture.SetBinding(TapGestureRecognizer.CommandProperty, new Binding(nameof(MainViewModel.OpenAlbumCommand), source: parentBindingContext));

@@ -5,6 +5,7 @@ using Synesthesia_Audio.Models;
 using Synesthesia_Audio.Services;
 using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 using Synesthesia_Audio.Styles;
+using Synesthesia_Audio.Views.Components;
 
 namespace Synesthesia_Audio.Views;
 
@@ -28,66 +29,68 @@ public class EditWorkPage : ContentPage
         _cacheService = cacheService;
         _onSaved = onSaved;
 
-        this.AppThemeBinding(ContentPage.BackgroundColorProperty, AppColors.BackgroundLight, AppColors.BackgroundDark);
         Title = "Edit Album Info";
+        Shell.SetNavBarIsVisible(this, false);
 
-        _titleEntry = new Entry { Text = work.Title, Placeholder = "Title" }
-            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
-            
-        _translatedTitleEntry = new Entry { Text = work.TranslatedTitle, Placeholder = "Translated Title" }
-            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
+        _titleEntry = CreateEntry(work.Title, "Title");
+        _translatedTitleEntry = CreateEntry(work.TranslatedTitle, "Translated Title");
+        _circleEntry = CreateEntry(work.Circle, "Circle");
+        _vaEntry = CreateEntry(work.VA, "Voice Actor (VA)");
+        _coverPathEntry = CreateEntry(work.CoverImagePath, "Cover Image Path");
+        _coverPathEntry.IsReadOnly = true;
 
-        _circleEntry = new Entry { Text = work.Circle, Placeholder = "Circle" }
-            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
+        _nsfwSwitch = new Switch { IsToggled = work.IsNsfw }.GlassSwitch();
 
-        _vaEntry = new Entry { Text = work.VA, Placeholder = "Voice Actor (VA)" }
-            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
-
-        _coverPathEntry = new Entry { Text = work.CoverImagePath, Placeholder = "Cover Image Path", IsReadOnly = true }
-            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
-
-        _nsfwSwitch = new Switch { IsToggled = work.IsNsfw };
-
-        Content = new ScrollView
+        var actions = new Grid
         {
+            ColumnDefinitions = Columns.Define(Star, Star),
+            ColumnSpacing = 20,
+            Children =
+            {
+                new Button { Text = "Cancel", HeightRequest = AppLayout.ButtonHeightDefault, CornerRadius = 22, BorderWidth = 1 }
+                    .Column(0)
+                    .AppThemeBinding(Button.TextColorProperty, AppColors.DangerTextLight, AppColors.DangerTextDark)
+                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.DangerBgLight, AppColors.DangerBgDark)
+                    .AppThemeBinding(Button.BorderColorProperty, Colors.Transparent, Colors.Transparent)
+                    .Invoke(btn => btn.Clicked += OnCancelClicked),
+
+                GlassTheme.PillButton("Save Changes", AppFontSizes.BodyBold, accent: true, height: AppLayout.ButtonHeightDefault)
+                    .Column(1)
+                    .Invoke(btn => btn.Clicked += OnSaveClicked)
+            }
+        };
+
+        var sheet = new Border
+        {
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassSheetRadius },
+            Padding = new Thickness(20),
             Content = new VerticalStackLayout
             {
-                Padding = AppLayout.StandardPadding,
                 Spacing = AppLayout.SpacingSection,
                 Children =
                 {
-                    new Label { Text = "Edit Album Details", FontSize = AppFontSizes.SectionTitle, FontAttributes = AppFonts.Bold, HorizontalTextAlignment = TextAlignment.Center }
-                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
-
-                    new Label { Text = "Title", FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold }
-                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelAltDark),
+                    CreateFormLabel("Title"),
                     _titleEntry,
 
-                    new Label { Text = "Translated Title", FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold }
-                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelAltDark),
+                    CreateFormLabel("Translated Title"),
                     _translatedTitleEntry,
 
-                    new Label { Text = "Circle / Maker", FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold }
-                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelAltDark),
+                    CreateFormLabel("Circle / Maker"),
                     _circleEntry,
 
-                    new Label { Text = "Cast / Voice Actor", FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold }
-                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelAltDark),
+                    CreateFormLabel("Cast / Voice Actor"),
                     _vaEntry,
 
-                    new Label { Text = "Cover Image", FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold }
-                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelAltDark),
+                    CreateFormLabel("Cover Image"),
                     new Grid
                     {
                         ColumnDefinitions = Columns.Define(Star, Auto),
-                        ColumnSpacing = 10,
+                        ColumnSpacing = AppLayout.SpacingExtraLarge,
                         Children =
                         {
                             _coverPathEntry.Column(0),
-                            new Button { Text = "Browse", HeightRequest = 40 }
+                            GlassTheme.PillButton("Browse", AppFontSizes.Body)
                                 .Column(1)
-                                .AppThemeBinding(Button.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-                                .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.ControlBgDark)
                                 .Invoke(btn => btn.Clicked += OnBrowseCoverClicked)
                         }
                     },
@@ -97,38 +100,47 @@ public class EditWorkPage : ContentPage
                         ColumnDefinitions = Columns.Define(Star, Auto),
                         Children =
                         {
-                            new Label { Text = "Age Restriction (NSFW)", FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold, VerticalOptions = LayoutOptions.Center }
+                            CreateFormLabel("Age Restriction (NSFW)")
                                 .Column(0)
-                                .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelAltDark),
+                                .Invoke(l => l.VerticalOptions = LayoutOptions.Center),
                             _nsfwSwitch.Column(1)
                         }
                     },
 
-                    new BoxView { HeightRequest = 1, Margin = new Thickness(0, 10) }
-                        .AppThemeBinding(BoxView.ColorProperty, AppColors.StrokeLight, AppColors.StrokeDark),
+                    new BoxView { HeightRequest = 1 }
+                        .AppThemeBinding(BoxView.ColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark),
 
-                    new Grid
-                    {
-                        ColumnDefinitions = Columns.Define(Star, Star),
-                        ColumnSpacing = 20,
-                        Children =
-                        {
-                            new Button { Text = "Cancel", HeightRequest = AppLayout.ButtonHeightDefault }
-                                .Column(0)
-                                .AppThemeBinding(Button.TextColorProperty, AppColors.DangerTextLight, AppColors.DangerTextDark)
-                                .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.DangerBgLight, AppColors.DangerBgDark)
-                                .Invoke(btn => btn.Clicked += OnCancelClicked),
-
-                            new Button { Text = "Save Changes", HeightRequest = AppLayout.ButtonHeightDefault }
-                                .Column(1)
-                                .AppThemeBinding(Button.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-                                .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.SuccessLight, AppColors.SuccessDark)
-                                .Invoke(btn => btn.Clicked += OnSaveClicked)
-                        }
-                    }
+                    actions
                 }
             }
+        }.Glass(strong: true, elevated: true);
+
+        var scroll = new ScrollView
+        {
+            Content = new VerticalStackLayout
+            {
+                Padding = AppLayout.GlassContentPadding,
+                Children = { sheet }
+            }
         };
+
+        var scaffold = new GlassScaffold("Edit Album Info", menu: false);
+        scaffold.SetBody(scroll);
+
+        Content = scaffold;
+    }
+
+    private static Entry CreateEntry(string? text, string placeholder)
+    {
+        return new Entry { Text = text, Placeholder = placeholder }
+            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
+            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
+    }
+
+    private static Label CreateFormLabel(string text)
+    {
+        return new Label { Text = text, FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold }
+            .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelAltDark);
     }
 
     private async void OnBrowseCoverClicked(object? sender, EventArgs e)

@@ -28,18 +28,25 @@ public class TagMappingPage : ContentPage
         _mainViewModel = mainViewModel;
 
         Title = "Tag Mapping Manager";
-        this.AppThemeBinding(ContentPage.BackgroundColorProperty, AppColors.BackgroundLight, AppColors.BackgroundDark);
+        Shell.SetNavBarIsVisible(this, false);
 
-        _searchBar = new SearchBar { Placeholder = "Search Japanese or English tags..." };
+        _searchBar = new SearchBar { Placeholder = "Search Japanese or English tags...", BackgroundColor = Colors.Transparent };
         _searchBar.TextChanged += (s, e) => RefreshList();
+        _searchBar
+            .AppThemeBinding(SearchBar.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
+            .AppThemeBinding(SearchBar.PlaceholderColorProperty, AppColors.TextTertiaryLight, AppColors.TextSecondaryDark);
 
-        _jpEntry = new Entry { Placeholder = "Japanese Tag (e.g. 催眠)", WidthRequest = 150 };
+        _jpEntry = new Entry { Placeholder = "Japanese Tag", WidthRequest = 150 };
+        _jpEntry
+            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
+            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
+
         _engEntry = new Entry { Placeholder = "English Translation", WidthRequest = 150 };
+        _engEntry
+            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
+            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
 
-        var addBtn = new Button { Text = "Add Mapping", HeightRequest = AppLayout.ButtonHeightCompact }
-            .AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark);
-
+        var addBtn = GlassTheme.PillButton("Add", AppFontSizes.Body, accent: true, height: AppLayout.ButtonHeightCompact);
         addBtn.Clicked += (_, _) =>
         {
             var jp = _jpEntry.Text?.Trim();
@@ -53,10 +60,7 @@ public class TagMappingPage : ContentPage
             }
         };
 
-        var cleanBtn = new Button { Text = "Clean & Reset Bad Tags", HeightRequest = AppLayout.ButtonHeightCompact, Margin = new Thickness(0, 5, 0, 10) }
-            .AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.WarningLight, AppColors.WarningDark);
-
+        var cleanBtn = GlassTheme.PillButton("Clean & Reset Bad Tags", AppFontSizes.Body, height: AppLayout.ButtonHeightCompact);
         cleanBtn.Clicked += async (_, _) =>
         {
             try
@@ -72,40 +76,59 @@ public class TagMappingPage : ContentPage
             }
         };
 
+        var composer = new Border
+        {
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassCardRadius },
+            Padding = new Thickness(16),
+            Content = new VerticalStackLayout
+            {
+                Spacing = AppLayout.SpacingExtraLarge,
+                Children =
+                {
+                    new Label { Text = "Add Custom Mapping", FontAttributes = AppFonts.Bold, FontSize = AppFontSizes.Body }
+                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
+
+                    new HorizontalStackLayout
+                    {
+                        Spacing = AppLayout.SpacingLarge,
+                        Children = { _jpEntry, _engEntry, addBtn }
+                    },
+
+                    cleanBtn
+                }
+            }
+        }.Glass();
+
+        var searchPill = new Border
+        {
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassPillRadius },
+            Padding = new Thickness(4, 0),
+            Content = _searchBar
+        }.Glass();
+
         _listLayout = new VerticalStackLayout { Spacing = AppLayout.SpacingLarge };
 
-        Content = new Grid
+        var body = new Grid
         {
             RowDefinitions = Rows.Define(Auto, Star),
+            Padding = new Thickness(16, 0, 16, 16),
+            RowSpacing = AppLayout.SpacingLarge,
             Children =
             {
                 new VerticalStackLayout
                 {
-                    Padding = AppLayout.MainHeaderPadding,
-                    Spacing = AppLayout.SpacingExtraLarge,
-                    Children =
-                    {
-                        cleanBtn,
-                        _searchBar,
-
-                        new Label { Text = "Add Custom Mapping:", FontAttributes = AppFonts.Bold, FontSize = AppFontSizes.Body },
-                        new HorizontalStackLayout
-                        {
-                            Spacing = AppLayout.SpacingLarge,
-                            Children = { _jpEntry, _engEntry, addBtn }
-                        },
-                        new BoxView { HeightRequest = 1, Margin = new Thickness(0, 5) }
-                            .AppThemeBinding(BoxView.ColorProperty, AppColors.StrokeAltLight, AppColors.StrokeAltDark)
-                    }
+                    Spacing = AppLayout.SpacingLarge,
+                    Children = { composer, searchPill }
                 }.Row(0),
 
-                new ScrollView
-                {
-                    Content = _listLayout,
-                    Padding = AppLayout.MainScrollPadding
-                }.Row(1)
+                new ScrollView { Content = _listLayout }.Row(1)
             }
         };
+
+        var scaffold = new GlassScaffold("Tag Mappings", "Japanese to English dictionary", back: true);
+        scaffold.SetBody(body);
+
+        Content = scaffold;
 
         LoadData();
     }

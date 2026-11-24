@@ -19,24 +19,19 @@ public class TagMappingRowView : Border
             FontSize = AppFontSizes.Body,
             VerticalOptions = LayoutOptions.Center,
             LineBreakMode = LineBreakMode.TailTruncation
-        };
+        }
+        .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
 
         var engEntry = new Entry
         {
             Text = engVal,
             FontSize = AppFontSizes.Body,
             VerticalOptions = LayoutOptions.Center
-        };
-
-        var saveItemBtn = new Button
-        {
-            Text = "Save",
-            FontSize = AppFontSizes.ButtonSmall,
-            Padding = new Thickness(6, 0),
-            HeightRequest = AppLayout.ButtonHeightSmall
         }
-        .AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-        .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.SuccessLight, AppColors.SuccessAccentDark);
+        .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
+        .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
+
+        var saveItemBtn = GlassTheme.PillButton("Save", AppFontSizes.ButtonSmall, accent: true, height: AppLayout.ButtonHeightSmall);
 
         saveItemBtn.Clicked += (_, _) =>
         {
@@ -47,20 +42,12 @@ public class TagMappingRowView : Border
             }
         };
 
-        var delBtn = new Button
-        {
-            Text = "✕",
-            FontSize = AppFontSizes.ButtonMedium,
-            Padding = 0,
-            WidthRequest = AppLayout.ButtonHeightSmall,
-            HeightRequest = AppLayout.ButtonHeightSmall
-        }
-        .AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-        .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.DangerLight, AppColors.DangerDark);
-
+        var delBtn = GlassTheme.IconButton("\u2715", AppFontSizes.ButtonMedium, AppLayout.ButtonHeightSmall);
         delBtn.Clicked += (_, _) => onDelete(jpKey);
+        SemanticProperties.SetDescription(delBtn, "Delete mapping");
 
-        StrokeShape = new RoundRectangle { CornerRadius = AppLayout.ButtonCornerRadius };
+        StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius };
+        StrokeThickness = 0;
         Padding = AppLayout.TagRowPadding;
         Content = new Grid
         {
@@ -75,7 +62,6 @@ public class TagMappingRowView : Border
             }
         };
 
-        this.AppThemeBinding(Border.BackgroundColorProperty, AppColors.SurfaceLight, AppColors.SurfaceDark);
-        this.AppThemeBinding(Border.StrokeProperty, AppColors.StrokeLight, AppColors.StrokeDark);
+        this.GlassSoft();
     }
 }

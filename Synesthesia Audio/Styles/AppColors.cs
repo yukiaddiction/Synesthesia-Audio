@@ -75,4 +75,42 @@ public static class AppColors
     public static readonly Color ActiveTextLight = Color.FromArgb("#458CC8");
     public static readonly Color ActiveTextDark = Color.FromArgb("#AADBE9");
     public static readonly Color NormalTextLight = Color.FromArgb("#112A3E");
+
+    // ── Glassmorphism surfaces ──
+    // Semi-transparent layers derived from the palette above so the aurora backdrop shows through panels.
+    // Dark glass leans on a low-alpha white overlay: tinting with the backdrop's own teal made panels
+    // disappear into the aurora instead of reading as luminous frost.
+    public static readonly Color GlassFillLight = Color.FromArgb("#A6FFFFFF");
+    public static readonly Color GlassFillDark = Color.FromArgb("#1AFFFFFF");
+    public static readonly Color GlassFillStrongLight = Color.FromArgb("#DBFFFFFF");
+    public static readonly Color GlassFillStrongDark = Color.FromArgb("#26AADBE9");
+    public static readonly Color GlassFillSoftLight = Color.FromArgb("#7AFFFFFF");
+    public static readonly Color GlassFillSoftDark = Color.FromArgb("#0FFFFFFF");
+
+    // Highlight (top edge of the glass) and edge (bottom falloff) strokes
+    public static readonly Color GlassStrokeTopLight = Color.FromArgb("#B3FFFFFF");
+    public static readonly Color GlassStrokeTopDark = Color.FromArgb("#5CAADBE9");
+    public static readonly Color GlassStrokeEdgeLight = Color.FromArgb("#4D83C3EE");
+    public static readonly Color GlassStrokeEdgeDark = Color.FromArgb("#3D84C6DF");
+
+    // Ambient lift under floating glass
+    public static readonly Color GlassShadowLight = Color.FromArgb("#38458CC8");
+    public static readonly Color GlassShadowDark = Color.FromArgb("#59000000");
+
+    // Brand tint for active navigation items and the currently playing track
+    public static readonly Color GlassTintLight = Color.FromArgb("#3383C3EE");
+    public static readonly Color GlassTintDark = Color.FromArgb("#33AADBE9");
+
+    // Deep glass used for the log terminal panel and media scrims
+    public static readonly Color GlassDeepLight = Color.FromArgb("#E6112A3E");
+    public static readonly Color GlassDeepDark = Color.FromArgb("#D90B1C2B");
+
+    // Scrim fading the album hero into the backdrop
+    public static readonly Color GlassScrimTransparentLight = Color.FromArgb("#00FFFFFF");
+    public static readonly Color GlassScrimTransparentDark = Color.FromArgb("#00112A3E");
+
+    // Flyout pane: high alpha so the page behind stays faintly visible, which is what makes
+    // the pane read as glass rather than as a solid drawer.
+    public static readonly Color GlassFlyoutLight = Color.FromArgb("#E6FFFFFF");
+    public static readonly Color GlassFlyoutDark = Color.FromArgb("#E6112A3E");
 }

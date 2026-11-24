@@ -4,8 +4,10 @@ using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using CommunityToolkit.Maui.Markup;
 using Microsoft.Extensions.Logging;
+using Microsoft.Maui.Controls.Shapes;
 using Synesthesia_Audio.Services.Cloud;
 using Synesthesia_Audio.Styles;
+using Synesthesia_Audio.Views.Components;
 
 namespace Synesthesia_Audio.Views;
 
@@ -47,14 +49,7 @@ public class CloudFolderPickerPage : ContentPage
             HorizontalOptions = LayoutOptions.FillAndExpand
         }.AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
 
-        _upButton = new Button
-        {
-            Text = "⬆ Up",
-            FontSize = AppFontSizes.ButtonSmall,
-            HeightRequest = AppLayout.ButtonHeightSmall
-        }.AppThemeBinding(Button.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-         .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.ControlBgDark);
-
+        _upButton = GlassTheme.PillButton("\u2B06 Up", AppFontSizes.ButtonSmall, height: AppLayout.ButtonHeightSmall);
         _upButton.Clicked += OnUpClicked;
 
         _loader = new ActivityIndicator
@@ -74,7 +69,7 @@ public class CloudFolderPickerPage : ContentPage
             {
                 var icon = new Label
                 {
-                    Text = "📁",
+                    Text = "\uD83D\uDCC1",
                     FontSize = AppFontSizes.GroupTitle,
                     VerticalOptions = LayoutOptions.Center
                 };
@@ -87,30 +82,48 @@ public class CloudFolderPickerPage : ContentPage
                 }.AppThemeBinding(Label.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark);
                 label.SetBinding(Label.TextProperty, "Name");
 
-                var row = new HorizontalStackLayout
+                return new Border
                 {
-                    Spacing = 10,
-                    Padding = new Thickness(16, 14),
-                    Children = { icon, label }
-                };
-                return row;
+                    StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius },
+                    Margin = new Thickness(16, 3),
+                    Padding = new Thickness(14, 12),
+                    Content = new HorizontalStackLayout
+                    {
+                        Spacing = 10,
+                        Children = { icon, label }
+                    }
+                }.GlassSoft();
             })
         };
         collectionView.SelectionChanged += OnDirectorySelected;
         collectionView.ItemsSource = _directories;
 
-        _selectButton = new Button
-        {
-            Text = "Select This Folder",
-            FontSize = AppFontSizes.Body,
-            HeightRequest = AppLayout.ButtonHeightDefault,
-            Margin = new Thickness(20, 10),
-            HorizontalOptions = LayoutOptions.Fill
-        }.AppThemeBinding(Button.TextColorProperty, Colors.White, Colors.White)
-         .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark);
+        _selectButton = GlassTheme.PillButton("Select This Folder", AppFontSizes.Body, accent: true, height: AppLayout.ButtonHeightDefault);
         _selectButton.Clicked += OnSelectClicked;
+        _selectButton.Margin = new Thickness(16, 10);
 
-        Content = new Grid
+        var pathHeader = new Border
+        {
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius },
+            Margin = new Thickness(16, 4, 16, 8),
+            Padding = AppLayout.PathHeaderPadding,
+            Content = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(GridLength.Auto),
+                    new ColumnDefinition(GridLength.Star)
+                },
+                ColumnSpacing = 8,
+                Children =
+                {
+                    _upButton,
+                    _pathLabel.Column(1)
+                }
+            }
+        }.Glass();
+
+        var content = new Grid
         {
             RowDefinitions =
             {
@@ -120,21 +133,7 @@ public class CloudFolderPickerPage : ContentPage
             },
             Children =
             {
-                new Grid
-                {
-                    ColumnDefinitions =
-                    {
-                        new ColumnDefinition(GridLength.Auto),
-                        new ColumnDefinition(GridLength.Star)
-                    },
-                    ColumnSpacing = 8,
-                    Padding = AppLayout.PathHeaderPadding,
-                    Children =
-                    {
-                        _upButton,
-                        _pathLabel.Column(1)
-                    }
-                }.AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.ControlBgLight, AppColors.PickerBgDark),
+                pathHeader.Row(0),
 
                 new Grid
                 {
@@ -143,6 +142,14 @@ public class CloudFolderPickerPage : ContentPage
 
                 _selectButton.Row(2)
             }
+        };
+
+        var backdrop = new GlassBackdrop();
+        backdrop.AppThemeBinding(GlassBackdrop.IsDarkProperty, false, true);
+
+        Content = new Grid
+        {
+            Children = { backdrop, content }
         };
 
         _ = LoadDirectoriesAsync();

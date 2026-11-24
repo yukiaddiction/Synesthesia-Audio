@@ -52,4 +52,27 @@ public static class AppLayout
     public const double ProgressBarHeight = 4;
     public const double VideoInlineHeight = 250;
     public const double VideoInlineBottomMargin = 120;
+
+    // ── Glassmorphism metrics ──
+    public static readonly CornerRadius GlassBarRadius = new CornerRadius(20);
+    public static readonly CornerRadius GlassSheetRadius = new CornerRadius(28);
+    public static readonly CornerRadius GlassCardRadius = new CornerRadius(22);
+    public static readonly CornerRadius GlassFooterRadius = new CornerRadius(16);
+    public static readonly CornerRadius GlassPillRadius = new CornerRadius(999);
+    public static readonly CornerRadius GlassChipRadius = new CornerRadius(12);
+
+    public static readonly Thickness GlassBarMargin = new Thickness(16, 12, 16, 4);
+    public static readonly Thickness GlassBarPadding = new Thickness(10);
+    public static readonly Thickness GlassCardPadding = new Thickness(18);
+    public static readonly Thickness GlassContentPadding = new Thickness(16, 6, 16, 130);
+    public static readonly Thickness GlassSheetOverlap = new Thickness(0, -36, 0, 0);
+    public static readonly Thickness GlassCardFooterMargin = new Thickness(8, -18, 8, 8);
+
+    public const double GlassBarHeight = 58;
+    public const double GlassBarButtonSize = 38;
+    public const double GlassSectionGap = 18;
+    public const double GlassCardGap = 12;
+    public const double GlassHeroHeight = 260;
+    public const double GlassCardCoverHeight = 150;
+    public const double GlassTintBorderSize = 3;
 }

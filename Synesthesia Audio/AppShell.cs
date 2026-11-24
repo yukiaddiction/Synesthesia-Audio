@@ -6,6 +6,7 @@ using Synesthesia_Audio.Services;
 using Synesthesia_Audio.ViewModels;
 using Synesthesia_Audio.Views;
 using Synesthesia_Audio.Styles;
+using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 
 namespace Synesthesia_Audio;
 
@@ -13,23 +14,20 @@ public class AppShell : Shell
 {
     private readonly MainViewModel _mainViewModel;
     private MediaElement? _mediaElement;
-    private Border _allAgeButtonBorder = null!;
-    private Border _r18ButtonBorder = null!;
-    private Border _settingsButtonBorder = null!;
-    private Label _allAgeLabel = null!;
-    private Label _r18Label = null!;
-    private Label _settingsLabel = null!;
+    private NavItem _allAgeNav = null!;
+    private NavItem _r18Nav = null!;
+    private NavItem _settingsNav = null!;
 
     public AppShell(AudioService audioService, MainViewModel mainViewModel)
     {
         _mainViewModel = mainViewModel;
         FlyoutBehavior = FlyoutBehavior.Flyout;
 
-        this.AppThemeBinding(Shell.FlyoutBackgroundColorProperty, AppColors.SurfaceLight, AppColors.SurfaceAltDark);
-        this.AppThemeBinding(Shell.ForegroundColorProperty, Colors.White, Colors.White);
-        this.AppThemeBinding(Shell.TitleColorProperty, Colors.White, AppColors.TextPrimaryDark);
+        this.AppThemeBinding(Shell.FlyoutBackgroundColorProperty, AppColors.GlassFlyoutLight, AppColors.GlassFlyoutDark);
+        this.AppThemeBinding(Shell.ForegroundColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
+        this.AppThemeBinding(Shell.TitleColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
         this.AppThemeBinding(Shell.UnselectedColorProperty, AppColors.TextTertiaryLight, AppColors.TextTertiaryLight);
-        this.AppThemeBinding(Shell.BackgroundColorProperty, AppColors.PrimaryLight, AppColors.BackgroundDark);
+        this.AppThemeBinding(Shell.BackgroundColorProperty, AppColors.BackgroundLight, AppColors.BackgroundDark);
 
         Items.Add(new ShellContent
         {
@@ -82,94 +80,61 @@ public class AppShell : Shell
 
     private View CreateFlyoutContent()
     {
-        _allAgeLabel = new Label { Text = "All Age", FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold, VerticalOptions = LayoutOptions.Center };
-        _allAgeButtonBorder = new Border
+        _allAgeNav = CreateNavItem("All Age");
+        _allAgeNav.Container.GestureRecognizers.Add(new TapGestureRecognizer
         {
-            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.ButtonCornerRadius },
-            StrokeThickness = 0,
-            Padding = new Thickness(12, 10),
-            Margin = new Thickness(16, 2, 8, 2),
-            Content = _allAgeLabel,
-            GestureRecognizers =
+            Command = new Command(async () =>
             {
-                new TapGestureRecognizer
+                try
                 {
-                    Command = new Command(async () =>
-                    {
-                        try
-                        {
-                            _mainViewModel.SelectedFilter = "SFW";
-                            FlyoutIsPresented = false;
-                            await GoToAsync("//Library");
-                            UpdateFlyoutSelection();
-                        }
-                        catch (Exception ex)
-                        {
-                            Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (All Age)");
-                        }
-                    })
+                    _mainViewModel.SelectedFilter = "SFW";
+                    FlyoutIsPresented = false;
+                    await GoToAsync("//Library");
+                    UpdateFlyoutSelection();
                 }
-            }
-        };
+                catch (Exception ex)
+                {
+                    Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (All Age)");
+                }
+            })
+        });
 
-        _r18Label = new Label { Text = "R-18", FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold, VerticalOptions = LayoutOptions.Center };
-        _r18ButtonBorder = new Border
+        _r18Nav = CreateNavItem("R-18");
+        _r18Nav.Container.GestureRecognizers.Add(new TapGestureRecognizer
         {
-            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.ButtonCornerRadius },
-            StrokeThickness = 0,
-            Padding = new Thickness(12, 10),
-            Margin = new Thickness(16, 2, 8, 2),
-            Content = _r18Label,
-            GestureRecognizers =
+            Command = new Command(async () =>
             {
-                new TapGestureRecognizer
+                try
                 {
-                    Command = new Command(async () =>
-                    {
-                        try
-                        {
-                            _mainViewModel.SelectedFilter = "NSFW";
-                            FlyoutIsPresented = false;
-                            await GoToAsync("//Library");
-                            UpdateFlyoutSelection();
-                        }
-                        catch (Exception ex)
-                        {
-                            Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (R-18)");
-                        }
-                    })
+                    _mainViewModel.SelectedFilter = "NSFW";
+                    FlyoutIsPresented = false;
+                    await GoToAsync("//Library");
+                    UpdateFlyoutSelection();
                 }
-            }
-        };
+                catch (Exception ex)
+                {
+                    Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (R-18)");
+                }
+            })
+        });
 
-        _settingsLabel = new Label { Text = "Settings", FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold, VerticalOptions = LayoutOptions.Center };
-        _settingsButtonBorder = new Border
+        _settingsNav = CreateNavItem("Settings");
+        _settingsNav.Container.GestureRecognizers.Add(new TapGestureRecognizer
         {
-            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.ButtonCornerRadius },
-            StrokeThickness = 0,
-            Padding = new Thickness(12, 10),
-            Margin = new Thickness(8, 2, 8, 2),
-            Content = _settingsLabel,
-            GestureRecognizers =
+            Command = new Command(async () =>
             {
-                new TapGestureRecognizer
+                try
                 {
-                    Command = new Command(async () =>
-                    {
-                        try
-                        {
-                            FlyoutIsPresented = false;
-                            await GoToAsync("//Settings");
-                            UpdateFlyoutSelection();
-                        }
-                        catch (Exception ex)
-                        {
-                            Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (Settings)");
-                        }
-                    })
+                    FlyoutIsPresented = false;
+                    await GoToAsync("//Settings");
+                    UpdateFlyoutSelection();
                 }
-            }
-        };
+                catch (Exception ex)
+                {
+                    Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (Settings)");
+                }
+            })
+        });
 
         var flyoutStack = new VerticalStackLayout
         {
@@ -184,40 +149,67 @@ public class AppShell : Shell
                     FontAttributes = AppFonts.Bold,
                     Padding = new Thickness(8, 8, 8, 16),
                     VerticalOptions = LayoutOptions.Center
-                },
-
-                new BoxView
-                {
-                    HeightRequest = 1,
-                    Margin = new Thickness(4, 0, 4, 12)
                 }
-                .AppThemeBinding(BoxView.ColorProperty, AppColors.StrokeAltLight, AppColors.StrokeAltDark),
+                .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
 
-                new Label
-                {
-                    Text = "LIBRARY",
-                    FontSize = AppFontSizes.Caption,
-                    FontAttributes = AppFonts.Bold,
-                    CharacterSpacing = 1.2,
-                    Margin = new Thickness(12, 6, 0, 6)
-                }
-                .AppThemeBinding(Label.TextColorProperty, AppColors.TextTertiaryLight, AppColors.TextTertiaryAltDark),
+                new BoxView { HeightRequest = 1, Margin = new Thickness(4, 0, 4, 12) }
+                    .AppThemeBinding(BoxView.ColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark),
 
-                _allAgeButtonBorder,
-                _r18ButtonBorder,
+                GlassTheme.SectionLabel("LIBRARY"),
 
-                new BoxView
-                {
-                    HeightRequest = 1,
-                    Margin = new Thickness(4, 12, 4, 12)
-                }
-                .AppThemeBinding(BoxView.ColorProperty, AppColors.StrokeAltLight, AppColors.StrokeAltDark),
+                _allAgeNav.Container,
+                _r18Nav.Container,
 
-                _settingsButtonBorder
+                new BoxView { HeightRequest = 1, Margin = new Thickness(4, 12, 4, 12) }
+                    .AppThemeBinding(BoxView.ColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark),
+
+                _settingsNav.Container
             }
         };
 
         return new ScrollView { Content = flyoutStack };
+    }
+
+    /// <summary>
+    /// One flyout row: a rounded glass pill with a left accent bar that appears when active.
+    /// </summary>
+    private static NavItem CreateNavItem(string text)
+    {
+        var accent = new BoxView
+        {
+            WidthRequest = AppLayout.GlassTintBorderSize,
+            CornerRadius = AppLayout.GlassTintBorderSize / 2,
+            VerticalOptions = LayoutOptions.Fill,
+            IsVisible = false
+        };
+
+        var label = new Label
+        {
+            Text = text,
+            FontSize = AppFontSizes.BodyBold,
+            FontAttributes = AppFonts.Bold,
+            VerticalOptions = LayoutOptions.Center
+        };
+
+        var container = new Border
+        {
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius },
+            StrokeThickness = 0,
+            Padding = new Thickness(8, 10),
+            Margin = new Thickness(4, 2, 4, 2),
+            Content = new Grid
+            {
+                ColumnDefinitions = Columns.Define(AppLayout.GlassTintBorderSize, Star),
+                ColumnSpacing = AppLayout.SpacingExtraLarge,
+                Children =
+                {
+                    accent.Column(0),
+                    label.Column(1)
+                }
+            }
+        };
+
+        return new NavItem(container, label, accent);
     }
 
     private void UpdateFlyoutSelection()
@@ -225,40 +217,62 @@ public class AppShell : Shell
         bool isSettings = CurrentState?.Location?.OriginalString?.Contains("Settings") == true;
         if (isSettings)
         {
-            SetSelectedNav("Settings");
+            SetSelectedNav(_settingsNav);
             return;
         }
 
         if (_mainViewModel.SelectedFilter == "NSFW")
         {
-            SetSelectedNav("R18");
+            SetSelectedNav(_r18Nav);
         }
         else
         {
-            SetSelectedNav("AllAge");
+            SetSelectedNav(_allAgeNav);
         }
     }
 
-    private void SetSelectedNav(string nav)
+    private void SetSelectedNav(NavItem selected)
     {
-        var isDark = Application.Current?.RequestedTheme == AppTheme.Dark;
+        ApplyNavState(_allAgeNav, ReferenceEquals(_allAgeNav, selected));
+        ApplyNavState(_r18Nav, ReferenceEquals(_r18Nav, selected));
+        ApplyNavState(_settingsNav, ReferenceEquals(_settingsNav, selected));
+    }
 
-        var activeBg = isDark ? AppColors.ActiveBgDark : AppColors.ActiveBgLight;
-        var activeText = isDark ? AppColors.ActiveTextDark : AppColors.ActiveTextLight;
+    /// <summary>
+    /// Applies the active/inactive look through <c>AppThemeBinding</c> rather than reading the
+    /// current theme. Reading <c>RequestedTheme</c> here left the labels stale, because the
+    /// theme-changed notification can arrive before the property itself is updated.
+    /// </summary>
+    private static void ApplyNavState(NavItem nav, bool isActive)
+    {
+        nav.Container.AppThemeBinding(
+            VisualElement.BackgroundColorProperty,
+            isActive ? AppColors.GlassTintLight : Colors.Transparent,
+            isActive ? AppColors.GlassTintDark : Colors.Transparent);
 
-        var normalBg = Colors.Transparent;
-        var normalText = isDark ? Colors.White : AppColors.NormalTextLight;
+        nav.Label.AppThemeBinding(
+            Label.TextColorProperty,
+            isActive ? AppColors.ActiveTextLight : AppColors.NormalTextLight,
+            isActive ? AppColors.ActiveTextDark : AppColors.TextPrimaryDark);
 
-        bool isAllAge = nav == "AllAge";
-        _allAgeButtonBorder.BackgroundColor = isAllAge ? activeBg : normalBg;
-        _allAgeLabel.TextColor = isAllAge ? activeText : normalText;
+        nav.Accent.IsVisible = isActive;
+        nav.Accent.AppThemeBinding(
+            BoxView.ColorProperty,
+            isActive ? AppColors.PrimaryLight : Colors.Transparent,
+            isActive ? AppColors.PrimaryDark : Colors.Transparent);
+    }
 
-        bool isR18 = nav == "R18";
-        _r18ButtonBorder.BackgroundColor = isR18 ? activeBg : normalBg;
-        _r18Label.TextColor = isR18 ? activeText : normalText;
+    private sealed class NavItem
+    {
+        public NavItem(Border container, Label label, BoxView accent)
+        {
+            Container = container;
+            Label = label;
+            Accent = accent;
+        }
 
-        bool isSettings = nav == "Settings";
-        _settingsButtonBorder.BackgroundColor = isSettings ? activeBg : normalBg;
-        _settingsLabel.TextColor = isSettings ? activeText : normalText;
+        public Border Container { get; }
+        public Label Label { get; }
+        public BoxView Accent { get; }
     }
 }
