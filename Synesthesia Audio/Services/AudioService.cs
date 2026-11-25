@@ -492,7 +492,7 @@ public partial class AudioService : ObservableObject, IDisposable
                 ? track.VoiceActors
                 : AppConstants.DefaultArtist;
 
-            _logger.LogInformation("Setting artwork — coverPath: {Path}", track.CoverImagePath ?? "(null)");
+            _logger.LogInformation("Setting artwork from {File}", Synesthesia_Audio.Core.LogRedactor.FileName(track.CoverImagePath));
 
             if (!string.IsNullOrEmpty(track.CoverImagePath) && System.IO.File.Exists(track.CoverImagePath))
             {
@@ -541,7 +541,10 @@ public partial class AudioService : ObservableObject, IDisposable
             }
             else
             {
-                _logger.LogInformation("Using local file: {Path}", track.FilePath);
+                // File name only at Information: the full path discloses the library layout, and the log is a file
+                // users attach to bug reports (SEC-m-02).
+                _logger.LogInformation("Using local file: {File}", Synesthesia_Audio.Core.LogRedactor.FileName(track.FilePath));
+                _logger.LogDebug("Local file path: {Path}", track.FilePath);
                 me.Source = MediaSource.FromFile(track.FilePath);
             }
 

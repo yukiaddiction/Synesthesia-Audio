@@ -41,19 +41,13 @@ public class ScanFolderService : IDisposable
         if (!string.IsNullOrEmpty(meta.CoverUrl))
         {
             var localCoverPath = GetLocalCoverCachePath(folderPath, rjCode);
-            try
+            if (await TryDownloadCoverAsync(meta.CoverUrl, localCoverPath).ConfigureAwait(false))
             {
-                using var response = await _httpClient.GetAsync(meta.CoverUrl);
-                if (response.IsSuccessStatusCode)
-                {
-                    using var fs = new FileStream(localCoverPath, FileMode.Create, FileAccess.Write);
-                    await response.Content.CopyToAsync(fs);
-                    coverPath = localCoverPath;
-                }
+                coverPath = localCoverPath;
             }
-            catch (Exception ex)
+            else if (CoverUrlPolicy.IsAllowed(meta.CoverUrl))
             {
-                _logger.LogWarning(ex, "Cover download failed for {RjCode}, falling back to remote URL", rjCode);
+                // The image itself was fine, only the download failed, so the remote URL is still usable.
                 coverPath = meta.CoverUrl;
             }
         }
@@ -466,19 +460,13 @@ public class ScanFolderService : IDisposable
                                 work.CoverUrl = meta.CoverUrl;
 
                                 var localCoverPath = GetLocalCoverCachePath(workPath, rjCode!);
-                                try
+                                if (await TryDownloadCoverAsync(meta.CoverUrl, localCoverPath).ConfigureAwait(false))
                                 {
-                                    using var response = await _httpClient.GetAsync(meta.CoverUrl);
-                                    if (response.IsSuccessStatusCode)
-                                    {
-                                        using var fs = new FileStream(localCoverPath, FileMode.Create, FileAccess.Write);
-                                        await response.Content.CopyToAsync(fs);
-                                        work.CoverImagePath = localCoverPath;
-                                    }
+                                    work.CoverImagePath = localCoverPath;
                                 }
-                                catch (Exception ex)
+                                else if (CoverUrlPolicy.IsAllowed(meta.CoverUrl))
                                 {
-                                    _logger.LogWarning(ex, "Cover download failed for {RjCode}, falling back to remote URL", rjCode);
+                                    // Only the download failed; the URL itself passed the policy.
                                     work.CoverImagePath = meta.CoverUrl;
                                 }
                             }
@@ -800,6 +788,71 @@ public class ScanFolderService : IDisposable
         };
     }
 
+    /// <summary>
+    /// Downloads a cover subject to the SEC-m-05 rules: https from a DLsite image host, an image content type,
+    /// and a size cap. The URL comes out of a scraped page, so it is attacker-influenced input. Writes to a
+    /// temporary file first so a rejected or truncated body never becomes the cached cover.
+    /// </summary>
+    private async Task<bool> TryDownloadCoverAsync(string? coverUrl, string localCoverPath)
+    {
+        if (!CoverUrlPolicy.IsAllowed(coverUrl))
+        {
+            _logger.LogWarning("Cover URL rejected — not an https DLsite image host: {Url}", LogRedactor.Url(coverUrl));
+            return false;
+        }
+
+        var temporaryPath = localCoverPath + ".part";
+        try
+        {
+            using var response = await _httpClient.GetAsync(coverUrl).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return false;
+
+            if (!CoverUrlPolicy.IsAcceptableLength(response.Content.Headers.ContentLength))
+            {
+                _logger.LogWarning("Cover rejected — declared size {Bytes} exceeds the cap",
+                    response.Content.Headers.ContentLength);
+                return false;
+            }
+
+            var mediaType = response.Content.Headers.ContentType?.MediaType;
+            if (!CoverUrlPolicy.IsAcceptableContentType(mediaType))
+            {
+                _logger.LogWarning("Cover rejected — content type {MediaType} is not an image", mediaType ?? "(none)");
+                return false;
+            }
+
+            await using (var file = new FileStream(temporaryPath, FileMode.Create, FileAccess.Write))
+            {
+                await response.Content.CopyToAsync(file).ConfigureAwait(false);
+            }
+
+            // A chunked response declares no length, so the cap is enforced on what actually arrived.
+            var downloaded = new FileInfo(temporaryPath).Length;
+            if (downloaded == 0 || downloaded > CoverUrlPolicy.MaxCoverBytes)
+            {
+                File.Delete(temporaryPath);
+                _logger.LogWarning("Cover rejected — {Bytes} bytes downloaded", downloaded);
+                return false;
+            }
+
+            File.Move(temporaryPath, localCoverPath, overwrite: true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Cover download failed for {Url}", LogRedactor.Url(coverUrl));
+            try
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
+            catch
+            {
+                // Best effort; a stray .part file is harmless.
+            }
+            return false;
+        }
+    }
+
     /// <summary>Walks a folder on the local disk. Listing failures surface as exceptions and are
     /// recorded by <see cref="ScanListing"/>.</summary>
     private sealed class LocalScanFileSource : IScanFileSource
@@ -882,25 +935,13 @@ public class ScanFolderService : IDisposable
         if (string.IsNullOrEmpty(work.CoverUrl)) return false;
 
         var localCoverPath = GetLocalCoverCachePath(workPath, work.ProductId);
-        try
+        if (!await TryDownloadCoverAsync(work.CoverUrl, localCoverPath).ConfigureAwait(false))
         {
-            using var response = await _httpClient.GetAsync(work.CoverUrl);
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogDebug("Cover re-download for {ProductId} returned {Status}", work.ProductId, (int)response.StatusCode);
-                return false;
-            }
-
-            await using var stream = new FileStream(localCoverPath, FileMode.Create, FileAccess.Write);
-            await response.Content.CopyToAsync(stream);
-            work.CoverImagePath = localCoverPath;
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Cover re-download failed for {ProductId}", work.ProductId);
             return false;
         }
+
+        work.CoverImagePath = localCoverPath;
+        return true;
     }
 
     public void Dispose()

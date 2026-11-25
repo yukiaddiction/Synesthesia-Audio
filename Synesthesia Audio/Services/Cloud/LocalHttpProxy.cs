@@ -136,7 +136,8 @@ public class LocalHttpProxy : IDisposable
         _pathById[id] = path;
 
         var url = $"http://127.0.0.1:{_port}/stream/{_token.Value}/{id}";
-        AddLog($"CreateStreamUrl: {path.Substring(0, Math.Min(path.Length, 60))}... -> {url}");
+        // Only the file name: the remote path discloses the user's cloud layout (SEC-m-02).
+        AddLog($"CreateStreamUrl: {LogRedactor.FileName(path)} -> {url}");
         return url;
     }
 
