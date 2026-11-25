@@ -16,6 +16,7 @@ public partial class SettingsViewModel : BaseViewModel
     private readonly ILogger<SettingsViewModel> _logger;
 
     private readonly Synesthesia_Audio.Services.Cloud.ICloudProvider _cloudProvider;
+    private readonly ITranslationService _translationService;
 
     private bool _suppressInstantSave = true;
 
@@ -52,6 +53,30 @@ public partial class SettingsViewModel : BaseViewModel
     [ObservableProperty]
     private bool _isBatteryExempt;
 
+    [ObservableProperty]
+    private string _translationProvider = TranslationProviders.GTranslate;
+
+    [ObservableProperty]
+    private string _translationCustomBaseUrl = string.Empty;
+
+    [ObservableProperty]
+    private string _translationApiKey = string.Empty;
+
+    [ObservableProperty]
+    private string _translationStatus = string.Empty;
+
+    public string[] TranslationProviderOptions => TranslationProviders.All;
+
+    /// <summary>GTranslate needs no key, so the key and endpoint fields only appear for paid providers.</summary>
+    public bool IsTranslationKeyVisible => TranslationProvider != TranslationProviders.GTranslate;
+
+    public bool IsCustomTranslationSelected => TranslationProvider == TranslationProviders.Custom;
+
+    /// <summary>Set when the platform could not persist a secret, so the user is told rather than losing it.</summary>
+    public string SecureStorageWarning => _settingsService.SecureStoreWarning ?? string.Empty;
+
+    public bool IsSecureStorageWarningVisible => !string.IsNullOrEmpty(_settingsService.SecureStoreWarning);
+
     public string BatteryStatusText => IsBatteryExempt ? "Stably Unrestricted" : "Optimized (May stop)";
     public Color BatteryStatusColor => IsBatteryExempt ? Colors.Green : Colors.Orange;
 
@@ -63,7 +88,7 @@ public partial class SettingsViewModel : BaseViewModel
 
     public string AppVersionText => $"Version {AppInfo.Current.VersionString}";
 
-    public SettingsViewModel(SettingsService settingsService, LibraryCacheService cacheService, MainViewModel mainViewModel, Synesthesia_Audio.Services.Cloud.ICloudProvider cloudProvider, LogService logService, ILogger<SettingsViewModel> logger)
+    public SettingsViewModel(SettingsService settingsService, LibraryCacheService cacheService, MainViewModel mainViewModel, Synesthesia_Audio.Services.Cloud.ICloudProvider cloudProvider, LogService logService, ITranslationService translationService, ILogger<SettingsViewModel> logger)
     {
         Title = "Settings";
         _settingsService = settingsService;
@@ -71,6 +96,7 @@ public partial class SettingsViewModel : BaseViewModel
         _mainViewModel = mainViewModel;
         _cloudProvider = cloudProvider;
         _logService = logService;
+        _translationService = translationService;
         _logger = logger;
 
         BaseAudioFolderPath = _settingsService.CurrentSettings.BaseAudioFolderPath;
@@ -80,6 +106,9 @@ public partial class SettingsViewModel : BaseViewModel
         CloudServerUrl = _settingsService.CurrentSettings.CloudServerUrl;
         CloudUsername = _settingsService.CurrentSettings.CloudUsername;
         CloudPassword = _settingsService.CurrentSettings.CloudPassword;
+        TranslationProvider = _settingsService.CurrentSettings.TranslationProvider;
+        TranslationCustomBaseUrl = _settingsService.CurrentSettings.TranslationCustomBaseUrl;
+        TranslationApiKey = _settingsService.CurrentSettings.TranslationApiKey;
 
         UpdateSelectionStates();
         _suppressInstantSave = false;
@@ -87,9 +116,10 @@ public partial class SettingsViewModel : BaseViewModel
         LogSummary = _logService.GetLogSummary();
         CheckBatteryStatus();
         _ = LoadPasswordIntoFormAsync();
+        _ = LoadTranslationKeyIntoFormAsync();
 
-        _logger.LogInformation("SettingsViewModel initialized — storage: {Storage}, darkMode: {DarkMode}, translateTags: {TranslateTags}",
-            StorageType, IsDarkMode, TranslateDlsiteTags);
+        _logger.LogInformation("SettingsViewModel initialized — storage: {Storage}, darkMode: {DarkMode}, translateTags: {TranslateTags}, translation: {Provider}",
+            StorageType, IsDarkMode, TranslateDlsiteTags, TranslationProvider);
     }
 
     private async Task LoadPasswordIntoFormAsync()
@@ -109,11 +139,88 @@ public partial class SettingsViewModel : BaseViewModel
         }
     }
 
+    private async Task LoadTranslationKeyIntoFormAsync()
+    {
+        try
+        {
+            await _settingsService.EnsureApiKeyLoadedAsync();
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (string.IsNullOrEmpty(TranslationApiKey))
+                    TranslationApiKey = _settingsService.CurrentSettings.TranslationApiKey;
+
+                OnPropertyChanged(nameof(SecureStorageWarning));
+                OnPropertyChanged(nameof(IsSecureStorageWarningVisible));
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load translation API key into settings form");
+        }
+    }
+
     public void RefreshStatus()
     {
         LogSummary = _logService.GetLogSummary();
         CheckBatteryStatus();
+        OnPropertyChanged(nameof(SecureStorageWarning));
+        OnPropertyChanged(nameof(IsSecureStorageWarningVisible));
         _logger.LogDebug("Settings status refreshed — logs: {LogSummary}, batteryExempt: {BatteryExempt}", LogSummary, IsBatteryExempt);
+    }
+
+    partial void OnTranslationProviderChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsTranslationKeyVisible));
+        OnPropertyChanged(nameof(IsCustomTranslationSelected));
+
+        if (_suppressInstantSave) return;
+
+        _settingsService.CurrentSettings.TranslationProvider = value;
+        _settingsService.SaveSettings(_settingsService.CurrentSettings);
+        _logger.LogInformation("Translation provider changed to {Provider}", value);
+    }
+
+    /// <summary>
+    /// Translates one probe string through whatever is typed in the form, then restores the saved
+    /// values — the same swap-test-restore shape the WebDAV connection test already uses.
+    /// </summary>
+    [RelayCommand]
+    private async Task TestTranslationAsync()
+    {
+        var originalProvider = _settingsService.CurrentSettings.TranslationProvider;
+        var originalBaseUrl = _settingsService.CurrentSettings.TranslationCustomBaseUrl;
+        var originalHeader = _settingsService.CurrentSettings.TranslationCustomAuthHeader;
+        var originalKey = _settingsService.CurrentSettings.TranslationApiKey;
+
+        _settingsService.CurrentSettings.TranslationProvider = TranslationProvider;
+        _settingsService.CurrentSettings.TranslationCustomBaseUrl = TranslationCustomBaseUrl;
+        _settingsService.CurrentSettings.TranslationApiKey = TranslationApiKey;
+
+        TranslationStatus = "Testing…";
+        try
+        {
+            _translationService.ClearError();
+            var translated = await _translationService.TranslateJaToEnAsync("催眠音声");
+
+            if (_translationService.RateLimitRemaining is { } wait)
+                TranslationStatus = $"Rate limited — try again in {(int)Math.Ceiling(wait.TotalSeconds)} seconds.";
+            else if (!string.IsNullOrWhiteSpace(translated))
+                TranslationStatus = $"OK via {_translationService.ActiveProviderName}: {translated}";
+            else
+                TranslationStatus = _translationService.LastError ?? "No translation returned.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Translation test failed");
+            TranslationStatus = $"Failed: {ex.Message}";
+        }
+        finally
+        {
+            _settingsService.CurrentSettings.TranslationProvider = originalProvider;
+            _settingsService.CurrentSettings.TranslationCustomBaseUrl = originalBaseUrl;
+            _settingsService.CurrentSettings.TranslationCustomAuthHeader = originalHeader;
+            _settingsService.CurrentSettings.TranslationApiKey = originalKey;
+        }
     }
 
     private void UpdateSelectionStates()
@@ -172,6 +279,9 @@ public partial class SettingsViewModel : BaseViewModel
         _settingsService.CurrentSettings.CloudServerUrl = CloudServerUrl;
         _settingsService.CurrentSettings.CloudUsername = CloudUsername;
         _settingsService.CurrentSettings.CloudPassword = CloudPassword;
+        _settingsService.CurrentSettings.TranslationProvider = TranslationProvider;
+        _settingsService.CurrentSettings.TranslationCustomBaseUrl = TranslationCustomBaseUrl;
+        _settingsService.CurrentSettings.TranslationApiKey = TranslationApiKey;
         _settingsService.SaveSettings(_settingsService.CurrentSettings);
 
         if (Application.Current != null)

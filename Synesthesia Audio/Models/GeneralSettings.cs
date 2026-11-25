@@ -12,6 +12,15 @@ public class GeneralSettings
     public string CloudServerUrl { get; set; } = string.Empty;
     public string CloudUsername { get; set; } = string.Empty;
 
+    // Translation provider. "GTranslate" is the free chain; "DeepL" and "Custom" use the user's own
+    // paid key. The key itself is never serialized here — it lives in ISecureStore.
+    public string TranslationProvider { get; set; } = "GTranslate";
+    public string TranslationCustomBaseUrl { get; set; } = string.Empty;
+    public string TranslationCustomAuthHeader { get; set; } = "Authorization";
+
+    [JsonIgnore]
+    public string TranslationApiKey { get; set; } = string.Empty;
+
     [JsonIgnore]
     public string CloudPassword { get; set; } = string.Empty;
 }

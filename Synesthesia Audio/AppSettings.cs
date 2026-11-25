@@ -20,6 +20,8 @@ public class HttpSettings
 public class TranslationSettings
 {
     public int RequestTimeoutSeconds { get; set; } = 6;
+    public int RateLimitBaseCooldownSeconds { get; set; } = 30;
+    public int RateLimitMaxCooldownSeconds { get; set; } = 300;
 }
 
 public class ProxySettings

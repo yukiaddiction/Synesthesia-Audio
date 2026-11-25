@@ -52,6 +52,8 @@ public static class AppConstants
 
     // Translation
     public static int TranslationRequestTimeoutSeconds => _settings.Translation.RequestTimeoutSeconds;
+    public static int TranslationRateLimitBaseCooldownSeconds => _settings.Translation.RateLimitBaseCooldownSeconds;
+    public static int TranslationRateLimitMaxCooldownSeconds => _settings.Translation.RateLimitMaxCooldownSeconds;
 
     // Local HTTP Proxy
     public static int ProxyStreamTimeoutMs => _settings.Proxy.StreamTimeoutMs;

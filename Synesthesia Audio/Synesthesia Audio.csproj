@@ -36,9 +36,12 @@
 		     2.1.1: patch - metadata scraping no longer stores blocked/consent pages as works, and
 		     failed fetches are retried instead of being cached forever.
 		     2.1.2: patch - fix a fatal crash when Android re-created the activity (returning to
-		     the app): the UI graph is now per-window instead of reusing singleton pages. -->
-		<ApplicationDisplayVersion>2.1.2</ApplicationDisplayVersion>
-		<ApplicationVersion>5</ApplicationVersion>
+		     the app): the UI graph is now per-window instead of reusing singleton pages.
+		     2.2.0: minor - translation moved from the hand-rolled Lingva chain to the GTranslate
+		     library, rate limits now back off and ask the user to wait, an own DeepL or custom API
+		     key can be configured, and secrets persist again on unpackaged Windows. -->
+		<ApplicationDisplayVersion>2.2.0</ApplicationDisplayVersion>
+		<ApplicationVersion>6</ApplicationVersion>
 
 		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
 		<WindowsPackageType>None</WindowsPackageType>
@@ -89,6 +92,7 @@
 		<PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="5.0.0" />
 		<PackageReference Condition="$(TargetFramework.Contains('-android'))" Include="Xamarin.AndroidX.LocalBroadcastManager" Version="1.1.0" />
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="GTranslate" Version="2.4.0" />
 		<PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.8" />
 		<PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.8" />
 		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />

@@ -4,6 +4,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Synesthesia_Audio.Services;
 using Synesthesia_Audio.Services.Logging;
+using Synesthesia_Audio.Services.Storage;
+using Synesthesia_Audio.Services.Translation;
 using Synesthesia_Audio.ViewModels;
 using Synesthesia_Audio.Views;
 
@@ -47,6 +49,7 @@ public static class MauiProgram
 #endif
 
         builder.Services.AddSingleton<LogService>();
+        builder.Services.AddSingleton<ISecureStore, SecureStore>();
         builder.Services.AddSingleton<SettingsService>();
         builder.Services.AddSingleton<TagMappingService>();
         builder.Services.AddSingleton<LibraryCacheService>();
@@ -56,9 +59,7 @@ public static class MauiProgram
             var factory = sp.GetRequiredService<HttpClientFactory>();
             return factory.GetOrCreate("translation", () => new HttpClient());
         });
-        builder.Services.AddSingleton<ITranslationService>(sp => new LingvaTranslationService(
-            sp.GetRequiredService<HttpClient>(),
-            sp.GetRequiredService<ILogger<LingvaTranslationService>>()));
+        builder.Services.AddSingleton<ITranslationService, TranslationService>();
         builder.Services.AddSingleton<DLsiteService>();
         builder.Services.AddSingleton<Synesthesia_Audio.Services.Cloud.ICloudProvider, Synesthesia_Audio.Services.Cloud.WebDavCloudProvider>();
         builder.Services.AddSingleton<Synesthesia_Audio.Services.Cloud.LocalHttpProxy>();

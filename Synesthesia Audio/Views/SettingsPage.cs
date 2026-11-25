@@ -34,7 +34,7 @@ public class SettingsPage : ContentPage
         _libraryGroup = new VerticalStackLayout
         {
             Spacing = AppLayout.GlassSectionGap,
-            Children = { GlassTheme.SectionLabel("LIBRARY"), CreateLibrarySourceCard(), CreateScrapingCard() }
+            Children = { GlassTheme.SectionLabel("LIBRARY"), CreateLibrarySourceCard(), CreateScrapingCard(), CreateTranslationCard() }
         };
 
         _appearanceGroup = new VerticalStackLayout
@@ -302,6 +302,70 @@ public class SettingsPage : ContentPage
                 GlassTheme.PillButton("Save & Rescan Library", AppFontSizes.BodyBold, accent: true, height: AppLayout.ButtonHeightDefault)
                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.SaveSettingsCommand))
                     .Invoke(b => b.Margin = new Thickness(0, 4, 0, 0))
+            }
+        });
+    }
+
+    private View CreateTranslationCard()
+    {
+        return CreateCard(new VerticalStackLayout
+        {
+            Spacing = AppLayout.SpacingExtraLarge,
+            Children =
+            {
+                CreateCardTitle("Translation"),
+                CreateCardCaption("Free Google/Bing chain by default. Switch to your own paid API key for better quality."),
+
+                CreateFormLabel("Provider"),
+
+                new Picker
+                {
+                    Title = "Select Translation Provider",
+                    ItemsSource = _viewModel.TranslationProviderOptions
+                }
+                .Bind(Picker.SelectedItemProperty, nameof(SettingsViewModel.TranslationProvider))
+                .AppThemeBinding(Picker.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
+                .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
+
+                new VerticalStackLayout
+                {
+                    Spacing = AppLayout.SpacingExtraLarge,
+                    Children =
+                    {
+                        CreateFormLabel("API Key"),
+                        new Entry { IsPassword = true, Placeholder = "DeepL key (ends with :fx) or your provider key" }
+                            .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationApiKey))
+                            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
+                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
+
+                        new VerticalStackLayout
+                        {
+                            Spacing = AppLayout.SpacingExtraLarge,
+                            Children =
+                            {
+                                CreateFormLabel("Custom Base URL"),
+                                new Entry { Placeholder = "e.g. https://api-free.deepl.com" }
+                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationCustomBaseUrl))
+                                    .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
+                                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark)
+                            }
+                        }
+                        .Bind(VisualElement.IsVisibleProperty, nameof(SettingsViewModel.IsCustomTranslationSelected))
+                    }
+                }
+                .Bind(VisualElement.IsVisibleProperty, nameof(SettingsViewModel.IsTranslationKeyVisible)),
+
+                new Label { FontSize = AppFontSizes.Caption, LineBreakMode = LineBreakMode.WordWrap }
+                    .Bind(Label.TextProperty, nameof(SettingsViewModel.SecureStorageWarning))
+                    .Bind(VisualElement.IsVisibleProperty, nameof(SettingsViewModel.IsSecureStorageWarningVisible))
+                    .AppThemeBinding(Label.TextColorProperty, AppColors.DangerLight, AppColors.DangerDark),
+
+                GlassTheme.PillButton("Test Translation", AppFontSizes.Body, accent: true)
+                    .Bind(Button.CommandProperty, nameof(SettingsViewModel.TestTranslationCommand))
+                    .Invoke(b => b.HorizontalOptions = LayoutOptions.Start),
+
+                CreateCardCaption(string.Empty)
+                    .Bind(Label.TextProperty, nameof(SettingsViewModel.TranslationStatus))
             }
         });
     }

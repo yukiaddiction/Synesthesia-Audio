@@ -48,6 +48,14 @@ public partial class AlbumViewModel : BaseViewModel
     private async Task Translate()
     {
         if (Album == null) return;
+
+        if (_translationService.RateLimitRemaining is { } pending)
+        {
+            await Shell.Current.DisplayAlert("Please wait",
+                $"Translation services are busy. Try again in {(int)Math.Ceiling(pending.TotalSeconds)} seconds.", "OK");
+            return;
+        }
+
         IsBusy = true;
         try
         {
@@ -58,7 +66,10 @@ public partial class AlbumViewModel : BaseViewModel
             OnPropertyChanged(nameof(Album));
             OnPropertyChanged(nameof(GenreTags));
 
-            if (_translationService.LastError != null)
+            if (_translationService.RateLimitRemaining is { } cooldown)
+                await Shell.Current.DisplayAlert("Please wait",
+                    $"Too many translations at once. Try again in {(int)Math.Ceiling(cooldown.TotalSeconds)} seconds.", "OK");
+            else if (_translationService.LastError != null)
                 await Shell.Current.DisplayAlert("Translation", _translationService.LastError, "OK");
         }
         catch (Exception ex)

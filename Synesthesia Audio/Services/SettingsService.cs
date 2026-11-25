@@ -1,16 +1,23 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Synesthesia_Audio.Models;
+using Synesthesia_Audio.Services.Storage;
 
 namespace Synesthesia_Audio.Services;
 
 public class SettingsService
 {
+    private const string CloudPasswordKey = "CloudPassword";
+    private const string TranslationApiKeyKey = "TranslationApiKey";
+
     private readonly string _settingsFilePath;
     private readonly ILogger<SettingsService> _logger;
+    private readonly ISecureStore _secureStore;
     private readonly object _passwordLoadLock = new();
     private readonly object _settingsLock = new();
+    private readonly object _apiKeyLoadLock = new();
     private Task? _passwordLoadTask;
+    private Task? _apiKeyLoadTask;
     private GeneralSettings _currentSettings = new();
     public GeneralSettings CurrentSettings
     {
@@ -18,9 +25,17 @@ public class SettingsService
         private set { lock (_settingsLock) _currentSettings = value; }
     }
 
-    public SettingsService(ILogger<SettingsService> logger)
+    /// <summary>Non-null when the platform could not persist a secret, so the UI can say so.</summary>
+    public string? SecureStoreWarning => _secureStore.LastError;
+
+    /// <summary>False when secrets are held for this session only.</summary>
+    public bool IsSecureStoragePersistent => _secureStore.IsPersistent;
+
+    public SettingsService(ILogger<SettingsService> logger, ISecureStore secureStore)
     {
         _logger = logger;
+        _secureStore = secureStore;
+
         string appDataDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         _settingsFilePath = Path.Combine(appDataDir, "SynesthesiaAudio_Settings.json");
         CurrentSettings = new GeneralSettings();
@@ -31,6 +46,7 @@ public class SettingsService
     {
         await LoadSettingsAsync().ConfigureAwait(false);
         await EnsurePasswordLoadedAsync().ConfigureAwait(false);
+        await EnsureApiKeyLoadedAsync().ConfigureAwait(false);
     }
 
     private async Task LoadSettingsAsync()
@@ -43,8 +59,8 @@ public class SettingsService
                 var settings = JsonSerializer.Deserialize<GeneralSettings>(json) ?? new GeneralSettings();
 
                 CurrentSettings = settings;
-                _logger.LogInformation("Settings loaded — storage: {Storage}, darkMode: {DarkMode}, basePath set: {HasPath}",
-                    settings.StorageType, settings.IsDarkMode, !string.IsNullOrEmpty(settings.BaseAudioFolderPath));
+                _logger.LogInformation("Settings loaded — storage: {Storage}, darkMode: {DarkMode}, basePath set: {HasPath}, translation: {Provider}",
+                    settings.StorageType, settings.IsDarkMode, !string.IsNullOrEmpty(settings.BaseAudioFolderPath), settings.TranslationProvider);
                 return;
             }
             catch (Exception ex)
@@ -68,7 +84,11 @@ public class SettingsService
                 StorageType = _currentSettings.StorageType,
                 CloudServerUrl = _currentSettings.CloudServerUrl,
                 CloudUsername = _currentSettings.CloudUsername,
-                CloudPassword = _currentSettings.CloudPassword
+                CloudPassword = _currentSettings.CloudPassword,
+                TranslationProvider = _currentSettings.TranslationProvider,
+                TranslationCustomBaseUrl = _currentSettings.TranslationCustomBaseUrl,
+                TranslationCustomAuthHeader = _currentSettings.TranslationCustomAuthHeader,
+                TranslationApiKey = _currentSettings.TranslationApiKey
             };
         }
     }
@@ -82,11 +102,20 @@ public class SettingsService
         }
     }
 
+    public Task EnsureApiKeyLoadedAsync()
+    {
+        lock (_apiKeyLoadLock)
+        {
+            _apiKeyLoadTask ??= LoadApiKeyAsync();
+            return _apiKeyLoadTask;
+        }
+    }
+
     private async Task LoadPasswordAsync()
     {
         try
         {
-            var password = await Microsoft.Maui.Storage.SecureStorage.Default.GetAsync("CloudPassword").ConfigureAwait(false);
+            var password = await _secureStore.GetAsync(CloudPasswordKey).ConfigureAwait(false);
             if (string.IsNullOrEmpty(CurrentSettings.CloudPassword))
             {
                 CurrentSettings.CloudPassword = password ?? string.Empty;
@@ -94,7 +123,23 @@ public class SettingsService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "LoadPasswordAsync: SecureStorage read failed");
+            _logger.LogWarning(ex, "LoadPasswordAsync: secure store read failed");
+        }
+    }
+
+    private async Task LoadApiKeyAsync()
+    {
+        try
+        {
+            var apiKey = await _secureStore.GetAsync(TranslationApiKeyKey).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(CurrentSettings.TranslationApiKey))
+            {
+                CurrentSettings.TranslationApiKey = apiKey ?? string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "LoadApiKeyAsync: secure store read failed");
         }
     }
 
@@ -106,10 +151,16 @@ public class SettingsService
         {
             _passwordLoadTask = Task.CompletedTask;
         }
-        _ = PersistPasswordAsync(settings.CloudPassword);
+        lock (_apiKeyLoadLock)
+        {
+            _apiKeyLoadTask = Task.CompletedTask;
+        }
+
+        _ = PersistSecretAsync(CloudPasswordKey, settings.CloudPassword);
+        _ = PersistSecretAsync(TranslationApiKeyKey, settings.TranslationApiKey);
 
         // serialize a clone instead of mutating the live settings object. the model has
-        // [JsonIgnore] on the password field, but we set it to empty here anyway just in
+        // [JsonIgnore] on the secret fields, but we set them to empty here anyway just in
         // case something bypasses the attribute.
         var clone = new GeneralSettings
         {
@@ -119,7 +170,11 @@ public class SettingsService
             StorageType = settings.StorageType,
             CloudServerUrl = settings.CloudServerUrl,
             CloudUsername = settings.CloudUsername,
-            CloudPassword = string.Empty
+            CloudPassword = string.Empty,
+            TranslationProvider = settings.TranslationProvider,
+            TranslationCustomBaseUrl = settings.TranslationCustomBaseUrl,
+            TranslationCustomAuthHeader = settings.TranslationCustomAuthHeader,
+            TranslationApiKey = string.Empty
         };
 
         var json = JsonSerializer.Serialize(clone);
@@ -131,19 +186,22 @@ public class SettingsService
         {
             _logger.LogError(ex, "SaveSettings: failed to write settings file");
         }
-        _logger.LogInformation("Settings saved — storage: {Storage}, darkMode: {DarkMode}, translateTags: {TranslateTags}",
-            settings.StorageType, settings.IsDarkMode, settings.TranslateDlsiteTags);
+        _logger.LogInformation("Settings saved — storage: {Storage}, darkMode: {DarkMode}, translateTags: {TranslateTags}, translation: {Provider}",
+            settings.StorageType, settings.IsDarkMode, settings.TranslateDlsiteTags, settings.TranslationProvider);
     }
 
-    private async Task PersistPasswordAsync(string password)
+    private async Task PersistSecretAsync(string key, string value)
     {
         try
         {
-            await Microsoft.Maui.Storage.SecureStorage.Default.SetAsync("CloudPassword", password).ConfigureAwait(false);
+            if (!await _secureStore.SetAsync(key, value).ConfigureAwait(false))
+            {
+                _logger.LogWarning("PersistSecretAsync: secure store rejected the write for {Key}", key);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "PersistPasswordAsync: SecureStorage write failed");
+            _logger.LogWarning(ex, "PersistSecretAsync: secure store write failed for {Key}", key);
         }
     }
 }
