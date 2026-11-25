@@ -50,12 +50,17 @@ public class WebDavCloudProvider : ICloudProvider
         }
     }
 
+    private bool _insecureUrlWarned;
+
     private void WarnIfInsecure(string serverUrl)
     {
-        if (!serverUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
-            _logger.LogWarning("WebDAV cloud server URL is not using HTTPS — credentials will be sent in plain text");
-        }
+        if (serverUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return;
+
+        // IsConfigured is read on every operation, so this used to warn on every call (PERF-12).
+        if (_insecureUrlWarned) return;
+        _insecureUrlWarned = true;
+
+        _logger.LogWarning("WebDAV cloud server URL is not using HTTPS — credentials will be sent in plain text");
     }
 
     /// <summary>

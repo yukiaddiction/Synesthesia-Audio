@@ -56,12 +56,28 @@ public class ScanStateService : IDisposable
         }
     }
 
+    /// <summary>
+    /// A copy, built field by field. This used to serialise and deserialise the whole state on every poll -
+    /// four times a second while a scan runs (PERF-12).
+    /// </summary>
     public ScanState Snapshot()
     {
         lock (_lock)
         {
-            var json = JsonSerializer.Serialize(_state);
-            return JsonSerializer.Deserialize<ScanState>(json) ?? new ScanState();
+            return new ScanState
+            {
+                Status = _state.Status,
+                Progress = _state.Progress,
+                ProgressText = _state.ProgressText,
+                WorksFound = _state.WorksFound,
+                TotalFiles = _state.TotalFiles,
+                FailedFolderCount = _state.FailedFolderCount,
+                FailedFolders = new List<string>(_state.FailedFolders),
+                ErrorMessage = _state.ErrorMessage,
+                StartedAt = _state.StartedAt,
+                FinishedAt = _state.FinishedAt,
+                AlertShown = _state.AlertShown
+            };
         }
     }
 

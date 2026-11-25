@@ -11,6 +11,9 @@ public class LibraryCacheService : IDisposable
     private readonly ILogger<LibraryCacheService> _logger;
     private readonly object _loadLock = new();
     private volatile ConcurrentDictionary<string, WorkMetadata> _cache = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>ProductId -> FolderPath. Without it, a lookup by RJ code scanned every cached work (PERF-03).</summary>
+    private readonly ConcurrentDictionary<string, string> _pathByProductId = new(StringComparer.OrdinalIgnoreCase);
     private Task? _loaded;
 
     public LibraryCacheService(ILogger<LibraryCacheService> logger)
@@ -55,7 +58,7 @@ public class LibraryCacheService : IDisposable
                 RepairMissingCover(work);
 
                 // TryAdd, never indexer: a work cached during the load is newer than the file copy.
-                _cache.TryAdd(work.FolderPath, work);
+                if (_cache.TryAdd(work.FolderPath, work)) IndexProductId(work);
             }
 
             _logger.LogInformation("Library cache loaded — {Count} works", _cache.Count);
@@ -109,9 +112,24 @@ public class LibraryCacheService : IDisposable
     public WorkMetadata? GetWorkByProductId(string productId)
     {
         if (string.IsNullOrEmpty(productId)) return null;
+
+        if (_pathByProductId.TryGetValue(productId, out var indexedPath) &&
+            _cache.TryGetValue(indexedPath, out var indexed))
+        {
+            return indexed;
+        }
+
+        // Fallback for a work cached before the index saw it in this process.
         return _cache.Values.FirstOrDefault(w =>
             !string.IsNullOrEmpty(w.ProductId) &&
             w.ProductId.Equals(productId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Keeps the ProductId index in step with the cache.</summary>
+    private void IndexProductId(WorkMetadata work)
+    {
+        if (string.IsNullOrEmpty(work.ProductId)) return;
+        _pathByProductId[work.ProductId] = work.FolderPath;
     }
 
     public List<WorkMetadata> GetAllWorks()
@@ -123,6 +141,7 @@ public class LibraryCacheService : IDisposable
     {
         if (work == null || string.IsNullOrEmpty(work.FolderPath)) return;
         _cache[work.FolderPath] = work;
+        IndexProductId(work);
         UpsertInStore(work);
     }
 
@@ -164,6 +183,8 @@ public class LibraryCacheService : IDisposable
             }
         }
         _cache = newCache;
+        _pathByProductId.Clear();
+        foreach (var work in newCache.Values) IndexProductId(work);
         _store.Replace(newCache.Values.ToList());
         SavePending();
     }
@@ -187,6 +208,15 @@ public class LibraryCacheService : IDisposable
         }
 
         _logger.LogInformation("RJ works cache reset — {Count} cached works removed", keysToRemove.Count);
+
+        // The index would otherwise keep pointing at removed works.
+        foreach (var key in keysToRemove)
+        {
+            foreach (var pair in _pathByProductId.Where(p => string.Equals(p.Value, key, StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                _pathByProductId.TryRemove(pair.Key, out _);
+            }
+        }
     }
 
     public void CleanAndReMapAllWorkGenres(TagMappingService tagMappingService)

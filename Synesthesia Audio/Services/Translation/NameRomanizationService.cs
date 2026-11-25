@@ -184,7 +184,8 @@ public sealed class NameRomanizationService
 
         NameReadingTable table;
 
-        var cached = TryGetCachedTable();
+        // Gzip decompression is synchronous and runs before the first await; keep it off the caller (PERF-12).
+        var cached = await Task.Run(TryGetCachedTable).ConfigureAwait(false);
         table = cached ?? await LoadBundledTableAsync().ConfigureAwait(false);
 
         var meta = await ReadMetaAsync().ConfigureAwait(false);

@@ -99,7 +99,20 @@ public partial class MainViewModel : BaseViewModel
         _logger.LogInformation("MainViewModel initialized — filter: {Filter}, sort: {Sort}", savedFilter, SortOption);
     }
 
-    partial void OnSearchTextChanged(string value) => ApplyFilters();
+    private Timer? _searchDebounceTimer;
+
+    /// <summary>
+    /// Debounced: filtering the whole library on every keystroke rebuilt the album list dozens of times while
+    /// typing, which is what made search feel heavy on a large library (PERF-06).
+    /// </summary>
+    partial void OnSearchTextChanged(string value)
+    {
+        lock (_scanPollLock)
+        {
+            _searchDebounceTimer ??= new Timer(_ => MainThread.BeginInvokeOnMainThread(ApplyFilters), null, Timeout.Infinite, Timeout.Infinite);
+            _searchDebounceTimer.Change(250, Timeout.Infinite);
+        }
+    }
     partial void OnSortOptionChanged(string value)
     {
         Preferences.Set("LastSortOption", value);
