@@ -63,6 +63,8 @@ public sealed class GlassNavItem : Border
         GestureRecognizers.Add(pointer);
 
         ToolTipProperties.SetText(this, text);
+        SemanticProperties.SetDescription(this, text);
+        if (onTap != null) SemanticProperties.SetHint(this, "Navigates to this section");
         SetActive(false);
     }
 

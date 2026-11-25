@@ -91,6 +91,14 @@ public partial class AudioService : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsVideoOverlayVisible))]
     private bool _isPlaying;
 
+    /// <summary>
+    /// Screen-reader label for the play/pause control. Binding the description to this keeps it true to the
+    /// current state instead of announcing "Play Pause" whatever is playing (UX-07).
+    /// </summary>
+    public string PlayPauseAccessibleName => IsPlaying ? "Pause" : "Play";
+
+    partial void OnIsPlayingChanged(bool value) => OnPropertyChanged(nameof(PlayPauseAccessibleName));
+
     [ObservableProperty]
     private bool _isBuffering;
 

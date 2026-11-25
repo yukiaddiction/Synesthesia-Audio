@@ -43,7 +43,7 @@ public class FloatingPlayerBar : Border
                 .Bind(Button.TextProperty, nameof(AudioService.IsPlaying), converter: new PlayPauseTextConverter())
                 .Bind(Button.CommandProperty, nameof(AudioService.TogglePlayCommand))
                 .Invoke(b => b.AutomationId = "PlayPauseButton")
-                .Invoke(b => SemanticProperties.SetDescription(b, "Play Pause"))
+                .Bind(SemanticProperties.DescriptionProperty, nameof(AudioService.PlayPauseAccessibleName))
                 .GlassPill(accent: true),
 
                 GlassTheme.IconButton("\u23ED", AppFontSizes.ButtonLarge, 32)

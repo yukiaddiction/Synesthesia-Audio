@@ -100,6 +100,11 @@ public class AlbumCardView : Border
         ToolTipProperties.SetText(this, string.Empty);
         SetBinding(ToolTipProperties.TextProperty, new Binding(nameof(WorkMetadata.Title)));
 
+        // The card is a tappable surface with no readable text of its own, so a screen reader had nothing to
+        // announce (UX-07). The title is already bound for the tooltip; bind it as the description too.
+        SetBinding(SemanticProperties.DescriptionProperty, new Binding(nameof(WorkMetadata.Title)));
+        SemanticProperties.SetHint(this, "Double tap to open the album");
+
         // Single tap previews on desktop and opens on compact; a double tap always opens.
         var singleTap = new TapGestureRecognizer { NumberOfTapsRequired = 1 };
         singleTap.Tapped += (sender, _) =>

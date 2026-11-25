@@ -42,12 +42,16 @@ public class MainPage : ContentPage
             .Bind(VisualElement.IsVisibleProperty, nameof(MainViewModel.HasFolderSelected))
             .Invoke(b => b.AutomationId = "SortButton");
         ToolTipProperties.SetText(sortButton, "Sort library");
+        SemanticProperties.SetDescription(sortButton, "Sort library");
+        SemanticProperties.SetHint(sortButton, "Opens the sort options");
 
         var rescanButton = GlassTheme.IconButton("\u27F3", AppFontSizes.ButtonLarge)
             .Bind(Button.CommandProperty, nameof(MainViewModel.ScanLibraryCommand))
             .Bind(VisualElement.IsVisibleProperty, nameof(MainViewModel.HasFolderSelected))
             .Invoke(b => b.AutomationId = "RescanButton");
         ToolTipProperties.SetText(rescanButton, "Rescan library");
+        SemanticProperties.SetDescription(rescanButton, "Rescan library");
+        SemanticProperties.SetHint(rescanButton, "Scans the selected folder again");
 
         scaffold.Actions.Add(sortButton);
         scaffold.Actions.Add(rescanButton);
@@ -62,6 +66,10 @@ public class MainPage : ContentPage
         .AppThemeBinding(SearchBar.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
         .AppThemeBinding(SearchBar.PlaceholderColorProperty, AppColors.TextTertiaryLight, AppColors.TextSecondaryDark);
 
+        // A screen reader announces the placeholder text only incidentally; the description says what the field
+        // is for (UX-07).
+        SemanticProperties.SetDescription(searchBar, "Search library");
+        SemanticProperties.SetHint(searchBar, "Filters albums by title as you type");
         var searchPill = new Border
         {
             StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassPillRadius },

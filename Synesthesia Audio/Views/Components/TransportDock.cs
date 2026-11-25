@@ -65,6 +65,7 @@ public sealed class TransportDock : Border
             .Bind(Button.CommandProperty, nameof(AudioService.PreviousTrackCommand))
             .Invoke(b => b.AutomationId = "DockPreviousButton");
         ToolTipProperties.SetText(previous, "Previous track");
+        SemanticProperties.SetDescription(previous, "Previous track");
 
         var playPause = new Button
         {
@@ -79,11 +80,13 @@ public sealed class TransportDock : Border
         .GlassPill(accent: true);
         playPause.AutomationId = "DockPlayPauseButton";
         ToolTipProperties.SetText(playPause, "Play / Pause");
+        playPause.Bind(SemanticProperties.DescriptionProperty, nameof(AudioService.PlayPauseAccessibleName));
 
         var next = GlassTheme.IconButton("\u23ED", AppFontSizes.ButtonLarge, 32)
             .Bind(Button.CommandProperty, nameof(AudioService.NextTrackCommand))
             .Invoke(b => b.AutomationId = "DockNextButton");
         ToolTipProperties.SetText(next, "Next track");
+        SemanticProperties.SetDescription(next, "Next track");
 
         var transport = new HorizontalStackLayout
         {
@@ -101,6 +104,8 @@ public sealed class TransportDock : Border
             ThumbColor = Colors.Transparent,
             AutomationId = "DockSeekSlider"
         }
+        .Invoke(s => SemanticProperties.SetDescription(s, "Playback position"))
+        .Invoke(s => SemanticProperties.SetHint(s, "Drag to seek within the track"))
         .Bind(Slider.ValueProperty, nameof(AudioService.PlaybackProgress), BindingMode.OneWay)
         .AppThemeBinding(Slider.MinimumTrackColorProperty, AppColors.SuccessLight, AppColors.PrimaryDark)
         .AppThemeBinding(Slider.MaximumTrackColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark)
@@ -124,6 +129,8 @@ public sealed class TransportDock : Border
             .Bind(Button.CommandProperty, nameof(AudioService.ToggleMuteCommand))
             .Invoke(b => b.AutomationId = "DockMuteButton");
         ToolTipProperties.SetText(mute, "Mute");
+        SemanticProperties.SetDescription(mute, "Mute");
+        SemanticProperties.SetHint(mute, "Toggles audio output on and off");
 
         var volumeSlider = new Slider
         {
@@ -139,6 +146,8 @@ public sealed class TransportDock : Border
         .AppThemeBinding(Slider.MinimumTrackColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
         .AppThemeBinding(Slider.MaximumTrackColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark);
         ToolTipProperties.SetText(volumeSlider, "Volume");
+        SemanticProperties.SetDescription(volumeSlider, "Volume");
+        SemanticProperties.SetHint(volumeSlider, "Adjusts playback volume");
 
         var loop = GlassTheme.IconButton(string.Empty, AppFontSizes.ButtonSmall, 32)
             .Bind(Button.TextProperty, nameof(AudioService.LoopModeText))
