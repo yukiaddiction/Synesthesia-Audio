@@ -307,6 +307,11 @@ public class ScanFolderService : IDisposable
         Report(0.15, $"Scan Library Found {totalFoundWorks} Work{(totalFoundWorks == 1 ? "" : "s")}, {totalFoundFiles} Audio File{(totalFoundFiles == 1 ? "" : "s")}");
         _logger.LogInformation("Scan discovery complete — {Folders} folders, {Files} files", totalFoundWorks, totalFoundFiles);
 
+        // Snapshot the translations the cache already holds. A metadata refresh rebuilds each work from
+        // scratch and calls UpdateWork before the track loop runs, so reading the cache afterwards found the
+        // freshly written (untranslated) work and every translated title was lost (BUG-m-05).
+        var previousTranslations = SnapshotCachedTranslations();
+
         var pendingWorks = new List<(WorkMetadata Work, string WorkPath, string? RjCode, List<string> Files)>();
         var readyWorks = new List<(WorkMetadata Work, List<string> Files)>();
         int failedMetadata = 0;
@@ -487,6 +492,14 @@ public class ScanFolderService : IDisposable
             var cachedWork = _cacheService.GetWork(workPath)
                           ?? _cacheService.GetWorkByProductId(work.ProductId);
 
+            var previous = previousTranslations.TryGetValue(workPath, out var snapshot) ? snapshot : null;
+
+            // A refreshed work comes back with no translated title when the fetch only produced the original.
+            if (string.IsNullOrEmpty(work.TranslatedTitle) && !string.IsNullOrEmpty(previous?.WorkTranslatedTitle))
+            {
+                work.TranslatedTitle = previous.WorkTranslatedTitle!;
+            }
+
             var subAlbumGroups = files.GroupBy(f =>
             {
                 var fileDir = isCloud ? GetCloudDirectoryName(f) : Path.GetDirectoryName(f);
@@ -507,11 +520,17 @@ public class ScanFolderService : IDisposable
                         .FirstOrDefault(sa => sa.Title.Equals(subGroup.Key, StringComparison.OrdinalIgnoreCase))?
                         .Tracks.FirstOrDefault(t => t.Title.Equals(trackTitle, StringComparison.OrdinalIgnoreCase));
 
+                    var translatedTitle = cachedTrack?.TranslatedTitle ?? string.Empty;
+                    if (translatedTitle.Length == 0 && previous != null)
+                    {
+                        translatedTitle = previous.GetTrackTranslation(subGroup.Key, trackTitle) ?? string.Empty;
+                    }
+
                     var track = new Track
                     {
                         Title = trackTitle,
                         FilePath = bestFile,
-                        TranslatedTitle = cachedTrack?.TranslatedTitle ?? string.Empty
+                        TranslatedTitle = translatedTitle
                     };
 
                     subAlbum.Tracks.Add(track);
@@ -609,6 +628,52 @@ public class ScanFolderService : IDisposable
                 work.CoverImagePath = localImages.First();
             }
         }
+    }
+
+    /// <summary>Translations recovered from the cache before a scan overwrites it.</summary>
+    private sealed class CachedTranslations
+    {
+        public string? WorkTranslatedTitle { get; init; }
+
+        private readonly Dictionary<string, string> _tracks = new(StringComparer.OrdinalIgnoreCase);
+
+        public bool IsEmpty => _tracks.Count == 0 && string.IsNullOrEmpty(WorkTranslatedTitle);
+
+        public void AddTrack(string subAlbumTitle, string trackTitle, string translated) =>
+            _tracks[Key(subAlbumTitle, trackTitle)] = translated;
+
+        public string? GetTrackTranslation(string subAlbumTitle, string trackTitle) =>
+            _tracks.TryGetValue(Key(subAlbumTitle, trackTitle), out var value) ? value : null;
+
+        private static string Key(string subAlbumTitle, string trackTitle) =>
+            subAlbumTitle + "\u0001" + trackTitle;
+    }
+
+    private Dictionary<string, CachedTranslations> SnapshotCachedTranslations()
+    {
+        var snapshot = new Dictionary<string, CachedTranslations>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var cached in _cacheService.GetAllWorks())
+        {
+            if (string.IsNullOrEmpty(cached.FolderPath)) continue;
+
+            var entry = new CachedTranslations { WorkTranslatedTitle = cached.TranslatedTitle };
+
+            foreach (var subAlbum in cached.SubAlbums)
+            {
+                foreach (var track in subAlbum.Tracks)
+                {
+                    if (!string.IsNullOrEmpty(track.TranslatedTitle))
+                    {
+                        entry.AddTrack(subAlbum.Title, track.Title, track.TranslatedTitle);
+                    }
+                }
+            }
+
+            if (!entry.IsEmpty) snapshot[cached.FolderPath] = entry;
+        }
+
+        return snapshot;
     }
 
     private string? GetCloudDirectoryName(string path)

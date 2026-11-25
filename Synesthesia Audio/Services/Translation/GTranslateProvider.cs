@@ -42,24 +42,24 @@ public sealed class GTranslateProvider : ITranslationProvider
         {
             _retryAfterHandler.Reset();
 
-            // Join on newlines so a list of tags costs one request instead of one per tag. When the
-            // service reflows the lines the count no longer matches, so fall back to per-item calls.
-            var combined = string.Join("\n", texts);
+            // Join on newlines so a list of tags costs one request instead of one per tag. Inputs are
+            // flattened first: a string that itself contains a newline would otherwise fake an extra item.
+            var sanitized = texts.Select(BatchTranslationSplitter.SanitizeInput).ToList();
+            var combined = string.Join("\n", sanitized);
+
             var result = await _translator
                 .TranslateAsync(combined, "en", "ja")
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            var lines = result.Translation
-                .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(line => line.Trim())
-                .Where(line => line.Length > 0)
-                .ToList();
+            // Exact-count alignment only: anything else falls back, because a misaligned reply would put one
+            // work's tag on another work.
+            var lines = BatchTranslationSplitter.TrySplit(result.Translation, texts.Count);
 
-            if (lines.Count == texts.Count) return lines;
+            if (lines != null) return lines.ToList();
 
-            _logger.LogDebug("GTranslate batch line count mismatch — expected {Expected}, got {Actual}, falling back to individual",
-                texts.Count, lines.Count);
+            _logger.LogDebug("GTranslate batch could not be aligned to {Expected} items, falling back to individual",
+                texts.Count);
 
             var results = new string[texts.Count];
             for (var i = 0; i < texts.Count; i++)
