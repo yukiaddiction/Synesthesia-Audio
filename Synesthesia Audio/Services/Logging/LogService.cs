@@ -98,7 +98,7 @@ public class LogService
         foreach (var f in files)
         {
             totalBytes += new FileInfo(f).Length;
-            try { totalLines += File.ReadAllLines(f).Length; } catch { }
+                try { totalLines += File.ReadAllLines(f).Length; } catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"LogService: could not count lines in {f}: {ex.Message}"); }
         }
 
         var sizeText = totalBytes < 1024 * 1024

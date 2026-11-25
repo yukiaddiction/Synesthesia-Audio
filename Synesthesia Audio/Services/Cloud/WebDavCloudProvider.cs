@@ -183,7 +183,24 @@ public class WebDavCloudProvider : ICloudProvider
             request.Headers.Add("Depth", "1");
             
             using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode) return fileList;
+
+            var statusCode = (int)response.StatusCode;
+
+            if (CloudStatusClassifier.IsAccessDenied(statusCode))
+            {
+                // Refusal is not emptiness: returning an empty list here made a wrong password look like an
+                // empty library, and the scan then cached that (PAT-05).
+                var message = CloudStatusClassifier.Describe(statusCode, response.ReasonPhrase);
+                _logger.LogWarning("WebDAV listing refused: {Message}", message);
+                throw new CloudAccessDeniedException(message);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var message = CloudStatusClassifier.Describe(statusCode, response.ReasonPhrase);
+                _logger.LogWarning("WebDAV listing failed: {Message}", message);
+                throw new CloudRequestFailedException(message);
+            }
 
             var xmlContent = await response.Content.ReadAsStringAsync();
             var doc = XDocument.Parse(xmlContent);
@@ -238,9 +255,13 @@ public class WebDavCloudProvider : ICloudProvider
                 });
             }
         }
+        catch (CloudAccessDeniedException) { throw; }
+        catch (CloudRequestFailedException) { throw; }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "ListFilesAsync failed for path: {Path}", path);
+            // A parse or transport failure must also reach the caller, otherwise it looks like an empty folder.
+            _logger.LogWarning(ex, "ListFilesAsync failed for path: {Path}", path);
+            throw new CloudRequestFailedException($"The folder could not be read: {ex.Message}", ex);
         }
 
         return fileList;

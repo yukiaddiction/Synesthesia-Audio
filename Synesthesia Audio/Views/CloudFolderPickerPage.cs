@@ -38,7 +38,7 @@ public class CloudFolderPickerPage : ContentPage
         cancelBtn.Clicked += async (_, _) =>
         {
             try { await Navigation.PopModalAsync(); }
-            catch { }
+            catch (Exception ex) { Services.Logging.AppLog.Get<CloudFolderPickerPage>().LogDebug(ex, "Closing the folder picker failed"); }
         };
         ToolbarItems.Add(cancelBtn);
 

@@ -298,7 +298,12 @@ internal class ArtworkCallback : global::Android.Support.V4.Media.Session.MediaC
                 .Build();
             session.SetMetadata(metadata);
         }
-        catch { }
+        catch (System.Exception ex)
+        {
+            // Was an empty catch: a failure here silently left the lock screen without artwork (PAT-05).
+            Synesthesia_Audio.Services.Logging.AppLog.Get<ArtworkCallback>()
+                .LogWarning(ex, "MediaSession: re-applying artwork failed");
+        }
     }
 }
 

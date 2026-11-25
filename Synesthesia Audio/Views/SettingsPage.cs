@@ -575,7 +575,7 @@ public class SettingsPage : ContentPage
         catch (Exception ex)
         {
             try { await Shell.Current.GoToAsync("//Library"); }
-            catch { }
+            catch (Exception fallbackEx) { Services.Logging.AppLog.Get<SettingsPage>().LogDebug(fallbackEx, "Fallback navigation to the library failed"); }
             Services.Logging.AppLog.Get<SettingsPage>().LogWarning(ex, "Back navigation failed");
         }
     }

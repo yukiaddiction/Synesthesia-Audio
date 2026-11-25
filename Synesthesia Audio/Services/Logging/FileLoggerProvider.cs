@@ -16,8 +16,10 @@ public class FileLoggerProvider : ILoggerProvider
     {
         foreach (var logger in _loggers.Values)
         {
+            // A provider being torn down must not throw, and it has no working logger to report through;
+            // the only honest destination left is the debug output (PAT-05).
             try { logger.Dispose(); }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"FileLoggerProvider: disposing a logger failed: {ex.Message}"); }
         }
         _loggers.Clear();
     }
