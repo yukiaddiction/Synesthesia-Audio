@@ -312,6 +312,19 @@ public partial class AudioService : ObservableObject, IDisposable
             _logger.LogWarning(ex, "Resetting platform playback state during detach failed");
         }
 
+#if ANDROID
+        // The Android process outlives the Activity, so the media-session statics have to be cleared here;
+        // otherwise the next window's session is never wrapped and its next/previous buttons are dead.
+        try
+        {
+            Platforms.Android.MediaSessionHelper.ResetSession();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Resetting the Android media session during detach failed");
+        }
+#endif
+
         // Remember where we were so reopening the window can offer to resume.
         SaveSession();
     }

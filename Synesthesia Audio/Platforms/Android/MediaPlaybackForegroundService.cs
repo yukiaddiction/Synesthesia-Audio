@@ -78,22 +78,10 @@ public class MediaPlaybackForegroundService : Service
             {
                 var audioService = IPlatformApplication.Current?.Services?.GetService<Synesthesia_Audio.Services.AudioService>();
                 var coverPath = audioService?.CurrentTrack?.CoverImagePath;
-                if (!string.IsNullOrEmpty(coverPath) && System.IO.File.Exists(coverPath))
+                var bitmap = LoadArtworkBitmap(coverPath);
+                if (bitmap != null)
                 {
-                    var bitmap = global::Android.Graphics.BitmapFactory.DecodeFile(coverPath);
-                    if (bitmap != null)
-                    {
-                        builder.SetLargeIcon(bitmap);
-                        var mediaSession = MediaSessionHelper.CurrentSession;
-                        if (mediaSession?.Controller?.Metadata != null)
-                        {
-                            var metadata = new global::Android.Support.V4.Media.MediaMetadataCompat.Builder(mediaSession.Controller.Metadata)
-                                .PutBitmap(global::Android.Support.V4.Media.MediaMetadataCompat.MetadataKeyArt, bitmap)
-                                .PutBitmap(global::Android.Support.V4.Media.MediaMetadataCompat.MetadataKeyAlbumArt, bitmap)
-                                .Build();
-                            mediaSession.SetMetadata(metadata);
-                        }
-                    }
+                    builder.SetLargeIcon(bitmap);
                 }
             }
             catch (System.Exception ex)
@@ -210,41 +198,106 @@ public class MediaPlaybackForegroundService : Service
 
     public static void UpdateNotification()
     {
+        // One decode per track change, not three: this used to decode the same full-resolution cover
+        // immediately and again at 500 ms and 1200 ms.
         SetArtworkOnMediaSession();
-        _ = RetryArtworkAsync(500);
-        _ = RetryArtworkAsync(1200);
     }
 
-    private static async Task RetryArtworkAsync(int delayMs)
+    private static readonly object _artworkLock = new();
+    private static string _cachedArtworkPath = string.Empty;
+    private static global::Android.Graphics.Bitmap? _cachedArtwork;
+
+    /// <summary>
+    /// Decodes a cover at a bounded size for the notification, cacheing it for the current track.
+    /// Decoding at full resolution on the UI thread caused jank, and a bitmap over the binder limit threw
+    /// <c>TransactionTooLargeException</c> — which the caller swallowed, so no artwork appeared at all.
+    /// </summary>
+    internal static global::Android.Graphics.Bitmap? LoadArtworkBitmap(string? path, int maxPixels = 512)
     {
-        await Task.Delay(delayMs);
-        SetArtworkOnMediaSession();
+        if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+
+        lock (_artworkLock)
+        {
+            if (_cachedArtwork != null && !_cachedArtwork.IsRecycled &&
+                string.Equals(_cachedArtworkPath, path, System.StringComparison.Ordinal))
+            {
+                return _cachedArtwork;
+            }
+
+            try
+            {
+                // First pass reads the dimensions only, so the second pass can subsample instead of
+                // allocating a full-size bitmap just to throw it away.
+                var bounds = new global::Android.Graphics.BitmapFactory.Options { InJustDecodeBounds = true };
+                global::Android.Graphics.BitmapFactory.DecodeFile(path, bounds);
+
+                var options = new global::Android.Graphics.BitmapFactory.Options
+                {
+                    InSampleSize = CalculateArtworkSampleSize(bounds.OutWidth, bounds.OutHeight, maxPixels)
+                };
+
+                var bitmap = global::Android.Graphics.BitmapFactory.DecodeFile(path, options);
+                if (bitmap == null)
+                {
+                    Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
+                        .LogWarning("Artwork decode returned no bitmap for {Path}", path);
+                    return null;
+                }
+
+                _cachedArtwork = bitmap;
+                _cachedArtworkPath = path;
+                return bitmap;
+            }
+            catch (System.Exception ex)
+            {
+                Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
+                    .LogWarning(ex, "Artwork decode failed for {Path}", path);
+                return null;
+            }
+        }
     }
 
-    private static void SetArtworkOnMediaSession()
+    private static int CalculateArtworkSampleSize(int width, int height, int maxPixels)
+    {
+        if (width <= 0 || height <= 0 || maxPixels <= 0) return 1;
+
+        var sample = 1;
+        while (width / sample > maxPixels || height / sample > maxPixels)
+        {
+            sample *= 2;
+        }
+        return sample;
+    }
+
+    private static void SetArtworkOnMediaSession() => _ = SetArtworkOnMediaSessionAsync();
+
+    private static async Task SetArtworkOnMediaSessionAsync()
     {
         try
         {
             var audioService = IPlatformApplication.Current?.Services?.GetService<Synesthesia_Audio.Services.AudioService>();
             var coverPath = audioService?.CurrentTrack?.CoverImagePath;
-            if (!string.IsNullOrEmpty(coverPath) && System.IO.File.Exists(coverPath))
-            {
-                var bitmap = global::Android.Graphics.BitmapFactory.DecodeFile(coverPath);
-                if (bitmap != null)
-                {
-                    var mediaSession = MediaSessionHelper.CurrentSession;
-                    if (mediaSession?.Controller?.Metadata != null)
-                    {
-                        var metadata = new global::Android.Support.V4.Media.MediaMetadataCompat.Builder(mediaSession.Controller.Metadata)
-                            .PutBitmap(global::Android.Support.V4.Media.MediaMetadataCompat.MetadataKeyArt, bitmap)
-                            .PutBitmap(global::Android.Support.V4.Media.MediaMetadataCompat.MetadataKeyAlbumArt, bitmap)
-                            .Build();
-                        mediaSession.SetMetadata(metadata);
-                    }
-                }
-            }
+            if (string.IsNullOrEmpty(coverPath)) return;
+
+            // Decoding happens off the UI thread; InSampleSize keeps the bitmap small enough for the binder.
+            var bitmap = await Task.Run(() => LoadArtworkBitmap(coverPath)).ConfigureAwait(false);
+            if (bitmap == null) return;
+
+            var mediaSession = MediaSessionHelper.CurrentSession;
+            if (mediaSession?.Controller?.Metadata == null) return;
+
+            var metadata = new global::Android.Support.V4.Media.MediaMetadataCompat.Builder(mediaSession.Controller.Metadata)
+                .PutBitmap(global::Android.Support.V4.Media.MediaMetadataCompat.MetadataKeyArt, bitmap)
+                .PutBitmap(global::Android.Support.V4.Media.MediaMetadataCompat.MetadataKeyAlbumArt, bitmap)
+                .Build();
+            mediaSession.SetMetadata(metadata);
         }
-        catch { }
+        catch (System.Exception ex)
+        {
+            // Previously an empty catch: a failure left the notification with no artwork and no trace.
+            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
+                .LogWarning(ex, "Media session artwork update failed");
+        }
     }
 }
 #endif

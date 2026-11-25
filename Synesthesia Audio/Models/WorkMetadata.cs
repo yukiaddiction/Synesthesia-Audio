@@ -30,6 +30,9 @@ public class WorkMetadata
     /// </summary>
     public bool NeedsMetadataRefresh { get; set; }
 
-    [JsonIgnore]
+    /// <summary>
+    /// The remote cover URL, persisted so a deleted or cache-cleared cover can be downloaded again without
+    /// scraping the page.
+    /// </summary>
     public string CoverUrl { get; set; } = string.Empty;
 }

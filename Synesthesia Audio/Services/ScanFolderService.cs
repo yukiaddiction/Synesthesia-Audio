@@ -407,6 +407,9 @@ public class ScanFolderService : IDisposable
 
                             if (!string.IsNullOrEmpty(meta.CoverUrl))
                             {
+                                // Remembered so the cover can be re-downloaded later without scraping again.
+                                work.CoverUrl = meta.CoverUrl;
+
                                 var localCoverPath = GetLocalCoverCachePath(workPath, rjCode!);
                                 try
                                 {
@@ -526,6 +529,13 @@ public class ScanFolderService : IDisposable
 
             if (work.SubAlbums.Any())
             {
+                // A unit whose cover file was deleted (or cleared by the OS) gets it back here, without a
+                // full "Reset RJ cache" and without re-scraping the page.
+                if (await TryRestoreCachedCoverAsync(work, workPath))
+                {
+                    _logger.LogInformation("Restored missing cover for {Title}", work.Title);
+                }
+
                 finalWorks.Add(work);
                 _cacheService.UpdateWork(work);
             }
@@ -767,15 +777,63 @@ public class ScanFolderService : IDisposable
 
     private string GetLocalCoverCachePath(string workPath, string? productId)
     {
+        // Covers live under AppData, not Cache. The OS may clear the cache directory at any time, and a
+        // cleared cover used to leave the cached work with an empty path and no way to fetch it again.
+        var coversDirectory = Path.Combine(FileSystem.AppDataDirectory, "covers");
+        Directory.CreateDirectory(coversDirectory);
+
         if (!string.IsNullOrEmpty(productId))
         {
-            return Path.Combine(FileSystem.CacheDirectory, $"{productId}_cover.jpg");
+            return Path.Combine(coversDirectory, $"{productId}_cover.jpg");
         }
         else
         {
             var cleanPath = string.Concat(workPath.Split(Path.GetInvalidFileNameChars()));
             if (cleanPath.Length > 50) cleanPath = cleanPath.Substring(cleanPath.Length - 50);
-            return Path.Combine(FileSystem.CacheDirectory, $"cover_{cleanPath}.jpg");
+            return Path.Combine(coversDirectory, $"cover_{cleanPath}.jpg");
+        }
+    }
+
+    /// <summary>
+    /// Re-downloads the cover of an already-cached work whose image file has gone. Only the cover is
+    /// refetched — the metadata is kept and the page is not scraped again — so this costs one request and
+    /// needs no DLsite access.
+    /// </summary>
+    private async Task<bool> TryRestoreCachedCoverAsync(WorkMetadata work, string workPath)
+    {
+        if (!string.IsNullOrEmpty(work.CoverImagePath) && File.Exists(work.CoverImagePath))
+            return false;
+
+        // A remote URL in CoverImagePath is still usable; only a missing local file is a problem.
+        if (!string.IsNullOrEmpty(work.CoverImagePath) &&
+            work.CoverImagePath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        work.CoverImagePath = string.Empty;
+
+        if (string.IsNullOrEmpty(work.CoverUrl)) return false;
+
+        var localCoverPath = GetLocalCoverCachePath(workPath, work.ProductId);
+        try
+        {
+            using var response = await _httpClient.GetAsync(work.CoverUrl);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogDebug("Cover re-download for {ProductId} returned {Status}", work.ProductId, (int)response.StatusCode);
+                return false;
+            }
+
+            await using var stream = new FileStream(localCoverPath, FileMode.Create, FileAccess.Write);
+            await response.Content.CopyToAsync(stream);
+            work.CoverImagePath = localCoverPath;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Cover re-download failed for {ProductId}", work.ProductId);
+            return false;
         }
     }
 

@@ -201,7 +201,49 @@ internal static class MediaSessionHelper
             _artworkCallback = new ArtworkCallback();
             session.Controller.RegisterCallback(_artworkCallback);
         }
-        catch { }
+        catch (System.Exception ex)
+        {
+            Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(ex, "MediaSession: artwork callback registration failed");
+        }
+    }
+
+    /// <summary>
+    /// Forgets the wrapped player, the session and the artwork callback when the media element goes away.
+    ///
+    /// The Android process outlives the Activity, so these statics survived a re-creation. The stale
+    /// <see cref="_wrapped"/> flag then made <see cref="TryWrapSessionPlayer"/> return immediately, so the
+    /// re-created session was never wrapped, its next/previous buttons went dead, and the old released
+    /// session stayed referenced along with a callback still registered on it.
+    /// </summary>
+    internal static void ResetSession()
+    {
+        try
+        {
+            var session = CurrentSession;
+            if (session != null && _artworkCallback != null)
+            {
+                try
+                {
+                    session.Controller.UnregisterCallback(_artworkCallback);
+                }
+                catch (System.Exception ex)
+                {
+                    Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(ex, "MediaSession: artwork callback unregistration failed");
+                }
+            }
+
+            _artworkCallback = null;
+            CurrentSession = null;
+            _wrapped = false;
+            _lastAlbumFolderPath = string.Empty;
+
+            Synesthesia_Audio.Services.Logging.AppLog.Get<Log>()
+                .LogInformation("MediaSession: session state reset for the next window");
+        }
+        catch (System.Exception ex)
+        {
+            Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(ex, "MediaSession: reset failed");
+        }
     }
 }
 
