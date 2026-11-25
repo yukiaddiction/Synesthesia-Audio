@@ -41,21 +41,15 @@ public class DLsiteService
     private static volatile bool _nonProductPageWarned;
     private static readonly ConcurrentDictionary<string, Task> _englishTagFetches = new();
 
-    public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, NameRomanizationService nameRomanization, SettingsService settingsService, ILogger<DLsiteService> logger)
+    public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, NameRomanizationService nameRomanization, SettingsService settingsService, IHttpClientFactory httpClientFactory, ILogger<DLsiteService> logger)
     {
         _tagMappingService = tagMappingService;
         _translationService = translationService;
         _nameRomanization = nameRomanization;
         _settingsService = settingsService;
         _logger = logger;
-        var handler = new SocketsHttpHandler { MaxConnectionsPerServer = 16 };
-        _httpClient = new HttpClient(handler);
-        _httpClient.DefaultRequestHeaders.Add("User-Agent", DefaultUserAgent);
-        _httpClient.DefaultRequestHeaders.Add("Accept-Language", "ja,en-US;q=0.9,en;q=0.8");
-        _httpClient.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
-        _httpClient.DefaultRequestHeaders.Add("Referer", "https://www.dlsite.com/");
-        _httpClient.DefaultRequestHeaders.Add("Cookie", AgeGateCookie);
-        _httpClient.Timeout = TimeSpan.FromSeconds(AppConstants.DlsiteClientTimeoutSeconds);
+        // Headers, timeout and handler now come from the named client registration (DUP-02 / OVR-05).
+        _httpClient = httpClientFactory.CreateClient(HttpClients.DLsite);
     }
 
     public static void ResetUnreachableAlert() => _dlsiteUnreachableAlerted = false;

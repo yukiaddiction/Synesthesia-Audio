@@ -53,12 +53,38 @@ public static class MauiProgram
         builder.Services.AddSingleton<SettingsService>();
         builder.Services.AddSingleton<TagMappingService>();
         builder.Services.AddSingleton<LibraryCacheService>();
-        builder.Services.AddSingleton<HttpClientFactory>();
-        builder.Services.AddSingleton<HttpClient>(sp =>
+        // Named clients (DUP-02 / OVR-05). Each service asks for its purpose by name, so the timeout, headers and
+        // handler chain for that purpose live in exactly one place, and the handler pools last the process
+        // lifetime instead of being rebuilt per service instance.
+        builder.Services.AddHttpClient(HttpClients.DLsite, client =>
         {
-            var factory = sp.GetRequiredService<HttpClientFactory>();
-            return factory.GetOrCreate("translation", () => new HttpClient());
+            client.Timeout = TimeSpan.FromSeconds(AppConstants.DlsiteClientTimeoutSeconds);
+            client.DefaultRequestHeaders.Add("User-Agent", DLsiteService.DefaultUserAgent);
+            client.DefaultRequestHeaders.Add("Accept-Language", "ja,en-US;q=0.9,en;q=0.8");
+            client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+            client.DefaultRequestHeaders.Add("Referer", "https://www.dlsite.com/");
+            // The age gate is a cookie, not a flag: without it DLsite answers with the interstitial page.
+            client.DefaultRequestHeaders.Add("Cookie", "age_check_done=1; adultchecked=1; work_view_mode=2;");
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { MaxConnectionsPerServer = 16 });
+
+        builder.Services.AddHttpClient(HttpClients.Translation, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(AppConstants.TranslationRequestTimeoutSeconds);
+        }).AddHttpMessageHandler<RetryAfterCaptureHandler>();
+
+        builder.Services.AddHttpClient(HttpClients.Cover, client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
+            client.DefaultRequestHeaders.Add("User-Agent", DLsiteService.DefaultUserAgent);
         });
+
+        builder.Services.AddHttpClient(HttpClients.NameData, client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(5);
+            client.DefaultRequestHeaders.Add("User-Agent", DLsiteService.DefaultUserAgent);
+        });
+
+        builder.Services.AddSingleton<RetryAfterCaptureHandler>();
         builder.Services.AddSingleton<ITranslationService, TranslationService>();
         builder.Services.AddSingleton<NameRomanizationService>();
         builder.Services.AddSingleton<KawazuKanjiRomanizer>();

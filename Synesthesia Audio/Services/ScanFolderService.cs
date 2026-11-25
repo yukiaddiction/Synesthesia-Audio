@@ -16,10 +16,10 @@ public class ScanFolderService : IDisposable
     private readonly SettingsService _settingsService;
     private readonly ScanStateService _scanStateService;
     private readonly Services.Cloud.ICloudProvider _cloudProvider;
-    private readonly HttpClient _httpClient = new();
+    private readonly HttpClient _httpClient;
     private readonly ILogger<ScanFolderService> _logger;
 
-    public ScanFolderService(DLsiteService dlsiteService, LibraryCacheService cacheService, SettingsService settingsService, ScanStateService scanStateService, Services.Cloud.ICloudProvider cloudProvider, ILogger<ScanFolderService> logger)
+    public ScanFolderService(DLsiteService dlsiteService, LibraryCacheService cacheService, SettingsService settingsService, ScanStateService scanStateService, Services.Cloud.ICloudProvider cloudProvider, IHttpClientFactory httpClientFactory, ILogger<ScanFolderService> logger)
     {
         _dlsiteService = dlsiteService;
         _cacheService = cacheService;
@@ -27,6 +27,7 @@ public class ScanFolderService : IDisposable
         _scanStateService = scanStateService;
         _cloudProvider = cloudProvider;
         _logger = logger;
+        _httpClient = httpClientFactory.CreateClient(HttpClients.Cover);
     }
 
     /// <summary>
@@ -945,8 +946,12 @@ public class ScanFolderService : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Does not dispose the HTTP client: it comes from <c>IHttpClientFactory</c>, which owns its lifetime, and
+    /// disposing a factory client here would leave this singleton holding a disposed one for the rest of the
+    /// process (DUP-02).
+    /// </summary>
     public void Dispose()
     {
-        _httpClient.Dispose();
     }
 }

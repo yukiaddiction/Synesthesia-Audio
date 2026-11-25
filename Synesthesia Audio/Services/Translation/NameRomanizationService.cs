@@ -33,7 +33,7 @@ public sealed class NameRomanizationService
     private readonly ILogger<NameRomanizationService> _logger;
     private readonly ITranslationService _translationService;
     private readonly KawazuKanjiRomanizer _kawazu;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
+    private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private Task<NameRomanizer>? _loadTask;
@@ -94,11 +94,12 @@ public sealed class NameRomanizationService
         }
     }
 
-    public NameRomanizationService(ILogger<NameRomanizationService> logger, ITranslationService translationService, KawazuKanjiRomanizer kawazu)
+    public NameRomanizationService(ILogger<NameRomanizationService> logger, ITranslationService translationService, KawazuKanjiRomanizer kawazu, IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
         _translationService = translationService;
         _kawazu = kawazu;
+        _httpClient = httpClientFactory.CreateClient(HttpClients.NameData);
     }
 
     /// <summary>Creation date of the name data actually in use.</summary>

@@ -25,13 +25,18 @@ public sealed class KawazuKanjiRomanizer
         "https://github.com/yukiaddiction/Synesthesia-Audio/releases/download/names-data/name_readings.meta.json";
 
     private readonly ILogger<KawazuKanjiRomanizer> _logger;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromMinutes(5) };
+    private readonly HttpClient _httpClient;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private KawazuConverter? _converter;
     private bool _attempted;
 
-    public KawazuKanjiRomanizer(ILogger<KawazuKanjiRomanizer> logger) => _logger = logger;
+    public KawazuKanjiRomanizer(ILogger<KawazuKanjiRomanizer> logger, IHttpClientFactory httpClientFactory)
+    {
+        _logger = logger;
+        // Large dictionaries: the long timeout comes from the named registration (DUP-02).
+        _httpClient = httpClientFactory.CreateClient(HttpClients.NameData);
+    }
 
     public bool IsReady => _converter is not null;
 

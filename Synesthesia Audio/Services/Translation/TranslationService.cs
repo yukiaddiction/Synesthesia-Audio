@@ -27,15 +27,13 @@ public sealed class TranslationService : ITranslationService
 
     public void ClearError() => Volatile.Write(ref _lastError, null);
 
-    public TranslationService(SettingsService settingsService, ILogger<TranslationService> logger)
+    public TranslationService(SettingsService settingsService, IHttpClientFactory httpClientFactory, ILogger<TranslationService> logger)
     {
         _settingsService = settingsService;
         _logger = logger;
 
-        _httpClient = new HttpClient(_retryAfterHandler)
-        {
-            Timeout = TimeSpan.FromSeconds(AppConstants.TranslationRequestTimeoutSeconds)
-        };
+        // Timeout and the Retry-After handler come from the named registration (DUP-02 / OVR-05).
+        _httpClient = httpClientFactory.CreateClient(HttpClients.Translation);
     }
 
     public bool ContainsJapanese(string text) =>
