@@ -112,6 +112,10 @@ public class MediaPlaybackForegroundService : Service
             Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>().LogError(ex, "ForegroundService: OnStartCommand failed");
             try
             {
+                // This service is started with startForegroundService, so Android requires a startForeground()
+                // call even on the failure path. Stopping without it raises RemoteServiceException — an app
+                // crash instead of a quiet stop (BUG-m-23).
+                StartForeground(NOTIFICATION_ID, BuildFallbackNotification());
                 StopSelf();
             }
             catch (System.Exception stopEx)
@@ -144,6 +148,19 @@ public class MediaPlaybackForegroundService : Service
         }
         base.OnDestroy();
     }
+
+    /// <summary>
+    /// The bare minimum notification Android requires when a startForegroundService() service has to stop
+    /// from its own failure path.
+    /// </summary>
+    private Notification BuildFallbackNotification() =>
+        new NotificationCompat.Builder(this, CHANNEL_ID)
+            .SetContentTitle("Synesthesia Audio")
+            .SetContentText("Playback service stopped")
+            .SetSmallIcon(Resource.Mipmap.appicon)
+            .SetPriority(NotificationCompat.PriorityLow)
+            .SetOngoing(false)
+            .Build();
 
     private void CreateNotificationChannel()
     {

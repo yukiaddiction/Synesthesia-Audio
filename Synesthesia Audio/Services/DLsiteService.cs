@@ -136,6 +136,10 @@ public class DLsiteService
 
         if (response == null || !response.IsSuccessStatusCode)
         {
+            // The previous attempt's response is about to be forgotten; without this it leaked its socket
+            // and buffered body on every fallback hop (BUG-m-23).
+            response?.Dispose();
+
             url = $"https://www.dlsite.com/maniax/work/=/product_id/{rjCode}.html";
             try
             {
@@ -147,6 +151,8 @@ public class DLsiteService
 
         if (response == null || !response.IsSuccessStatusCode)
         {
+            response?.Dispose();
+
             url = $"https://www.dlsite.com/home/work/=/product_id/{rjCode}.html";
             try
             {
@@ -176,21 +182,31 @@ public class DLsiteService
                         "OK");
                 });
             }
+
+            // The final attempt's response is never read on this path, so release it here (BUG-m-23).
+            response?.Dispose();
             return ("", "", "", "", "", AgeRatings.Unknown, "");
         }
 
+        // Reached again only by a later successful fetch, so the outage alert can fire for a new outage.
         _dlsiteUnreachableAlerted = false;
 
         try
         {
+            var statusCode = (int)response.StatusCode;
             var html = await response.Content.ReadAsStringAsync();
+
+            // The body is fully buffered now, so release the response instead of leaving it to the GC: the
+            // fallback chain allocated one HttpResponseMessage per attempt (BUG-m-23).
+            response.Dispose();
+
             var raw = DLsiteParser.ParseWorkPageHtml(html, url);
 
             // The JSON endpoints gate on TitleFound; the HTML fallback did not, so a blocked or
             // consent page was stored as a work titled "DLsite" with every other field empty.
             if (!raw.TitleFound)
             {
-                var detail = $"HTTP {(int)response.StatusCode}, <title>='{DLsiteParser.ExtractDocumentTitle(html)}', og:title='{raw.ParsedTitle}', {DescribeFields(raw)}";
+                var detail = $"HTTP {statusCode}, <title>='{DLsiteParser.ExtractDocumentTitle(html)}', og:title='{raw.ParsedTitle}', {DescribeFields(raw)}";
 
                 // One warning per scan; the rest stay at Information so the log stays readable.
                 if (!_nonProductPageWarned)

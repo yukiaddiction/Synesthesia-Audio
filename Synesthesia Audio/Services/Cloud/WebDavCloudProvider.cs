@@ -253,13 +253,24 @@ public class WebDavCloudProvider : ICloudProvider
 
         var targetUrl = BuildFileUrl(conn.NormalizedServerUrl, path);
 
-        var request = new HttpRequestMessage(HttpMethod.Get, targetUrl);
+        using var request = new HttpRequestMessage(HttpMethod.Get, targetUrl);
         request.Headers.Authorization = await BuildAuthHeaderAsync(conn);
 
         var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-        response.EnsureSuccessStatusCode();
-        var stream = await response.Content.ReadAsStreamAsync();
-        return new ResponseWrappingStream(stream, response);
+
+        try
+        {
+            response.EnsureSuccessStatusCode();
+            var stream = await response.Content.ReadAsStreamAsync();
+            return new ResponseWrappingStream(stream, response);
+        }
+        catch
+        {
+            // The caller receives an exception, so nothing downstream will dispose this response — it used
+            // to be leaked along with its connection whenever the status was not a success (BUG-m-23).
+            response.Dispose();
+            throw;
+        }
     }
 
     private sealed class ResponseWrappingStream : Stream
