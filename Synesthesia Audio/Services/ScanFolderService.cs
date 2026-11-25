@@ -131,92 +131,118 @@ public class ScanFolderService : IDisposable
 
         foreach (var (path, folderName) in newFolders)
         {
-            var match = Regex.Match(folderName, @"(RJ\d{6,8})", RegexOptions.IgnoreCase);
-            string? rjCode = match.Success ? match.Groups[1].Value.ToUpper() : null;
-
-            var work = new WorkMetadata
+            // One unreadable folder must not abandon the rest of the check (BUG-m-06).
+            try
             {
-                FolderPath = path,
-                Title = folderName,
-                AgeRating = AgeRatings.Unknown
-            };
-
-            if (rjCode != null)
-            {
-                var cachedByRj = _cacheService.GetWorkByProductId(rjCode);
-                if (cachedByRj != null)
-                {
-                    work.Title = cachedByRj.Title;
-                    work.TranslatedTitle = cachedByRj.TranslatedTitle;
-                    work.CoverImagePath = cachedByRj.CoverImagePath;
-                    work.Circle = cachedByRj.Circle;
-                    work.VA = cachedByRj.VA;
-                    work.AgeRating = cachedByRj.AgeRating;
-                    work.ProductId = cachedByRj.ProductId;
-                    work.Genre = cachedByRj.Genre;
-                }
-                else
-                {
-                    work.ProductId = rjCode;
-                    var meta = await FetchDlsiteMetadataAsync(rjCode, path);
-                    work.Title = !string.IsNullOrEmpty(meta.Title) ? meta.Title : folderName;
-                    work.TranslatedTitle = meta.TranslatedTitle ?? "";
-                    work.Circle = meta.Circle ?? "Unknown Circle";
-                    work.VA = meta.VA ?? "";
-                    work.AgeRating = meta.AgeRating ?? AgeRatings.Unknown;
-                    work.Genre = meta.Genre ?? "";
-                    work.CoverImagePath = meta.CoverImagePath ?? "";
-                }
-            }
-
-            List<string> audioFiles;
-            if (isCloud)
-            {
-                try
-                {
-                    var cloudItems = await _cloudProvider.ListFilesAsync(path);
-                    audioFiles = cloudItems
-                        .Where(i => !i.IsDirectory)
-                        .Select(i => i.Path)
-                        .Where(f => AppConstants.IsMediaFile(f) && !AppConstants.IsSystemFileOrDir(f))
-                        .ToList();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "CheckForNewWorks: cloud audio listing failed for {Path}", path);
-                    continue;
-                }
-            }
-            else
-            {
-                audioFiles = Directory.EnumerateFiles(path, "*.*", SearchOption.TopDirectoryOnly)
-                    .Where(f => AppConstants.IsMediaFile(f))
-                    .ToList();
-            }
-
-            if (audioFiles.Count > 0)
-            {
-                var subAlbum = new SubAlbum { Title = "Main", FolderPath = path };
-                var tracks = audioFiles
-                    .OrderBy(f => f)
-                    .Select(f => new Track
-                    {
-                        Title = isCloud
-                            ? Path.GetFileNameWithoutExtension(GetCloudFileName(f))
-                            : Path.GetFileNameWithoutExtension(f),
-                        FilePath = f
-                    });
-
-                foreach (var t in tracks) subAlbum.Tracks.Add(t);
-                work.SubAlbums.Add(subAlbum);
+                var work = await TryCreateWorkFromFolderAsync(path, folderName, isCloud).ConfigureAwait(false);
+                if (work == null) continue;
 
                 _cacheService.UpdateWork(work);
                 newWorks.Add(work);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "CheckForNewWorks: folder {Path} could not be processed", path);
             }
         }
 
         _logger.LogInformation("Check for new works complete — {Count} new works found", newWorks.Count);
         return newWorks;
+    }
+
+    /// <summary>
+    /// Builds a cacheable work for one newly seen folder, or null when the folder holds no audio anywhere
+    /// beneath it.
+    /// </summary>
+    private async Task<WorkMetadata?> TryCreateWorkFromFolderAsync(string path, string folderName, bool isCloud)
+    {
+        // Audio is established *before* the metadata request. A work whose files live in CD1/ has no
+        // top-level audio, so the old order spent a DLsite request on it and then skipped caching it — which
+        // meant the same work was fetched again on every launch, forever (BUG-m-06).
+        var audioFiles = await ListAudioFilesRecursiveAsync(path, isCloud).ConfigureAwait(false);
+        if (audioFiles.Count == 0) return null;
+
+        var match = Regex.Match(folderName, @"(RJ\d{6,8})", RegexOptions.IgnoreCase);
+        string? rjCode = match.Success ? match.Groups[1].Value.ToUpper() : null;
+
+        var work = new WorkMetadata
+        {
+            FolderPath = path,
+            Title = folderName,
+            AgeRating = AgeRatings.Unknown
+        };
+
+        if (rjCode != null)
+        {
+            var cachedByRj = _cacheService.GetWorkByProductId(rjCode);
+            if (cachedByRj != null)
+            {
+                work.Title = cachedByRj.Title;
+                work.TranslatedTitle = cachedByRj.TranslatedTitle;
+                work.CoverImagePath = cachedByRj.CoverImagePath;
+                work.Circle = cachedByRj.Circle;
+                work.VA = cachedByRj.VA;
+                work.AgeRating = cachedByRj.AgeRating;
+                work.ProductId = cachedByRj.ProductId;
+                work.Genre = cachedByRj.Genre;
+            }
+            else
+            {
+                work.ProductId = rjCode;
+                var meta = await FetchDlsiteMetadataAsync(rjCode, path).ConfigureAwait(false);
+
+                work.Title = !string.IsNullOrEmpty(meta.Title) ? meta.Title : folderName;
+                work.TranslatedTitle = meta.TranslatedTitle ?? "";
+                work.Circle = meta.Circle ?? "Unknown Circle";
+                work.VA = meta.VA ?? "";
+                work.AgeRating = meta.AgeRating ?? AgeRatings.Unknown;
+                work.Genre = meta.Genre ?? "";
+                work.CoverImagePath = meta.CoverImagePath ?? "";
+
+                // A failed fetch must be retried later instead of being frozen into the cache under the
+                // folder name forever.
+                work.NeedsMetadataRefresh = string.IsNullOrEmpty(meta.Title);
+            }
+        }
+
+        // Sub-folders become sub-albums, so a work split across CD1/CD2 keeps its parts instead of
+        // collapsing them into one flat list.
+        foreach (var group in audioFiles.GroupBy(f =>
+                 {
+                     var fileDir = isCloud ? GetCloudDirectoryName(f) : Path.GetDirectoryName(f);
+                     return GetSubAlbumName(fileDir, path) ?? "Main";
+                 }))
+        {
+            var subAlbum = new SubAlbum { Title = group.Key, FolderPath = path };
+
+            foreach (var file in group.OrderBy(f => f))
+            {
+                subAlbum.Tracks.Add(new Track
+                {
+                    Title = isCloud
+                        ? Path.GetFileNameWithoutExtension(GetCloudFileName(file))
+                        : Path.GetFileNameWithoutExtension(file),
+                    FilePath = file
+                });
+            }
+
+            work.SubAlbums.Add(subAlbum);
+        }
+
+        return work;
+    }
+
+    private async Task<List<string>> ListAudioFilesRecursiveAsync(string path, bool isCloud)
+    {
+        IScanFileSource source = isCloud
+            ? new CloudScanFileSource(_cloudProvider)
+            : new LocalScanFileSource();
+
+        var listing = await ScanListing
+            .CollectAudioFilesAsync(source, path, AppConstants.IsMediaFile, AppConstants.IsSystemFileOrDir)
+            .ConfigureAwait(false);
+
+        return listing.AudioFiles;
     }
 
     public async Task<ScanResult> ScanLibraryAsync(string basePath, IProgress<(double, string)>? progress = null)
