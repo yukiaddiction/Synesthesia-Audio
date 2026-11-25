@@ -292,6 +292,8 @@ public partial class SettingsViewModel : BaseViewModel
         _logger.LogInformation("Saving library settings — storage: {Storage}, basePath: {BasePath}, serverUrl: {ServerUrl}",
             StorageType, BaseAudioFolderPath, CloudServerUrl);
 
+        if (!await ConfirmInsecureCloudUrlAsync()) return;
+
         _settingsService.CurrentSettings.BaseAudioFolderPath = BaseAudioFolderPath;
         _settingsService.CurrentSettings.IsDarkMode = IsDarkMode;
         _settingsService.CurrentSettings.TranslateDlsiteTags = TranslateDlsiteTags;
@@ -311,6 +313,41 @@ public partial class SettingsViewModel : BaseViewModel
 
         await _mainViewModel.InitializeAsync();
         _logger.LogInformation("Library settings saved and library re-initialized");
+    }
+
+    /// <summary>
+    /// A WebDAV server reached over <c>http://</c> receives the username and password as Basic auth in
+    /// clear text. Saving such a URL now requires an explicit confirmation rather than happening silently.
+    /// </summary>
+    private async Task<bool> ConfirmInsecureCloudUrlAsync()
+    {
+        if (!string.Equals(StorageType, "WebDAV", StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.IsNullOrWhiteSpace(CloudServerUrl)) return true;
+        if (CloudServerUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return true;
+
+        if (!CloudServerUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            return true; // Not a URL we can reason about; the connection test will report it.
+        }
+
+        _logger.LogWarning("WebDAV server URL is not using HTTPS — asking the user to confirm");
+
+        var confirmed = await Shell.Current.DisplayAlert(
+            "Unencrypted connection",
+            "This WebDAV address uses http://, not https://.\n\n" +
+            "Your username and password are sent as Basic authentication with no encryption, so anyone on " +
+            "the network path can read them. They can also copy or modify the files you stream.\n\n" +
+            "Android also blocks plain http to non-local addresses, so this will only work on desktop.\n\n" +
+            "Use an https:// address instead, or continue to accept the risk.",
+            "Use it anyway",
+            "Cancel");
+
+        if (!confirmed)
+        {
+            _logger.LogInformation("User declined to save an unencrypted WebDAV URL");
+        }
+
+        return confirmed;
     }
 
     [RelayCommand]

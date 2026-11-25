@@ -3,6 +3,11 @@ name: Name data refresh
 # The bundled name table is derived from EDRDG JMnedict, which is updated continuously. EDRDG treats
 # shipping stale data as a licence violation, so this workflow regenerates the table on a schedule
 # and publishes it as the `names-data` release asset that the app downloads at launch.
+#
+# Supply chain (SEC-M-04): JMnedict is fetched over https only, the Kawazu package is verified against
+# nuget.org's own repository signature, and the IPADIC digest is published in the meta file so the app can
+# refuse a swapped dictionary. Signing the meta file itself still needs a key this repository does not
+# have; see AUDIT.md SEC-M-04.
 
 on:
   schedule:
@@ -29,10 +34,39 @@ jobs:
       - name: Download JMnedict
         run: |
           set -euo pipefail
-          curl -fsSL --retry 3 --retry-delay 5 \
+          # https, never http: over plain http a network attacker could replace the dictionary and the
+          # name table would carry their readings into every user's library. --proto '=https' makes curl
+          # refuse a downgrade even after a redirect.
+          curl -fsSL --proto '=https' --tlsv1.2 --retry 3 --retry-delay 5 \
             -o "$RUNNER_TEMP/JMnedict.xml.gz" \
-            http://ftp.edrdg.org/pub/Nihongo/JMnedict.xml.gz
+            https://ftp.edrdg.org/pub/Nihongo/JMnedict.xml.gz
           gunzip -f "$RUNNER_TEMP/JMnedict.xml.gz"
+
+      # Kawazu (MeCab) needs IPADIC on disk, which is ~50 MB and far too large for the APK or git.
+      # Fetch the package straight from nuget.org here rather than restoring the MAUI project, which
+      # would drag in the whole mobile workload on a Linux runner.
+      #
+      # This runs before the meta file is generated because the archive digest has to go into that meta.
+      - name: Package the Kawazu dictionary
+        run: |
+          set -euo pipefail
+          curl -fsSL --proto '=https' --retry 3 \
+            -o "$RUNNER_TEMP/kawazu.nupkg" \
+            https://api.nuget.org/v3-flatcontainer/kawazu/1.1.4/kawazu.1.1.4.nupkg
+
+          # nuget.org signs every package, so verifying the signature proves the nupkg came from
+          # nuget.org and has not been altered. Preferred over a pinned hash in this file: a hash would be
+          # changed in the same commit as any attack, while the signature is issued by nuget.org.
+          dotnet nuget verify "$RUNNER_TEMP/kawazu.nupkg"
+
+          mkdir -p "$RUNNER_TEMP/ipadic"
+          unzip -j -o "$RUNNER_TEMP/kawazu.nupkg" 'content/*' -d "$RUNNER_TEMP/ipadic"
+          ( cd "$RUNNER_TEMP/ipadic" && zip -9 "$RUNNER_TEMP/ipadic.zip" ./*.bin ./*.dic )
+          ls -lh "$RUNNER_TEMP/ipadic.zip"
+
+          IPA_HASH="$(sha256sum "$RUNNER_TEMP/ipadic.zip" | cut -d' ' -f1)"
+          echo "ipadic sha256: $IPA_HASH"
+          echo "IPA_HASH=$IPA_HASH" >> "$GITHUB_ENV"
 
       - name: Regenerate name table
         run: |
@@ -42,7 +76,8 @@ jobs:
             --input "$RUNNER_TEMP/JMnedict.xml" \
             --output "Synesthesia Audio/Resources/Raw/name_readings.tsv.gz" \
             --meta "Synesthesia Audio/Resources/Raw/name_readings.meta.json" \
-            --created "$CREATED"
+            --created "$CREATED" \
+            --ipadic-hash "$IPA_HASH"
 
       - name: Commit snapshot if it changed
         run: |
@@ -57,20 +92,6 @@ jobs:
             git commit -m "chore(names): refresh EDRDG JMnedict name data"
             git push
           fi
-
-      # Kawazu (MeCab) needs IPADIC on disk, which is ~50 MB and far too large for the APK or git.
-      # Fetch the package straight from nuget.org here rather than restoring the MAUI project, which
-      # would drag in the whole mobile workload on a Linux runner.
-      - name: Package the Kawazu dictionary
-        run: |
-          set -euo pipefail
-          curl -fsSL --retry 3 \
-            -o "$RUNNER_TEMP/kawazu.nupkg" \
-            https://api.nuget.org/v3-flatcontainer/kawazu/1.1.4/kawazu.1.1.4.nupkg
-          mkdir -p "$RUNNER_TEMP/ipadic"
-          unzip -j -o "$RUNNER_TEMP/kawazu.nupkg" 'content/*' -d "$RUNNER_TEMP/ipadic"
-          ( cd "$RUNNER_TEMP/ipadic" && zip -9 "$RUNNER_TEMP/ipadic.zip" ./*.bin ./*.dic )
-          ls -lh "$RUNNER_TEMP/ipadic.zip"
 
       # Published regardless of repository visibility: the assets become anonymously fetchable the
       # moment the repository is made public, which is what activates the in-app refresh.

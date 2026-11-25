@@ -6,7 +6,13 @@ public class GeneralSettings
 {
     public string BaseAudioFolderPath { get; set; } = string.Empty;
     public bool IsDarkMode { get; set; } = true;
-    public bool TranslateDlsiteTags { get; set; } = true;
+
+    /// <summary>
+    /// Opt-in: when enabled, Japanese tags that are not in the local mapping are machine-translated during
+    /// a scan, which sends them to a third-party translation service. Off by default so a fresh install
+    /// uploads nothing from the user's library until they ask for it.
+    /// </summary>
+    public bool TranslateDlsiteTags { get; set; }
 
     public string StorageType { get; set; } = "Local";
     public string CloudServerUrl { get; set; } = string.Empty;

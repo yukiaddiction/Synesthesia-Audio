@@ -318,7 +318,10 @@ public class SettingsPage : ContentPage
             Children =
             {
                 CreateCardTitle("Translation"),
-                CreateCardCaption("Free Google/Bing chain by default. Switch to your own paid API key for better quality."),
+                CreateCardCaption("Free Google/Bing chain by default. Switch to your own paid API key for better quality. " +
+                                  "Anything translated — tag names, titles and track titles — is sent to those services, " +
+                                  "so translating is only done for a work you choose, or during a scan when tag " +
+                                  "translation is switched on below."),
 
                 CreateFormLabel("Provider"),
 
@@ -388,7 +391,9 @@ public class SettingsPage : ContentPage
                     Children =
                     {
                         CreateCardTitle("Scraping"),
-                        CreateCardCaption("Translate DLsite tags to English during library scans")
+                        CreateCardCaption("Translate DLsite tags to English during library scans. This sends the " +
+                                          "unmapped Japanese tags to Google/Bing. Leave it off to keep your library " +
+                                          "local — already-mapped tags still translate without any network call.")
                     }
                 }
                 .Column(0),

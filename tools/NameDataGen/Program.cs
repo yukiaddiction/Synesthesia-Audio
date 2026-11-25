@@ -27,10 +27,11 @@ internal static class Program
         var output = GetArg(args, "--output");
         var meta = GetArg(args, "--meta");
         var created = GetArg(args, "--created");
+        var ipadicHash = GetArg(args, "--ipadic-hash");
 
         if (input is null || output is null)
         {
-            Console.Error.WriteLine("usage: NameDataGen --input <JMnedict.xml> --output <name_readings.tsv.gz> [--meta <meta.json>] [--created yyyy-MM-dd]");
+            Console.Error.WriteLine("usage: NameDataGen --input <JMnedict.xml> --output <name_readings.tsv.gz> [--meta <meta.json>] [--created yyyy-MM-dd] [--ipadic-hash <sha256>]");
             return 2;
         }
 
@@ -149,7 +150,10 @@ internal static class Program
                 candidates = candidateCount,
                 compressedBytes = gzipped.Length,
                 rawBytes = raw.Length,
-                sha256 = sha
+                sha256 = sha,
+                // Digest of the IPADIC archive published alongside this meta, so the app can reject a
+                // swapped dictionary before extracting it.
+                ipadicSha256 = string.IsNullOrWhiteSpace(ipadicHash) ? null : ipadicHash.ToLowerInvariant()
             }, new JsonSerializerOptions { WriteIndented = true });
 
             File.WriteAllText(meta, payload);

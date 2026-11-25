@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext HTTP is permitted only where it is unavoidable and safe:
+
+  * 127.0.0.1 / localhost — the in-process streaming proxy. Its traffic never leaves the device, and it
+    is guarded by a per-run token (SEC-M-01), so plaintext there is not an exposure.
+
+  Everything else (DLsite, WebDAV, translation providers, the name-data release assets) must be HTTPS.
+  A user-supplied http:// WebDAV URL is refused by the system at that point, which is the intended
+  outcome: Basic auth over cleartext would hand the credentials to anyone on the network path.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">::1</domain>
+    </domain-config>
+
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

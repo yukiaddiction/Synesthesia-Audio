@@ -22,17 +22,19 @@ public class DLsiteService
     private readonly TagMappingService _tagMappingService;
     private readonly ITranslationService _translationService;
     private readonly NameRomanizationService _nameRomanization;
+    private readonly SettingsService _settingsService;
     private readonly ILogger<DLsiteService> _logger;
 
     private static volatile bool _dlsiteUnreachableAlerted;
     private static volatile bool _nonProductPageWarned;
     private static readonly ConcurrentDictionary<string, Task> _englishTagFetches = new();
 
-    public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, NameRomanizationService nameRomanization, ILogger<DLsiteService> logger)
+    public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, NameRomanizationService nameRomanization, SettingsService settingsService, ILogger<DLsiteService> logger)
     {
         _tagMappingService = tagMappingService;
         _translationService = translationService;
         _nameRomanization = nameRomanization;
+        _settingsService = settingsService;
         _logger = logger;
         var handler = new SocketsHttpHandler { MaxConnectionsPerServer = 16 };
         _httpClient = new HttpClient(handler);
@@ -323,6 +325,14 @@ public class DLsiteService
 
                 if (english.Equals(tag, StringComparison.OrdinalIgnoreCase))
                 {
+                    // Machine translation uploads the work's tags to a third-party service, so it only
+                    // happens when the user has opted in. Locally mapped tags never reach this branch.
+                    if (!_settingsService.CurrentSettings.TranslateDlsiteTags)
+                    {
+                        mapped.Add(english);
+                        continue;
+                    }
+
                     try
                     {
                         var translated = await TranslateTrackTitleAsync(tag);
