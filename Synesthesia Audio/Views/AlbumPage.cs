@@ -264,7 +264,8 @@ public class AlbumPage : ContentPage
                                 ColumnSpacing = 12,
                                 Children =
                                 {
-                                    new Label { Text = "\u25B6", TextColor = AppColors.SuccessLight, FontSize = AppFontSizes.ButtonLarge, VerticalOptions = LayoutOptions.Center }
+                                    new Label { Text = "\u25B6", FontSize = AppFontSizes.ButtonLarge, VerticalOptions = LayoutOptions.Center }
+                        .AppThemeBinding(Label.TextColorProperty, AppColors.SuccessLight, AppColors.SuccessDark)
                                         .Column(0),
 
                                     new VerticalStackLayout

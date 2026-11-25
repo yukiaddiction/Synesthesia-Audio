@@ -29,8 +29,10 @@ public static class AppFontSizes
     public static double FloatingPlayerTitle => 13 * ScaleFactor;
     public static double ButtonMedium => 12 * ScaleFactor;
     public static double SmallText => 12 * ScaleFactor;
-    public static double Caption => 11 * ScaleFactor;
-    public static double ButtonSmall => 11 * ScaleFactor;
-    public static double DetailText => 10 * ScaleFactor;
+    public static double Caption => 12 * ScaleFactor;
+    public static double ButtonSmall => 12 * ScaleFactor;
+    // 11 is the floor here on purpose: DetailText labels dense metadata rows, and pushing it to 12 without a
+    // visual pass risks the phone overflow UX-09 describes. Caption and ButtonSmall are at 12 (UX-01).
+    public static double DetailText => 11 * ScaleFactor;
     public static double CoverPlaceholderIcon => 50 * ScaleFactor;
 }

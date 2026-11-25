@@ -27,7 +27,7 @@ public class AppShell : Shell
         this.AppThemeBinding(Shell.FlyoutBackgroundColorProperty, AppColors.GlassFlyoutLight, AppColors.GlassFlyoutDark);
         this.AppThemeBinding(Shell.ForegroundColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
         this.AppThemeBinding(Shell.TitleColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
-        this.AppThemeBinding(Shell.UnselectedColorProperty, AppColors.TextTertiaryLight, AppColors.TextTertiaryLight);
+        this.AppThemeBinding(Shell.UnselectedColorProperty, AppColors.TextTertiaryLight, AppColors.TextTertiaryDark);
         this.AppThemeBinding(Shell.BackgroundColorProperty, AppColors.BackgroundLight, AppColors.BackgroundDark);
 
         Items.Add(new ShellContent

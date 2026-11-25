@@ -24,8 +24,10 @@ public static class AppColors
     
     public static readonly Color DangerBgLight = Color.FromArgb("#FAD2E1");
     public static readonly Color DangerBgDark = Color.FromArgb("#3D1C24");
-    public static readonly Color DangerTextLight = Color.FromArgb("#E63946");
-    public static readonly Color DangerTextDark = Color.FromArgb("#E63946");
+    // 4.2:1 on white and 3.1:1 on the danger background were both too low; this is 6.2 / 4.6 (UX-01).
+    public static readonly Color DangerTextLight = Color.FromArgb("#C1121F");
+    // 3.5:1 on the dark background; this is 5.3:1 (UX-01).
+    public static readonly Color DangerTextDark = Color.FromArgb("#FF6B6B");
 
     // Backgrounds
     public static readonly Color BackgroundLight = Color.FromArgb("#FFFFFF");
@@ -51,14 +53,17 @@ public static class AppColors
     public static readonly Color TextPrimaryLight = Color.FromArgb("#112A3E");
     public static readonly Color TextPrimaryDark = Color.FromArgb("#DAEEF1");
 
-    public static readonly Color TextSecondaryLight = Color.FromArgb("#458CC8");
+    // 3.6:1 on white was below WCAG AA for body text; this is 5.4:1 (UX-01).
+    public static readonly Color TextSecondaryLight = Color.FromArgb("#2F6EA3");
     public static readonly Color TextSecondaryDark = Color.FromArgb("#84C6DF");
 
-    public static readonly Color TextTertiaryLight = Color.FromArgb("#5AA1D8");
+    // 2.8:1 on white failed even the large-text floor; this is 5.4:1 (UX-01).
+    public static readonly Color TextTertiaryLight = Color.FromArgb("#3A6F99");
     public static readonly Color TextTertiaryDark = Color.FromArgb("#84C6DF");
     public static readonly Color TextTertiaryAltDark = Color.FromArgb("#AADBE9");
     
-    public static readonly Color TextFormLabelLight = Color.FromArgb("#458CC8");
+    // Form labels are read at body size, so they need the 4.5:1 token (UX-01).
+    public static readonly Color TextFormLabelLight = Color.FromArgb("#2F6EA3");
     public static readonly Color TextFormLabelDark = Color.FromArgb("#DAEEF1");
     public static readonly Color TextFormLabelAltDark = Color.FromArgb("#84C6DF");
 
@@ -72,7 +77,7 @@ public static class AppColors
     // Navigation / Active indicator colors
     public static readonly Color ActiveBgLight = Color.FromArgb("#A1D3F94D");
     public static readonly Color ActiveBgDark = Color.FromArgb("#214F6F66");
-    public static readonly Color ActiveTextLight = Color.FromArgb("#458CC8");
+    public static readonly Color ActiveTextLight = Color.FromArgb("#2F6EA3");
     public static readonly Color ActiveTextDark = Color.FromArgb("#AADBE9");
     public static readonly Color NormalTextLight = Color.FromArgb("#112A3E");
 

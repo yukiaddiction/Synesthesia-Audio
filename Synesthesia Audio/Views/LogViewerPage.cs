@@ -60,7 +60,7 @@ public class LogViewerPage : ContentPage
                     LineBreakMode = LineBreakMode.WordWrap
                 }
                 .Bind(Label.TextProperty, nameof(LogViewerViewModel.LogContent))
-                .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryDark, AppColors.TextPrimaryDark)
+                .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
             }
         }.GlassDeep();
 
