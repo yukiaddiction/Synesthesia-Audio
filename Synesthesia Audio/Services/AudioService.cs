@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Maui.Views;
 using CommunityToolkit.Maui.Core.Primitives;
 using Microsoft.Extensions.Logging;
+using Synesthesia_Audio.Core;
 using Synesthesia_Audio.Models;
 using System.Linq;
 
@@ -481,7 +482,7 @@ public partial class AudioService : ObservableObject, IDisposable
 
     private void PlayTrackInternal(Track? track)
     {
-        _ = PlayTrackInternalAsync(track);
+PlayTrackInternalAsync(track).FireAndForget(ex => _logger.LogWarning(ex, "Background task failed"));
     }
 
     private async Task PlayTrackInternalAsync(Track? track)
@@ -640,7 +641,7 @@ public partial class AudioService : ObservableObject, IDisposable
         IsBuffering = false;
         IsPlaying = false;
 
-        _ = ShowPlaybackAlertAsync(message);
+ShowPlaybackAlertAsync(message).FireAndForget(ex => _logger.LogWarning(ex, "Background task failed"));
 
         if (!advance) return;
 
@@ -826,7 +827,7 @@ public partial class AudioService : ObservableObject, IDisposable
         var me = _mediaElement;
         if (me == null) return;
         _logger.LogInformation("Playback stopped");
-        _ = _sessionService.ClearAsync();
+_sessionService.ClearAsync().FireAndForget(ex => _logger.LogWarning(ex, "Background task failed"));
         _pausedByFocusLoss = false;
         _isRestoringSession = false;
         _platformService.AbandonAudioFocus();
@@ -866,7 +867,7 @@ public partial class AudioService : ObservableObject, IDisposable
             PositionSeconds = Position.TotalSeconds,
             LoopMode = CurrentLoopMode
         };
-        _ = _sessionService.SaveAsync(dto);
+_sessionService.SaveAsync(dto).FireAndForget(ex => _logger.LogWarning(ex, "Background task failed"));
     }
 
     private void OnPositionChanged(object? sender, MediaPositionChangedEventArgs e)

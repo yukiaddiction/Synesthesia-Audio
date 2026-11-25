@@ -96,7 +96,7 @@ public class LocalHttpProxy : IDisposable
                 _port = ((IPEndPoint)_listener.LocalEndpoint).Port;
                 _isRunning = true;
                 AddLog($"Proxy STARTED on http://127.0.0.1:{_port}/");
-                _ = Task.Run(ListenLoopAsync);
+                Task.Run(ListenLoopAsync).FireAndForget(ex => AddLog($"Listen loop failed: {ex.GetType().Name}: {ex.Message}"));
             }
             catch (Exception ex)
             {

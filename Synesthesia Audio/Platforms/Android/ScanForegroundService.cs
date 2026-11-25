@@ -54,7 +54,7 @@ public class ScanForegroundService : Service
             _isRunning = true;
             StartForeground(NOTIFICATION_ID, BuildNotification("Scanning library...", "Preparing...", 0));
             _cts = new CancellationTokenSource();
-            _ = RunScanAsync(_cts.Token);
+            RunScanAsync(_cts.Token).FireAndForget(ex =>  Services.Logging.AppLog.Get<ScanForegroundService>().LogError(ex, "ScanForegroundService: background scan faulted"));
         }
         catch (System.Exception ex)
         {
