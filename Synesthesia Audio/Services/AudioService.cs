@@ -31,6 +31,15 @@ public partial class AudioService : ObservableObject, IDisposable
     private int _consecutiveFailures;
     private const int MaxConsecutivePlaybackFailures = 3;
 
+    /// <summary>
+    /// Completed when the element first reports a non-zero duration for the current source. Used instead
+    /// of polling, which could wait up to 9.5 s and therefore pause a track the user had since started.
+    /// </summary>
+    private TaskCompletionSource<bool> _durationObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private void ResetDurationObservation() =>
+        _durationObserved = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public AudioService(SettingsService settingsService, Cloud.ICloudProvider cloudProvider, Cloud.LocalHttpProxy localHttpProxy, PlaybackSessionService sessionService, IAudioPlatformService platformService, ILogger<AudioService> logger)
     {
         _settingsService = settingsService;
@@ -239,15 +248,29 @@ public partial class AudioService : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    public void EndSeek()
+    public async Task EndSeekAsync()
     {
         var me = _mediaElement;
-        if (me == null || Duration.TotalSeconds == 0) return;
-        var wasPlaying = IsPlaying;
-        me.SeekTo(SeekPosition);
-        IsSeeking = false;
-        if (wasPlaying)
-            me.Play();
+        try
+        {
+            // No duration yet means nothing to seek to, but IsSeeking must still be cleared — leaving it
+            // set made every later seek request a no-op.
+            if (me == null || Duration.TotalSeconds <= 0) return;
+
+            var wasPlaying = IsPlaying;
+            await me.SeekTo(SeekPosition);
+
+            // Play only after the seek has completed, otherwise playback resumes at the old position.
+            if (wasPlaying) me.Play();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Seeking failed");
+        }
+        finally
+        {
+            IsSeeking = false;
+        }
     }
 
     public void SetMediaElement(MediaElement? mediaElement)
@@ -259,6 +282,7 @@ public partial class AudioService : ObservableObject, IDisposable
             _mediaElement.MediaOpened -= OnMediaOpened;
             _mediaElement.MediaEnded -= OnMediaEnded;
             _mediaElement.MediaFailed -= OnMediaFailed;
+            _mediaElement.PropertyChanged -= OnMediaElementPropertyChanged;
         }
 
         _mediaElement = mediaElement;
@@ -270,6 +294,7 @@ public partial class AudioService : ObservableObject, IDisposable
             _mediaElement.MediaOpened += OnMediaOpened;
             _mediaElement.MediaEnded += OnMediaEnded;
             _mediaElement.MediaFailed += OnMediaFailed;
+            _mediaElement.PropertyChanged += OnMediaElementPropertyChanged;
         }
 
         ApplyVolume();
@@ -365,6 +390,7 @@ public partial class AudioService : ObservableObject, IDisposable
         CurrentTrack = track;
         IsVideoTrack = track.FilePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
         Interlocked.Increment(ref _sourceGeneration);
+        ResetDurationObservation();
 
         me.MetadataTitle = !string.IsNullOrWhiteSpace(track.TranslatedTitle)
             ? track.TranslatedTitle
@@ -425,6 +451,19 @@ public partial class AudioService : ObservableObject, IDisposable
     private async Task PlayTrackInternalAsync(Track? track)
     {
         if (track == null || _mediaElement == null) return;
+
+        var isCloud = _settingsService.CurrentSettings.StorageType == "WebDAV";
+
+        // Validate before touching any state. A missing file used to become CurrentTrack, get written to
+        // the saved session, and leave the buffering spinner turning forever.
+        if (!isCloud && !File.Exists(track.FilePath))
+        {
+            _logger.LogError("Track file not found: {Path}", track.FilePath);
+            ReportPlaybackFailure($"File not found:\n{track.FilePath}", advance: true);
+            return;
+        }
+
+        string? failureMessage = null;
         await _playGate.WaitAsync();
         try
         {
@@ -435,6 +474,7 @@ public partial class AudioService : ObservableObject, IDisposable
             CurrentTrack = track;
             IsVideoTrack = track.FilePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
             var thisGen = Interlocked.Increment(ref _sourceGeneration);
+            ResetDurationObservation();
             Position = TimeSpan.Zero;
             Duration = TimeSpan.Zero;
             SeekPosition = TimeSpan.Zero;
@@ -478,14 +518,7 @@ public partial class AudioService : ObservableObject, IDisposable
                 me.MetadataArtworkUrl = string.Empty;
             }
 
-            if (!File.Exists(track.FilePath) && _settingsService.CurrentSettings.StorageType != "WebDAV")
-            {
-                _logger.LogError("Track file not found: {Path}", track.FilePath);
-                await ShowPlaybackAlertAsync($"File not found:\n{track.FilePath}");
-                return;
-            }
-
-            if (_settingsService.CurrentSettings.StorageType == "WebDAV")
+            if (isCloud)
             {
                 _logger.LogInformation("Using WebDAV proxy. Proxy running: {Running}", _localHttpProxy.IsRunning);
 
@@ -497,7 +530,8 @@ public partial class AudioService : ObservableObject, IDisposable
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "WebDAV proxy failed to start");
-                    await ShowPlaybackAlertAsync("Cloud streaming proxy could not start.");
+                    IsBuffering = false;
+                    failureMessage = "Cloud streaming proxy could not start.";
                     return;
                 }
 
@@ -529,12 +563,44 @@ public partial class AudioService : ObservableObject, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "PlayTrackInternal failed for track: {Path}", track.FilePath);
-            await ShowPlaybackAlertAsync($"Could not play track: {ex.Message}\nPath: {track.FilePath}");
+            IsBuffering = false;
+            failureMessage = $"Could not play track: {ex.Message}\nPath: {track.FilePath}";
         }
         finally
         {
             _playGate.Release();
         }
+
+        // Shown only after the gate has been released. Awaiting a modal dialog while holding it blocked the
+        // next track and the auto-advance path until the user dismissed the message.
+        if (failureMessage != null)
+        {
+            await ShowPlaybackAlertAsync(failureMessage);
+        }
+    }
+
+    /// <summary>
+    /// One failure path for both an explicit play of an unusable file and a MediaFailed event: clear the
+    /// spinner, tell the user without holding the play gate, and move on — bounded, so a library in which
+    /// nothing is playable cannot be walked forever.
+    /// </summary>
+    private void ReportPlaybackFailure(string message, bool advance)
+    {
+        IsBuffering = false;
+        IsPlaying = false;
+
+        _ = ShowPlaybackAlertAsync(message);
+
+        if (!advance) return;
+
+        if (Interlocked.Increment(ref _consecutiveFailures) >= MaxConsecutivePlaybackFailures)
+        {
+            Interlocked.Exchange(ref _consecutiveFailures, 0);
+            _logger.LogError("Giving up after {Count} consecutive playback failures", MaxConsecutivePlaybackFailures);
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(() => PlayNext(isAuto: true));
     }
 
     private async Task ShowPlaybackAlertAsync(string message)
@@ -669,6 +735,10 @@ public partial class AudioService : ObservableObject, IDisposable
         // the user has already restarted themselves.
         _pausedByFocusLoss = false;
 
+        // Any user action ends a pending session restore, so the restore can never pause a track the user
+        // has just started.
+        _isRestoringSession = false;
+
         if (!_platformService.RequestAudioFocus())
         {
             _logger.LogWarning("Playback not started — the OS refused audio focus");
@@ -688,6 +758,7 @@ public partial class AudioService : ObservableObject, IDisposable
         var me = _mediaElement;
         if (me == null || !IsPlaying) return;
         _pausedByFocusLoss = false;
+        _isRestoringSession = false;
         me.Pause();
         SaveSession();
     }
@@ -706,6 +777,7 @@ public partial class AudioService : ObservableObject, IDisposable
         _logger.LogInformation("Playback stopped");
         _ = _sessionService.ClearAsync();
         _pausedByFocusLoss = false;
+        _isRestoringSession = false;
         _platformService.AbandonAudioFocus();
         me.Stop();
         CurrentTrack = null;
@@ -757,30 +829,24 @@ public partial class AudioService : ObservableObject, IDisposable
         }
     }
 
-    private void OnMediaFailed(object? sender, MediaFailedEventArgs e)
+    /// <summary>Signals that the element has reported a real duration, so a pending restore can seek.</summary>
+    private void OnMediaElementPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        // A corrupt file, an unsupported codec or a proxy error used to leave the player stalled forever
-        // with the buffering spinner still turning, because nothing subscribed to this event.
-        IsBuffering = false;
-        IsPlaying = false;
+        if (e.PropertyName != nameof(MediaElement.Duration)) return;
 
+        if ((_mediaElement?.Duration ?? TimeSpan.Zero) > TimeSpan.Zero)
+        {
+            _durationObserved.TrySetResult(true);
+        }
+    }
+
+    private void OnMediaFailed(object? sender, MediaFailedEventArgs e)
+    {        // A corrupt file, an unsupported codec or a proxy error used to leave the player stalled forever
+        // with the buffering spinner still turning, because nothing subscribed to this event.
         var title = CurrentTrack?.Title ?? "This file";
         _logger.LogError("Playback failed — track: {Title}, error: {Error}", title, e.ErrorMessage);
 
-        var failures = Interlocked.Increment(ref _consecutiveFailures);
-        if (failures >= MaxConsecutivePlaybackFailures)
-        {
-            // Stop rather than loop through a playlist in which nothing is playable.
-            Interlocked.Exchange(ref _consecutiveFailures, 0);
-            _logger.LogError("Giving up after {Count} consecutive playback failures", failures);
-            _ = ShowPlaybackAlertAsync($"These files could not be played:\n{e.ErrorMessage}");
-            return;
-        }
-
-        // Deliberately not awaited: the play gate is not held here, so the message cannot block the
-        // next track from starting.
-        _ = ShowPlaybackAlertAsync($"{title} could not be played:\n{e.ErrorMessage}");
-        MainThread.BeginInvokeOnMainThread(() => PlayNext(isAuto: true));
+        ReportPlaybackFailure($"{title} could not be played:\n{e.ErrorMessage}", advance: true);
     }
 
     private void OnStateChanged(object? sender, MediaStateChangedEventArgs e)
@@ -815,19 +881,17 @@ public partial class AudioService : ObservableObject, IDisposable
                 return;
             }
 
-            await Task.Delay(500);
-            if (gen != _sourceGeneration) return;
-
-            for (int i = 0; i < 30; i++)
+            // Wait for the element to report a duration instead of polling it for up to 9.5 s. The bound
+            // keeps a stream that never reports one from leaving this handler pending forever.
+            if (me.Duration == TimeSpan.Zero)
             {
-                if (gen != _sourceGeneration) return;
-                me = _mediaElement;
-                if (me == null) return;
-                if (gen != _sourceGeneration) return;
-                Duration = me.Duration;
-                if (Duration != TimeSpan.Zero) break;
-                await Task.Delay(300);
+                await Task.WhenAny(_durationObserved.Task, Task.Delay(3000));
             }
+
+            if (gen != _sourceGeneration) return;
+            me = _mediaElement;
+            if (me == null) return;
+            Duration = me.Duration;
 
             if (_isRestoringSession)
             {
@@ -843,7 +907,7 @@ public partial class AudioService : ObservableObject, IDisposable
                 me.Pause();
                 _platformService.OnMediaOpened(CurrentTrack?.Title, _currentAlbumFolderPath);
             }
-            else if (!_isRestoringSession)
+            else
             {
                 _platformService.OnMediaOpened(CurrentTrack?.Title, _currentAlbumFolderPath);
             }
