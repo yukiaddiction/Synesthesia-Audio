@@ -403,7 +403,7 @@ public partial class AudioService : ObservableObject, IDisposable
 
         // A remote path never exists on the local disk, so this check must only apply to local storage.
         // Running it first made WebDAV session restore dead code.
-        var isCloudSession = _settingsService.CurrentSettings.StorageType == "WebDAV";
+        var isCloudSession = Synesthesia_Audio.Core.StorageTypes.IsWebDav(_settingsService.CurrentSettings.StorageType);
         if (!isCloudSession && !File.Exists(sessionTrack.FilePath)) return;
 
         Track track;
@@ -489,7 +489,7 @@ PlayTrackInternalAsync(track).FireAndForget(ex => _logger.LogWarning(ex, "Backgr
     {
         if (track == null || _mediaElement == null) return;
 
-        var isCloud = _settingsService.CurrentSettings.StorageType == "WebDAV";
+        var isCloud = Synesthesia_Audio.Core.StorageTypes.IsWebDav(_settingsService.CurrentSettings.StorageType);
 
         // Validate before touching any state. A missing file used to become CurrentTrack, get written to
         // the saved session, and leave the buffering spinner turning forever.

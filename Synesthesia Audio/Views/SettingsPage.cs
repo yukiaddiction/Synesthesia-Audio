@@ -225,7 +225,7 @@ public class SettingsPage : ContentPage
                 new Picker
                 {
                     Title = "Select Storage Source",
-                    ItemsSource = new List<string> { "Local", "WebDAV" }
+                    ItemsSource = new List<string> { Synesthesia_Audio.Core.StorageTypes.Local, Synesthesia_Audio.Core.StorageTypes.WebDav }
                 }
                 .Bind(Picker.SelectedItemProperty, nameof(SettingsViewModel.StorageType))
                 .AppThemeBinding(Picker.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)

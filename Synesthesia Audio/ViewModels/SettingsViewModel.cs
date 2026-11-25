@@ -32,7 +32,7 @@ public partial class SettingsViewModel : BaseViewModel
     private bool _translateDlsiteTags;
 
     [ObservableProperty]
-    private string _storageType = "Local";
+    private string _storageType = Synesthesia_Audio.Core.StorageTypes.Local;
 
     [ObservableProperty]
     private string _cloudServerUrl = string.Empty;
@@ -246,8 +246,8 @@ public partial class SettingsViewModel : BaseViewModel
 
     private void UpdateSelectionStates()
     {
-        IsLocalSelected = StorageType == "Local";
-        IsWebDavSelected = StorageType == "WebDAV";
+        IsLocalSelected = Synesthesia_Audio.Core.StorageTypes.IsLocal(StorageType);
+        IsWebDavSelected = Synesthesia_Audio.Core.StorageTypes.IsWebDav(StorageType);
     }
 
     partial void OnStorageTypeChanged(string value)
@@ -322,7 +322,7 @@ public partial class SettingsViewModel : BaseViewModel
     /// </summary>
     private async Task<bool> ConfirmInsecureCloudUrlAsync()
     {
-        if (!string.Equals(StorageType, "WebDAV", StringComparison.OrdinalIgnoreCase)) return true;
+        if (!Synesthesia_Audio.Core.StorageTypes.IsWebDav(StorageType)) return true;
         if (string.IsNullOrWhiteSpace(CloudServerUrl)) return true;
         if (CloudServerUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return true;
 

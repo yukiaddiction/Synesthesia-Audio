@@ -14,7 +14,7 @@ public class GeneralSettings
     /// </summary>
     public bool TranslateDlsiteTags { get; set; }
 
-    public string StorageType { get; set; } = "Local";
+    public string StorageType { get; set; } = Synesthesia_Audio.Core.StorageTypes.Local;
     public string CloudServerUrl { get; set; } = string.Empty;
     public string CloudUsername { get; set; } = string.Empty;
 

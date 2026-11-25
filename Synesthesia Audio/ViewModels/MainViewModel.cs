@@ -157,7 +157,7 @@ public partial class MainViewModel : BaseViewModel
             OnPropertyChanged(nameof(HasFolderSelected));
 
             var basePath = _settingsService.CurrentSettings.BaseAudioFolderPath;
-            bool isCloud = _settingsService.CurrentSettings.StorageType == "WebDAV";
+            bool isCloud = StorageTypes.IsWebDav(_settingsService.CurrentSettings.StorageType);
 
             if (!string.IsNullOrEmpty(basePath) && (isCloud || Directory.Exists(basePath)))
             {
@@ -453,7 +453,7 @@ public partial class MainViewModel : BaseViewModel
     [RelayCommand]
     private async Task ScanLibraryAsync()
     {
-        bool isCloud = _settingsService.CurrentSettings.StorageType == "WebDAV";
+        bool isCloud = StorageTypes.IsWebDav(_settingsService.CurrentSettings.StorageType);
         string pathToScan = _settingsService.CurrentSettings.BaseAudioFolderPath;
 
         if (isCloud)

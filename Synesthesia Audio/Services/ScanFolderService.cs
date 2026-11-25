@@ -53,7 +53,7 @@ public class ScanFolderService : IDisposable
         }
 
         // Fallback: local cover image
-        if (string.IsNullOrEmpty(coverPath) && !string.IsNullOrEmpty(folderPath) && !_settingsService.CurrentSettings.StorageType.Contains("WebDAV"))
+        if (string.IsNullOrEmpty(coverPath) && !string.IsNullOrEmpty(folderPath) && !Synesthesia_Audio.Core.StorageTypes.IsWebDav(_settingsService.CurrentSettings.StorageType))
         {
             try
             {
@@ -77,7 +77,7 @@ public class ScanFolderService : IDisposable
     public async Task<List<WorkMetadata>> CheckForNewWorksAsync(string basePath, IEnumerable<string> cachedPaths)
     {
         var settings = _settingsService.CurrentSettings;
-        bool isCloud = settings.StorageType == "WebDAV";
+        bool isCloud = Synesthesia_Audio.Core.StorageTypes.IsWebDav(settings.StorageType);
         _logger.LogInformation("Checking for new works — isCloud: {IsCloud}", isCloud);
         var newWorks = new List<WorkMetadata>();
         var cachedPathSet = new HashSet<string>(cachedPaths, StringComparer.OrdinalIgnoreCase);
@@ -255,7 +255,7 @@ public class ScanFolderService : IDisposable
         // Local, not a field: two scans overlapping used to share (and clobber) this list (BUG-m-02).
         var failedFolders = new List<string>();
         var settings = _settingsService.CurrentSettings;
-        bool isCloud = settings.StorageType == "WebDAV";
+        bool isCloud = Synesthesia_Audio.Core.StorageTypes.IsWebDav(settings.StorageType);
         _logger.LogInformation("Library scan started — isCloud: {IsCloud}, path: {BasePath}", isCloud, basePath);
         _scanStateService.MarkRunning("Scan Library Found 0 Work, 0 Audio Files");
 
