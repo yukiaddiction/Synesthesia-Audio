@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Services.Translation;
 
@@ -42,7 +43,16 @@ public sealed class DeepLProvider : ITranslationProvider
         _logger = logger;
         Name = name;
         _apiKey = apiKey;
-        _baseUrl = string.IsNullOrWhiteSpace(baseUrl) ? DefaultBaseUrlFor(apiKey) : baseUrl.TrimEnd('/');
+
+        var defaultBaseUrl = DefaultBaseUrlFor(apiKey);
+        // A custom endpoint receives the API key in a header, so an http:// base URL would leak it in the
+        // clear. Only localhost may use http (SEC-m-04).
+        if (!EndpointUrl.IsSecureOrLocal(baseUrl) && !string.IsNullOrWhiteSpace(baseUrl))
+        {
+            _logger.LogWarning("{Provider} base URL is not https and was ignored; using {Default}", name, defaultBaseUrl);
+        }
+
+        _baseUrl = EndpointUrl.UseOrFallback(baseUrl, defaultBaseUrl);
         _authHeaderName = string.IsNullOrWhiteSpace(authHeaderName) ? "Authorization" : authHeaderName;
         _authScheme = string.IsNullOrWhiteSpace(authScheme) ? "DeepL-Auth-Key" : authScheme;
     }

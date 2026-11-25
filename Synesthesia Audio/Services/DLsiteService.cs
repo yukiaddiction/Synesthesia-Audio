@@ -16,7 +16,19 @@ namespace Synesthesia_Audio.Services;
 
 public class DLsiteService
 {
+    /// <summary>
+    /// Sent deliberately, and worth documenting rather than copying blindly (SEC-m-09): DLsite serves a reduced
+    /// page to clients it does not recognise, and that page has no metadata in it. No login or access control is
+    /// bypassed — the pages read here are the ones the user's own library already points at.
+    /// </summary>
     public const string DefaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+    /// <summary>
+    /// The R-18 sections of DLsite gate on these flags; without them the site answers with the age-consent page,
+    /// whose og:title is the bare site name. Acknowledging the gate once here is what makes the metadata rows
+    /// reachable at all.
+    /// </summary>
+    private const string AgeGateCookie = "age_check_done=1; adultchecked=1; work_view_mode=2;";
 
     private readonly HttpClient _httpClient;
     private readonly TagMappingService _tagMappingService;
@@ -42,9 +54,7 @@ public class DLsiteService
         _httpClient.DefaultRequestHeaders.Add("Accept-Language", "ja,en-US;q=0.9,en;q=0.8");
         _httpClient.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
         _httpClient.DefaultRequestHeaders.Add("Referer", "https://www.dlsite.com/");
-        // age_check_done is what DLsite's R-18 sections check; without it they answer with the
-        // age-consent page, whose og:title is the bare site name.
-        _httpClient.DefaultRequestHeaders.Add("Cookie", "age_check_done=1; adultchecked=1; work_view_mode=2;");
+        _httpClient.DefaultRequestHeaders.Add("Cookie", AgeGateCookie);
         _httpClient.Timeout = TimeSpan.FromSeconds(AppConstants.DlsiteClientTimeoutSeconds);
     }
 
