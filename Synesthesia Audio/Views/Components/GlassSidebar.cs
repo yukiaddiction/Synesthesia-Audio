@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using CommunityToolkit.Maui.Markup;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls.Shapes;
 using Synesthesia_Audio.Services.Logging;
@@ -24,8 +25,13 @@ public sealed class GlassSidebar : Border
     private Shell? _shell;
     private bool _hooked;
 
-    public GlassSidebar()
+    public GlassSidebar(MainViewModel? viewModel = null)
     {
+        // The rail drives the library filter, so it must talk to the singleton view model rather than to
+        // whatever page happens to be showing. Reading BindingContext meant the filters did nothing on
+        // Settings, Album and every other page whose BindingContext is not a MainViewModel.
+        _viewModel = viewModel ?? IPlatformApplication.Current?.Services?.GetService<MainViewModel>();
+
         StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassCardRadius };
         Margin = new Thickness(12, 12, 0, 12);
         Padding = new Thickness(10);
@@ -93,7 +99,10 @@ public sealed class GlassSidebar : Border
     protected override void OnBindingContextChanged()
     {
         base.OnBindingContextChanged();
-        _viewModel = BindingContext as MainViewModel;
+
+        // Only a fallback: the singleton injected above is preferred, because pages other than the
+        // library carry a different BindingContext.
+        _viewModel ??= BindingContext as MainViewModel;
         Refresh();
     }
 

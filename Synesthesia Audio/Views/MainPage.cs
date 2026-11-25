@@ -308,6 +308,16 @@ public class MainPage : ContentPage
             available -= AppBreakpoints.SidebarWidth + AppBreakpoints.PreviewPaneWidth + 48;
 
         var span = available > 900 ? 4 : available > 640 ? 3 : 2;
+
+        // OnSizeAllocated fires for every resize frame. Replacing the layout each time rebuilt the grid
+        // and threw away the scroll position, so the column count is changed in place instead.
+        if (_collectionView.ItemsLayout is GridItemsLayout grid)
+        {
+            if (grid.Span == span) return;
+            grid.Span = span;
+            return;
+        }
+
         _collectionView.ItemsLayout = new GridItemsLayout(span, ItemsLayoutOrientation.Vertical);
     }
 }

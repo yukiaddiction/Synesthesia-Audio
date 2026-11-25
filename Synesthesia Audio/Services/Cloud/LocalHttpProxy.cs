@@ -148,14 +148,17 @@ public class LocalHttpProxy : IDisposable
 
     private async Task ListenLoopAsync()
     {
+        var listener = _listener;
+        if (listener == null) return;
+
         AddLog("Listen loop started, waiting for connections...");
         try
         {
-            while (_listener != null)
+            while (ReferenceEquals(_listener, listener))
             {
                 try
                 {
-                    var client = await _listener.AcceptTcpClientAsync();
+                    var client = await listener.AcceptTcpClientAsync();
                     Interlocked.Increment(ref _requestCount);
                     var reqNum = _requestCount;
                     var remoteEp = client.Client.RemoteEndPoint?.ToString() ?? "unknown";
@@ -179,13 +182,16 @@ public class LocalHttpProxy : IDisposable
                 }
                 catch (SocketException ex)
                 {
-                    AddLog($"Accept socket error: {ex.SocketErrorCode}: {ex.Message}");
-                    break;
+                    // An accept failure concerns one connection, not the whole proxy. Exiting the loop on
+                    // the first one left the proxy permanently dead while IsRunning still looked true, so
+                    // every later stream failed with no way to recover except a restart.
+                    AddLog($"Accept socket error: {ex.SocketErrorCode}: {ex.Message} — continuing");
+                    await Task.Delay(50);
                 }
                 catch (Exception ex)
                 {
-                    AddLog($"Accept error: {ex.GetType().Name}: {ex.Message}");
-                    break;
+                    AddLog($"Accept error: {ex.GetType().Name}: {ex.Message} — continuing");
+                    await Task.Delay(50);
                 }
             }
         }
@@ -193,8 +199,13 @@ public class LocalHttpProxy : IDisposable
         {
             lock (_startLock)
             {
-                _isRunning = false;
-                _listener = null;
+                // Only clear state this loop owns: a restart may already have installed a new listener, and
+                // nulling it blindly would make the next EnsureRunning start a second one on the old port.
+                if (ReferenceEquals(_listener, listener))
+                {
+                    _listener = null;
+                    _isRunning = false;
+                }
             }
             AddLog("Listen loop ended.");
         }
@@ -278,23 +289,27 @@ public class LocalHttpProxy : IDisposable
                 var cl = webDavResponse.Content.Headers.ContentLength;
                 AddLog($"#{reqNum} WebDAV response: {(int)webDavResponse.StatusCode} {webDavResponse.ReasonPhrase}, Content-Length: {(cl.HasValue ? cl.Value.ToString() : "N/A")}");
 
+                // A 200 whose body is HTML almost always means the server answered with a login page or an
+                // error page. Forwarding it as audio leaves the player silently stuck with no clue why.
+                var serverType = webDavResponse.Content.Headers.ContentType?.MediaType;
+                if (webDavResponse.IsSuccessStatusCode &&
+                    serverType != null &&
+                    serverType.Contains("html", StringComparison.OrdinalIgnoreCase))
+                {
+                    AddLog($"#{reqNum} WebDAV returned HTML ({serverType}) instead of audio — responding 502");
+                    await WriteErrorAsync(networkStream, 502, "Bad Gateway");
+                    return;
+                }
+
                 await WriteStatusAndHeadersAsync(networkStream, webDavResponse, path, reqNum);
 
                 if (webDavResponse.IsSuccessStatusCode)
                 {
-                    var ct = webDavResponse.Content.Headers.ContentType?.MediaType ?? "";
-                    if (ct.Contains("html", StringComparison.OrdinalIgnoreCase))
-                    {
-                        AddLog($"#{reqNum} WebDAV returned HTML instead of audio — check credentials and path!");
-                    }
-                    else
-                    {
-                        AddLog($"#{reqNum} Streaming body to client...");
-                        using var remoteStream = await webDavResponse.Content.ReadAsStreamAsync();
-                        await remoteStream.CopyToAsync(networkStream);
-                        await networkStream.FlushAsync();
-                        AddLog($"#{reqNum} Stream complete, connection closed.");
-                    }
+                    AddLog($"#{reqNum} Streaming body to client...");
+                    using var remoteStream = await webDavResponse.Content.ReadAsStreamAsync();
+                    await remoteStream.CopyToAsync(networkStream);
+                    await networkStream.FlushAsync();
+                    AddLog($"#{reqNum} Stream complete, connection closed.");
                 }
                 else
                 {
@@ -348,6 +363,8 @@ public class LocalHttpProxy : IDisposable
             else if (path.EndsWith(".flac", StringComparison.OrdinalIgnoreCase)) contentType = "audio/flac";
             else if (path.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase)) contentType = "audio/mp4";
             else if (path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)) contentType = "video/mp4";
+            else if (path.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase)) contentType = "audio/ogg";
+            else if (path.EndsWith(".opus", StringComparison.OrdinalIgnoreCase)) contentType = "audio/ogg";
         }
 
         if (serverContentType != null && serverContentType.Contains("html", StringComparison.OrdinalIgnoreCase))

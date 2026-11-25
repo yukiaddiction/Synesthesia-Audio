@@ -78,8 +78,7 @@ public sealed class GlassScaffold : Grid
         main.Children.Add(_overlayHost);
         _overlayHost.Row(1);
 
-        _sidebar = new GlassSidebar { IsVisible = false };
-        _sidebarColumn = new ColumnDefinition(new GridLength(0));
+        _sidebar = new GlassSidebar { IsVisible = false };        _sidebarColumn = new ColumnDefinition(new GridLength(0));
 
         var shell = new Grid
         {
