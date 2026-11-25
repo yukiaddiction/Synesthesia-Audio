@@ -34,11 +34,44 @@ public sealed class SecureStore : ISecureStore
     {
         _logger = logger;
 #if WINDOWS
-        var path = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), FileName);
+        // A dedicated subfolder rather than the root of LocalAppData (SEC-m-03): the container should not sit
+        // loose among every other application's files.
+        var directory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SynesthesiaAudio");
+        var path = Path.Combine(directory, FileName);
+
+        MigrateFromLocalAppDataRoot(directory, path);
+
         _fileStore = new SecureFileStore(path, DpapiProtectAsync, DpapiUnprotectAsync);
 #endif
     }
+
+#if WINDOWS
+    /// <summary>
+    /// Moves a container written by an older build (which lived directly in LocalAppData) into the new folder,
+    /// so the move does not look like a wiped credential store to the user.
+    /// </summary>
+    private void MigrateFromLocalAppDataRoot(string newDirectory, string newPath)
+    {
+        try
+        {
+            if (File.Exists(newPath)) return;
+
+            var oldPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), FileName);
+            if (!File.Exists(oldPath)) return;
+
+            Directory.CreateDirectory(newDirectory);
+            File.Move(oldPath, newPath);
+            _logger.LogInformation("Moved the credential container into its own application folder");
+        }
+        catch (Exception ex)
+        {
+            // Leaving the old file alone is safe: the user simply has to enter the secret again.
+            _logger.LogWarning(ex, "Could not move the existing credential container");
+        }
+    }
+#endif
 
     public async Task<string?> GetAsync(string key)
     {
