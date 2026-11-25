@@ -130,7 +130,7 @@ public static class DLsiteParser
                         var imgStr = ReadJsonString(node, "image");
                         if (!string.IsNullOrEmpty(imgStr))
                         {
-                            if (imgStr.StartsWith("//")) imgStr = "https:" + imgStr;
+                            imgStr = DlsiteUrl.EnsureAbsolute(imgStr);
                             coverUrl = imgStr;
                         }
                     }
@@ -204,7 +204,7 @@ public static class DLsiteParser
             else
                 coverUrl = ExtractMetaContent(html, "og:image");
 
-            if (coverUrl.StartsWith("//")) coverUrl = "https:" + coverUrl;
+            coverUrl = DlsiteUrl.EnsureAbsolute(coverUrl);
         }
         if (circle == "Unknown Circle")
         {
@@ -272,7 +272,7 @@ public static class DLsiteParser
             if (coverMatch.Success)
             {
                 coverUrl = coverMatch.Groups[1].Value;
-                if (coverUrl.StartsWith("//")) coverUrl = "https:" + coverUrl;
+                coverUrl = DlsiteUrl.EnsureAbsolute(coverUrl);
             }
         }
 
@@ -879,10 +879,7 @@ public static class DLsiteParser
             {
                 coverUrl = imageThumbProp.GetString() ?? "";
             }
-            if (coverUrl.StartsWith("//"))
-            {
-                coverUrl = "https:" + coverUrl;
-            }
+            coverUrl = DlsiteUrl.EnsureAbsolute(coverUrl);
 
             // The API only reports an adult flag, so a missing field is "not stated" rather than all-ages.
             string ageRating = AgeRatings.Unknown;

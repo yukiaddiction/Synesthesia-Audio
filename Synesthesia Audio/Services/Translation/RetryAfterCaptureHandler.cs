@@ -1,5 +1,6 @@
 using System.Net;
 
+using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Services.Translation;
 
 /// <summary>
@@ -51,14 +52,6 @@ public sealed class RetryAfterCaptureHandler : DelegatingHandler
     private static TimeSpan? ReadRetryAfter(HttpResponseMessage response)
     {
         var retryAfter = response.Headers.RetryAfter;
-        if (retryAfter?.Delta is { } delta) return delta;
-
-        if (retryAfter?.Date is { } date)
-        {
-            var wait = date - DateTimeOffset.UtcNow;
-            if (wait > TimeSpan.Zero) return wait;
-        }
-
-        return null;
+        return RetryAfterParser.TryParse(retryAfter?.Delta, retryAfter?.Date, DateTimeOffset.UtcNow);
     }
 }
