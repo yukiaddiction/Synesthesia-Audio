@@ -15,7 +15,6 @@ public sealed class TranslationService : ITranslationService
     private readonly RetryAfterCaptureHandler _retryAfterHandler = new();
     private readonly HttpClient _httpClient;
     private readonly RateLimitCooldown _cooldown = new();
-    private readonly RomajiTransliterator _romaji = new();
 
     private GTranslateProvider? _gTranslateProvider;
     private int _consecutiveRateLimits;
@@ -38,7 +37,7 @@ public sealed class TranslationService : ITranslationService
     public bool ContainsJapanese(string text) =>
         !string.IsNullOrEmpty(text) && AppConstants.JapaneseTextRegex.IsMatch(text);
 
-    public string ToRomaji(string japaneseText) => _romaji.ToRomaji(japaneseText);
+    public string ToRomaji(string japaneseText) => RomajiTransliterator.ToRomaji(japaneseText);
 
     public string ActiveProviderName =>
         ResolveProviderKind(_settingsService.CurrentSettings.TranslationProvider);
