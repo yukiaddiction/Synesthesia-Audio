@@ -17,7 +17,6 @@ public class ScanFolderService : IDisposable
     private readonly ScanStateService _scanStateService;
     private readonly Services.Cloud.ICloudProvider _cloudProvider;
     private readonly HttpClient _httpClient = new();
-    private List<string> _failedFolders = new();
     private readonly ILogger<ScanFolderService> _logger;
 
     public ScanFolderService(DLsiteService dlsiteService, LibraryCacheService cacheService, SettingsService settingsService, ScanStateService scanStateService, Services.Cloud.ICloudProvider cloudProvider, ILogger<ScanFolderService> logger)
@@ -245,7 +244,7 @@ public class ScanFolderService : IDisposable
         return listing.AudioFiles;
     }
 
-    public async Task<ScanResult> ScanLibraryAsync(string basePath, IProgress<(double, string)>? progress = null)
+    public async Task<ScanResult> ScanLibraryAsync(string basePath, IProgress<(double, string)>? progress = null, CancellationToken cancellationToken = default)
     {
         // The cache reads lazily; finish that read before deciding which works are stale or new.
         await _cacheService.Loaded.ConfigureAwait(false);
@@ -259,7 +258,8 @@ public class ScanFolderService : IDisposable
             if (trimmed.Length > 0) basePath = trimmed;
         }
 
-        _failedFolders = new List<string>();
+        // Local, not a field: two scans overlapping used to share (and clobber) this list (BUG-m-02).
+        var failedFolders = new List<string>();
         var settings = _settingsService.CurrentSettings;
         bool isCloud = settings.StorageType == "WebDAV";
         _logger.LogInformation("Library scan started — isCloud: {IsCloud}, path: {BasePath}", isCloud, basePath);
@@ -297,15 +297,27 @@ public class ScanFolderService : IDisposable
             ? new CloudScanFileSource(_cloudProvider)
             : new LocalScanFileSource();
 
-        var listing = await ScanListing.CollectAudioFilesAsync(
-            fileSource,
-            basePath,
-            AppConstants.IsMediaFile,
-            AppConstants.IsSystemFileOrDir,
-            filesFound => Report(0.15 * Math.Min(1.0, filesFound / 500.0),
-                $"Scan Library Found {filesFound} Audio File{(filesFound == 1 ? "" : "s")}"));
+        ScanListingResult listing;
+        try
+        {
+            listing = await ScanListing.CollectAudioFilesAsync(
+                fileSource,
+                basePath,
+                AppConstants.IsMediaFile,
+                AppConstants.IsSystemFileOrDir,
+                filesFound => Report(0.15 * Math.Min(1.0, filesFound / 500.0),
+                    $"Scan Library Found {filesFound} Audio File{(filesFound == 1 ? "" : "s")}"),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancelled scan must never publish a partial library over a good cache.
+            _logger.LogInformation("Library scan cancelled during discovery");
+            _scanStateService.MarkInterrupted("Scan cancelled.");
+            return new ScanResult();
+        }
 
-        _failedFolders = listing.FailedPaths;
+        failedFolders = listing.FailedPaths;
 
         if (listing.RootFailed)
         {
@@ -427,6 +439,9 @@ public class ScanFolderService : IDisposable
                 await semaphore.WaitAsync();
                 try
                 {
+                    // Honoured before each work so cancelling stops new DLsite requests promptly without
+                    // threading a token through every scraper call.
+                    if (cancellationToken.IsCancellationRequested) return;
                     var (work, workPath, rjCode, _) = pw;
 
                     try
@@ -513,6 +528,14 @@ public class ScanFolderService : IDisposable
 
         foreach (var (work, files) in readyWorks)
         {
+            // Checked per work: this loop is the long tail of a scan and is where a cancel has to land.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogInformation("Library scan cancelled before writing results");
+                _scanStateService.MarkInterrupted("Scan cancelled.");
+                return new ScanResult { FailedFolders = failedFolders, TotalFiles = allAudioFiles.Count };
+            }
+
             var workPath = work.FolderPath;
 
             var cachedWork = _cacheService.GetWork(workPath)
@@ -606,19 +629,19 @@ public class ScanFolderService : IDisposable
         }
 
         Report(1.0, "scan: done");
-        _logger.LogInformation("Library scan complete — {Count} works, {AudioFiles} audio files, {Failures} failed folders", finalWorks.Count, allAudioFiles.Count, _failedFolders.Count);
+        _logger.LogInformation("Library scan complete — {Count} works, {AudioFiles} audio files, {Failures} failed folders", finalWorks.Count, allAudioFiles.Count, failedFolders.Count);
 
-        if (_failedFolders.Count > 0)
+        if (failedFolders.Count > 0)
         {
-            var failedMsg = $"Scan finished but {_failedFolders.Count} folder{( _failedFolders.Count == 1 ? "" : "s")} could not be accessed:\n{string.Join("\n", _failedFolders.Take(5))}{( _failedFolders.Count > 5 ? $"\n...and {_failedFolders.Count - 5} more" : "")}";
-            _scanStateService.MarkFailed(failedMsg, _failedFolders.Count, _failedFolders);
+            var failedMsg = $"Scan finished but {failedFolders.Count} folder{( failedFolders.Count == 1 ? "" : "s")} could not be accessed:\n{string.Join("\n", failedFolders.Take(5))}{( failedFolders.Count > 5 ? $"\n...and {failedFolders.Count - 5} more" : "")}";
+            _scanStateService.MarkFailed(failedMsg, failedFolders.Count, failedFolders);
         }
         else
         {
             _scanStateService.MarkCompleted(finalWorks.Count, allAudioFiles.Count);
         }
 
-        return new ScanResult { Works = finalWorks, FailedFolders = _failedFolders, TotalFiles = allAudioFiles.Count };
+        return new ScanResult { Works = finalWorks, FailedFolders = failedFolders, TotalFiles = allAudioFiles.Count };
     }
 
     private async Task FindCoverImageFallbackAsync(WorkMetadata work, string workPath, bool isCloud, string rjCode)

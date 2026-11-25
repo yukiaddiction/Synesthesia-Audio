@@ -41,6 +41,15 @@ public class ScanForegroundService : Service
     {
         try
         {
+            // A second start while a scan is running used to begin a parallel scan: two walks writing the
+            // same cache, and the first one's failure list clobbered by the second (BUG-m-02).
+            if (_isRunning)
+            {
+                Services.Logging.AppLog.Get<ScanForegroundService>()
+                    .LogInformation("ScanForegroundService: scan already running, ignoring duplicate start");
+                return StartCommandResult.NotSticky;
+            }
+
             CreateNotificationChannel();
             _isRunning = true;
             StartForeground(NOTIFICATION_ID, BuildNotification("Scanning library...", "Preparing...", 0));
@@ -94,7 +103,7 @@ public class ScanForegroundService : Service
                 }
             });
 
-            await Task.Run(() => scanService.ScanLibraryAsync(basePath, progress));
+            await Task.Run(() => scanService.ScanLibraryAsync(basePath, progress, token));
         }
         catch (Exception ex)
         {
@@ -146,6 +155,26 @@ public class ScanForegroundService : Service
         }
         _isRunning = false;
         base.OnDestroy();
+    }
+
+    /// <summary>
+    /// Android 15+ stops a dataSync foreground service that runs too long. Cancelling first means the scan
+    /// ends as Interrupted rather than leaving the UI showing a scan that is no longer running.
+    /// </summary>
+    public override void OnTimeout(int startId)
+    {
+        try
+        {
+            Services.Logging.AppLog.Get<ScanForegroundService>()
+                .LogWarning("ScanForegroundService: foreground timeout, cancelling the scan");
+            _cts?.Cancel();
+        }
+        catch (System.Exception ex)
+        {
+            Services.Logging.AppLog.Get<ScanForegroundService>().LogWarning(ex, "ScanForegroundService: timeout handling failed");
+        }
+
+        StopSelf(startId);
     }
 
     private Notification BuildNotification(string title, string text, int progressPct)
