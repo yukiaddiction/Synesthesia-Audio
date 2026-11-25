@@ -79,6 +79,32 @@ jobs:
             --created "$CREATED" \
             --ipadic-hash "$IPA_HASH"
 
+      # SEC-M-04 part 3. The manifest carries the data's SHA-256, which on its own only proves the data matches
+      # the manifest: whoever can replace the release assets replaces both. A detached signature over the
+      # manifest bytes breaks that chain, because the matching private key never lives in this repository.
+      #
+      # The signature is a separate .sig asset rather than a field inside the manifest, so there is no
+      # chicken-and-egg and no canonicalisation ambiguity about what exactly was signed.
+      - name: Sign the name-data manifest
+        if: ${{ secrets.NAMES_SIGNING_KEY != '' }}
+        env:
+          NAMES_SIGNING_KEY: ${{ secrets.NAMES_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$NAMES_SIGNING_KEY" > "$RUNNER_TEMP/signing-key.pem"
+          openssl dgst -sha256 -sign "$RUNNER_TEMP/signing-key.pem" \
+            -out "$RUNNER_TEMP/meta.sig.der" \
+            "Synesthesia Audio/Resources/Raw/name_readings.meta.json"
+          base64 -w0 "$RUNNER_TEMP/meta.sig.der" > "$RUNNER_TEMP/name_readings.meta.json.sig"
+          rm -f "$RUNNER_TEMP/signing-key.pem" "$RUNNER_TEMP/meta.sig.der"
+          echo "Manifest signed."
+
+      - name: Warn when the manifest is unsigned
+        if: ${{ secrets.NAMES_SIGNING_KEY == '' }}
+        run: |
+          echo "::warning::NAMES_SIGNING_KEY is not set, so the manifest is published unsigned. The app keeps \
+          working but cannot prove the manifest came from this project - see AUDIT.md SEC-M-04."
+
       - name: Commit snapshot if it changed
         run: |
           set -euo pipefail
@@ -109,3 +135,8 @@ jobs:
             "Synesthesia Audio/Resources/Raw/name_readings.meta.json" \
             "$RUNNER_TEMP/ipadic.zip" \
             --clobber
+
+          # Published only when signing ran; its absence is how the app knows signatures are not enforced yet.
+          if [ -f "$RUNNER_TEMP/name_readings.meta.json.sig" ]; then
+            gh release upload names-data "$RUNNER_TEMP/name_readings.meta.json.sig" --clobber
+          fi

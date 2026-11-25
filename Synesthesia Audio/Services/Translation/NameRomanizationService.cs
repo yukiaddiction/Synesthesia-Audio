@@ -24,6 +24,12 @@ public sealed class NameRomanizationService
     private const string MetaUrl = "https://github.com/yukiaddiction/Synesthesia-Audio/releases/download/names-data/name_readings.meta.json";
     private const string DataUrl = "https://github.com/yukiaddiction/Synesthesia-Audio/releases/download/names-data/name_readings.tsv.gz";
 
+    /// <summary>Detached signature over the manifest bytes; absent until a signing key is configured.</summary>
+    private const string SignatureUrl = "https://github.com/yukiaddiction/Synesthesia-Audio/releases/download/names-data/name_readings.meta.json.sig";
+
+    /// <summary>Optional package asset holding the project's ECDSA public key. Absent = signatures not enforced.</summary>
+    private const string PublicKeyAsset = "names_pubkey.pem";
+
     private readonly ILogger<NameRomanizationService> _logger;
     private readonly ITranslationService _translationService;
     private readonly KawazuKanjiRomanizer _kawazu;
@@ -32,6 +38,61 @@ public sealed class NameRomanizationService
 
     private Task<NameRomanizer>? _loadTask;
     private bool _refreshStarted;
+
+    private ECDsa? _manifestPublicKey;
+    private bool _publicKeyLoaded;
+
+    /// <summary>
+    /// The key the manifest must be signed with, or null when the build ships no key. A null key means
+    /// "signatures are not enforced yet" — it must never be read as "verified".
+    /// </summary>
+    private async Task<ECDsa?> GetManifestPublicKeyAsync()
+    {
+        if (_publicKeyLoaded) return _manifestPublicKey;
+        _publicKeyLoaded = true;
+
+        try
+        {
+            await using var stream = await FileSystem.OpenAppPackageFileAsync(PublicKeyAsset).ConfigureAwait(false);
+            using var reader = new StreamReader(stream);
+            var pem = await reader.ReadToEndAsync().ConfigureAwait(false);
+
+            _manifestPublicKey = NameDataSignature.TryLoadPublicKey(pem);
+            if (_manifestPublicKey != null)
+            {
+                _logger.LogInformation("Name data manifest signatures are enforced");
+            }
+            else
+            {
+                _logger.LogWarning("The bundled name-data public key could not be parsed; manifest signatures are not enforced");
+            }
+        }
+        catch (FileNotFoundException)
+        {
+            _logger.LogInformation("No name-data public key is bundled, so manifest signatures are not enforced yet");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Name-data public key could not be read; manifest signatures are not enforced");
+        }
+
+        return _manifestPublicKey;
+    }
+
+    private async Task<string?> TryDownloadSignatureAsync()
+    {
+        try
+        {
+            using var response = await _httpClient.GetAsync(SignatureUrl).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+            return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Name-data signature could not be downloaded");
+            return null;
+        }
+    }
 
     public NameRomanizationService(ILogger<NameRomanizationService> logger, ITranslationService translationService, KawazuKanjiRomanizer kawazu)
     {
@@ -209,7 +270,23 @@ public sealed class NameRomanizationService
                 return;
             }
 
-            var metaJson = await metaResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+            // Keep the exact bytes: the signature covers the manifest as published, not a re-serialised copy.
+            var metaBytes = await metaResponse.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+            var metaJson = Encoding.UTF8.GetString(metaBytes);
+
+            // When the build carries a public key, the manifest must prove it came from this project before any
+            // of its hashes are trusted. Without the key the app keeps today's hash-only behaviour, so the
+            // scheduled refresh keeps working until a key exists.
+            var publicKey = await GetManifestPublicKeyAsync().ConfigureAwait(false);
+            if (publicKey != null)
+            {
+                var signature = await TryDownloadSignatureAsync().ConfigureAwait(false);
+                if (!NameDataSignature.IsValid(publicKey, metaBytes, signature))
+                {
+                    _logger.LogWarning("Name data refresh rejected — the manifest signature is missing or invalid");
+                    return;
+                }
+            }
             using var document = JsonDocument.Parse(metaJson);
             var root = document.RootElement;
 
