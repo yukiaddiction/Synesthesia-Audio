@@ -177,7 +177,11 @@ public class FloatingPlayerBar : Border
                     var cache = ServiceAccessor.GetService<LibraryCacheService>();
                     var work = cache?.GetWork(folderPath);
                     if (work != null)
-                        await Shell.Current.GoToAsync(nameof(AlbumPage), new Dictionary<string, object> { { "Album", work } });
+                    {
+                        // Guarded: clicking the bar repeatedly used to stack copies of the album page.
+                        await NavigationGuard.RunAsync(() =>
+                            Shell.Current.GoToAsync(nameof(AlbumPage), new Dictionary<string, object> { { "Album", work } }));
+                    }
                 }
                 catch { }
             })

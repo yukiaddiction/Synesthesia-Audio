@@ -426,7 +426,9 @@ public class SettingsPage : ContentPage
                             {
                                 try
                                 {
-                                    await Shell.Current.Navigation.PushAsync(new TagMappingPage(tagService, cacheService, mainViewModel));
+                                    // Guarded: a double click used to push the page twice.
+                                    await NavigationGuard.RunAsync(() =>
+                                        Shell.Current.Navigation.PushAsync(new TagMappingPage(tagService, cacheService, mainViewModel)));
                                 }
                                 catch (Exception ex)
                                 {

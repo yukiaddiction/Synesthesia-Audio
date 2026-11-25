@@ -553,7 +553,11 @@ public partial class MainViewModel : BaseViewModel
     private async Task OpenAlbumAsync(WorkMetadata album)
     {
         if (album == null) return;
-        await Shell.Current.GoToAsync(nameof(AlbumPage), new Dictionary<string, object> { { "Album", album } });
+
+        // A double tap fires the single-tap handler as well, and both used to push while the first push was
+        // still animating, stacking two copies of the same album page.
+        await NavigationGuard.RunAsync(() =>
+            Shell.Current.GoToAsync(nameof(AlbumPage), new Dictionary<string, object> { { "Album", album } }));
     }
 
     [RelayCommand]
