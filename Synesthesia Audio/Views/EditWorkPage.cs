@@ -39,7 +39,9 @@ public class EditWorkPage : ContentPage
         _coverPathEntry = CreateEntry(work.CoverImagePath, "Cover Image Path");
         _coverPathEntry.IsReadOnly = true;
 
-        _nsfwSwitch = new Switch { IsToggled = work.IsNsfw }.GlassSwitch();
+        _nsfwSwitch = new Switch { IsToggled = work.IsNsfw }
+            .Invoke(s => SemanticProperties.SetDescription(s, "Adult content"))
+            .GlassSwitch();
 
         var actions = new Grid
         {

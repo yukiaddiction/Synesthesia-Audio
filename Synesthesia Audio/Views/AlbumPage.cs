@@ -289,6 +289,11 @@ public class AlbumPage : ContentPage
                             };
 
                             // Row hover makes the long desktop track list readable.
+                            // The row is a button in behaviour but announced as loose text (UX-07): name it from
+                            // the track title and say what tapping does.
+                            trackGrid.SetBinding(SemanticProperties.DescriptionProperty, new Binding(nameof(Track.Title)));
+                            SemanticProperties.SetHint(trackGrid, "Double tap to play this track");
+
                             var pointer = new PointerGestureRecognizer();
                             pointer.PointerEntered += (_, _) => trackGrid.Opacity = 0.82;
                             pointer.PointerExited += (_, _) => trackGrid.Opacity = 1;

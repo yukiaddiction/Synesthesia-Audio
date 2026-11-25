@@ -41,6 +41,7 @@ public static class GlassTheme
             CharacterSpacing = 1.6,
             Margin = new Thickness(6, 6, 0, 0)
         }
+        .Invoke(l => SemanticProperties.SetHeadingLevel(l, SemanticHeadingLevel.Level2))
         .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark);
     }
 

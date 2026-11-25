@@ -174,6 +174,7 @@ public class SettingsPage : ContentPage
                         CreateCardCaption("Dark mode"),
                         new Switch { VerticalOptions = LayoutOptions.Center }
                             .Bind(Switch.IsToggledProperty, nameof(SettingsViewModel.IsDarkMode))
+                            .Invoke(s => SemanticProperties.SetDescription(s, "Dark mode"))
                             .GlassSwitch()
                     }
                 }
@@ -400,6 +401,7 @@ public class SettingsPage : ContentPage
 
                 new Switch { VerticalOptions = LayoutOptions.Center }
                     .Bind(Switch.IsToggledProperty, nameof(SettingsViewModel.TranslateDlsiteTags))
+                    .Invoke(s => SemanticProperties.SetDescription(s, "Translate DLsite tags"))
                     .GlassSwitch()
                     .Column(1)
             }
