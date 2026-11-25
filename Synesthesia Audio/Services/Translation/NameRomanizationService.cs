@@ -75,6 +75,43 @@ public sealed class NameRomanizationService
 
     private static string CachedDataPath => Path.Combine(FileSystem.AppDataDirectory, "name_readings.tsv.gz");
 
+    /// <summary>Records which published revision the cached table came from, so it is not fetched again.</summary>
+    private static string AppliedMetaPath => Path.Combine(FileSystem.AppDataDirectory, "name_readings.applied.json");
+
+    private string? _appliedCreated;
+
+    private string? TryReadAppliedCreated()
+    {
+        try
+        {
+            if (!File.Exists(AppliedMetaPath)) return null;
+
+            using var document = JsonDocument.Parse(File.ReadAllText(AppliedMetaPath));
+            return document.RootElement.TryGetProperty("created", out var created) ? created.GetString() : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Applied name-data revision could not be read");
+            return null;
+        }
+    }
+
+    private void WriteAppliedCreated(string created)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(new { created });
+            var temporary = AppliedMetaPath + ".tmp";
+            File.WriteAllText(temporary, json);
+            File.Move(temporary, AppliedMetaPath, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            // Only costs a redundant download next time.
+            _logger.LogDebug(ex, "Applied name-data revision could not be recorded");
+        }
+    }
+
     private async Task<NameRomanizer> LoadAsync()
     {
         if (!_refreshStarted)
@@ -92,6 +129,18 @@ public sealed class NameRomanizationService
         var meta = await ReadMetaAsync().ConfigureAwait(false);
         if (meta is { } bundledMeta && bundledMeta.TryGetProperty("created", out var created))
             BundledDataCreated = created.GetString();
+
+        // The date the About page shows must be the data actually in use. When the refreshed table is the
+        // one loaded, that is the revision we last applied, not the bundled one.
+        _appliedCreated = TryReadAppliedCreated();
+        if (cached != null)
+        {
+            BundledDataCreated = _appliedCreated ?? BundledDataCreated;
+        }
+        else
+        {
+            _appliedCreated = null;
+        }
 
         // Warm the optional MeCab dictionary in the background; until it exists the fallback simply
         // returns null and unknown kanji stay verbatim.
@@ -168,8 +217,13 @@ public sealed class NameRomanizationService
             var expectedSha = root.TryGetProperty("sha256", out var sha) ? sha.GetString() : null;
             if (string.IsNullOrEmpty(publishedCreated) || string.IsNullOrEmpty(expectedSha)) return;
 
-            if (File.Exists(CachedDataPath) && string.Equals(publishedCreated, BundledDataCreated, StringComparison.Ordinal))
+            // Compare against the revision in use, never the bundled one (BUG-m-01).
+            var appliedCreated = _appliedCreated ?? (_appliedCreated = TryReadAppliedCreated());
+            if (!NameDataFreshness.IsNewRevision(publishedCreated, appliedCreated))
+            {
+                _logger.LogDebug("Name data already at published revision {Created}", publishedCreated);
                 return;
+            }
 
             _logger.LogInformation("Downloading name data published {Created}", publishedCreated);
 
@@ -186,6 +240,8 @@ public sealed class NameRomanizationService
             await File.WriteAllBytesAsync(temporary, bytes).ConfigureAwait(false);
             File.Move(temporary, CachedDataPath, overwrite: true);
 
+            WriteAppliedCreated(publishedCreated);
+            _appliedCreated = publishedCreated;
             BundledDataCreated = publishedCreated;
             _logger.LogInformation("Name data refreshed to {Created}", publishedCreated);
         }
