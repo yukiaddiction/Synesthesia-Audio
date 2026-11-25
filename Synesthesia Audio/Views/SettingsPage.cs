@@ -205,11 +205,7 @@ public class SettingsPage : ContentPage
             .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark);
     }
 
-    private Label CreateFormLabel(string text)
-    {
-        return new Label { Text = text, FontSize = AppFontSizes.Body }
-            .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark);
-    }
+    private Label CreateFormLabel(string text) => GlassTheme.FormLabel(text);
 
     private View CreateLibrarySourceCard()
     {
@@ -244,10 +240,8 @@ public class SettingsPage : ContentPage
                             Spacing = AppLayout.SpacingLarge,
                             Children =
                             {
-                                new Entry { Placeholder = "e.g. D:\\Audio", IsReadOnly = true, HorizontalOptions = LayoutOptions.Fill }
-                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.BaseAudioFolderPath))
-                                    .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
+                                GlassTheme.FormEntry(placeholder: "e.g. D:\\Audio", isReadOnly: true, fillWidth: true)
+                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.BaseAudioFolderPath)),
 
                                 GlassTheme.PillButton("Browse", AppFontSizes.Body)
                                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.PickFolderCommand))
@@ -263,22 +257,16 @@ public class SettingsPage : ContentPage
                     Children =
                     {
                         CreateFormLabel("WebDAV Server URL"),
-                        new Entry { Placeholder = "e.g. https://webdav.pcloud.com" }
-                            .Bind(Entry.TextProperty, nameof(SettingsViewModel.CloudServerUrl))
-                            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
+                        GlassTheme.FormEntry(placeholder: "e.g. https://webdav.pcloud.com")
+                            .Bind(Entry.TextProperty, nameof(SettingsViewModel.CloudServerUrl)),
 
                         CreateFormLabel("Username"),
-                        new Entry { Placeholder = "WebDAV username" }
-                            .Bind(Entry.TextProperty, nameof(SettingsViewModel.CloudUsername))
-                            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
+                        GlassTheme.FormEntry(placeholder: "WebDAV username")
+                            .Bind(Entry.TextProperty, nameof(SettingsViewModel.CloudUsername)),
 
                         CreateFormLabel("Password / Token"),
-                        new Entry { IsPassword = true, Placeholder = "App-specific password" }
-                            .Bind(Entry.TextProperty, nameof(SettingsViewModel.CloudPassword))
-                            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
+                        GlassTheme.FormEntry(placeholder: "App-specific password", isPassword: true)
+                            .Bind(Entry.TextProperty, nameof(SettingsViewModel.CloudPassword)),
 
                         CreateFormLabel("Remote Library Folder Path"),
 
@@ -287,10 +275,8 @@ public class SettingsPage : ContentPage
                             Spacing = AppLayout.SpacingLarge,
                             Children =
                             {
-                                new Entry { Placeholder = "e.g. /Audio (leave blank for root)", HorizontalOptions = LayoutOptions.Fill }
-                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.BaseAudioFolderPath))
-                                    .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
+                                GlassTheme.FormEntry(placeholder: "e.g. /Audio (leave blank for root)", fillWidth: true)
+                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.BaseAudioFolderPath)),
 
                                 GlassTheme.PillButton("Browse", AppFontSizes.Body)
                                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.BrowseCloudFolderCommand))
@@ -341,10 +327,8 @@ public class SettingsPage : ContentPage
                     Children =
                     {
                         CreateFormLabel("API Key"),
-                        new Entry { IsPassword = true, Placeholder = "DeepL key (ends with :fx) or your provider key" }
-                            .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationApiKey))
-                            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark),
+                        GlassTheme.FormEntry(placeholder: "DeepL key (ends with :fx) or your provider key", isPassword: true)
+                            .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationApiKey)),
 
                         new VerticalStackLayout
                         {
@@ -352,10 +336,8 @@ public class SettingsPage : ContentPage
                             Children =
                             {
                                 CreateFormLabel("Custom Base URL"),
-                                new Entry { Placeholder = "e.g. https://api-free.deepl.com" }
+                                GlassTheme.FormEntry(placeholder: "e.g. https://api-free.deepl.com")
                                     .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationCustomBaseUrl))
-                                    .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-                                    .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark)
                             }
                         }
                         .Bind(VisualElement.IsVisibleProperty, nameof(SettingsViewModel.IsCustomTranslationSelected))

@@ -132,18 +132,10 @@ public class EditWorkPage : ContentPage
         Content = scaffold;
     }
 
-    private static Entry CreateEntry(string? text, string placeholder)
-    {
-        return new Entry { Text = text, Placeholder = placeholder }
-            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
-    }
+    private static Entry CreateEntry(string? text, string placeholder) =>
+        GlassTheme.FormEntry(text, placeholder);
 
-    private static Label CreateFormLabel(string text)
-    {
-        return new Label { Text = text, FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold }
-            .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelAltDark);
-    }
+    private static Label CreateFormLabel(string text) => GlassTheme.FormLabel(text);
 
     private async void OnBrowseCoverClicked(object? sender, EventArgs e)
     {

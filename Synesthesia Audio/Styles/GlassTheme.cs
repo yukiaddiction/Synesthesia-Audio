@@ -45,6 +45,40 @@ public static class GlassTheme
         .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark);
     }
 
+    /// <summary>
+    /// A form text field with the theme colours applied.
+    ///
+    /// Nine fields across the settings and edit pages spelled out the same two AppThemeBinding calls after the
+    /// Entry, so a new form field could easily ship with default (unreadable in dark mode) colours by forgetting
+    /// them (DUP-07).
+    /// </summary>
+    public static Entry FormEntry(string? text = null, string? placeholder = null,
+        bool isPassword = false, bool isReadOnly = false, bool fillWidth = false)
+    {
+        var entry = new Entry
+        {
+            Text = text,
+            Placeholder = placeholder,
+            IsPassword = isPassword,
+            IsReadOnly = isReadOnly
+        };
+
+        if (fillWidth) entry.HorizontalOptions = LayoutOptions.Fill;
+
+        entry.AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark);
+        entry.AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
+        return entry;
+    }
+
+    /// <summary>
+    /// A form field label.
+    ///
+    /// There were two versions of this — one regular weight, one bold with a slightly different dark colour — so
+    /// the same kind of label looked different depending on which page it was on (DUP-07). This is the bold form.
+    /// </summary>
+    public static Label FormLabel(string text) =>
+        new Label { Text = text, FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold }
+            .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark);
     /// <summary>A translucent chip used for genres and metadata pills.</summary>
     public static Border Chip(View content)
     {
