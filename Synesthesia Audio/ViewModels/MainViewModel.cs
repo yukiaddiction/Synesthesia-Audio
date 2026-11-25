@@ -488,12 +488,9 @@ public partial class MainViewModel : BaseViewModel
                     var result = await FolderPicker.Default.PickAsync(default);
                     if (!result.IsSuccessful) return;
 
-                    pathToScan = result.Folder.Path;
-
-#if ANDROID
-                    if (pathToScan.StartsWith("/tree/primary:"))
-                        pathToScan = pathToScan.Replace("/tree/primary:", "/storage/emulated/0/");
-#endif
+                    // Same conversion the Settings picker uses; keeping it in Core means the two pickers can
+                    // no longer disagree about what a picked folder is (BUG-m-18).
+                    pathToScan = AndroidStoragePath.ToFileSystemPath(result.Folder.Path);
 
                     if (!Directory.Exists(pathToScan)) return;
 
@@ -508,10 +505,26 @@ public partial class MainViewModel : BaseViewModel
             }
             else if (!Directory.Exists(pathToScan))
             {
-                await Shell.Current.DisplayAlert("Folder Missing", $"The configured folder no longer exists:\n{pathToScan}\n\nPlease pick a new folder.", "OK");
-                _settingsService.CurrentSettings.BaseAudioFolderPath = "";
+                // Ask before clearing: a folder on an unmounted SD card or a temporarily unavailable network
+                // share is not necessarily gone, and wiping the setting silently made the user re-pick it and
+                // lose every cached work keyed to that path (BUG-m-18).
+                var repick = await Shell.Current.DisplayAlert(
+                    "Folder Not Found",
+                    $"The configured folder could not be opened:\n{pathToScan}\n\n" +
+                    "It may be on a drive that is not connected right now. Pick another folder?",
+                    "Pick another folder",
+                    "Keep it");
+
+                if (!repick) return;
+
+                var pick = await FolderPicker.Default.PickAsync(default);
+                if (!pick.IsSuccessful) return;
+
+                pathToScan = AndroidStoragePath.ToFileSystemPath(pick.Folder.Path);
+                if (!Directory.Exists(pathToScan)) return;
+
+                _settingsService.CurrentSettings.BaseAudioFolderPath = pathToScan;
                 _settingsService.SaveSettings(_settingsService.CurrentSettings);
-                return;
             }
         }
 

@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Maui.Storage;
 using Microsoft.Extensions.Logging;
+using Synesthesia_Audio.Core;
 using Synesthesia_Audio.Services;
 using Synesthesia_Audio.Services.Logging;
 
@@ -417,16 +418,33 @@ public partial class SettingsViewModel : BaseViewModel
     [RelayCommand]
     private async Task PickFolderAsync()
     {
-        var result = await FolderPicker.Default.PickAsync(default);
-        if (result.IsSuccessful)
+#if ANDROID
+        var permission = await Permissions.CheckStatusAsync<Permissions.StorageRead>();
+        if (permission != PermissionStatus.Granted)
         {
-            BaseAudioFolderPath = result.Folder.Path;
-            _logger.LogInformation("Local library folder picked: {Path}", result.Folder.Path);
+            permission = await Permissions.RequestAsync<Permissions.StorageRead>();
         }
-        else
+
+        if (permission != PermissionStatus.Granted)
+        {
+            await Shell.Current.DisplayAlert("Permission Denied",
+                "Permission to read audio files was denied, so a folder cannot be scanned.", "OK");
+            return;
+        }
+#endif
+
+        var result = await FolderPicker.Default.PickAsync(default);
+        if (!result.IsSuccessful)
         {
             _logger.LogDebug("Local folder pick cancelled or failed");
+            return;
         }
+
+        // The picker returns a SAF tree URI on Android; without this conversion the folder was stored as a
+        // raw "/tree/primary:…" and every later scan reported it missing (BUG-m-18).
+        var folderPath = AndroidStoragePath.ToFileSystemPath(result.Folder.Path);
+        BaseAudioFolderPath = folderPath;
+        _logger.LogInformation("Local library folder picked: {Path}", folderPath);
     }
 
     [RelayCommand]
