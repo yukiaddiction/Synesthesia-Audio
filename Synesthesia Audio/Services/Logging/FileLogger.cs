@@ -43,13 +43,11 @@ public class FileLogger : ILogger, IDisposable
 
         if (exception != null)
         {
+            // Full ToString(): message, inner exception chain and stack trace. Logging only the
+            // message made a recurring crash (14 occurrences of "MauiContext is null") impossible
+            // to locate from the app log, because the throw site was never recorded.
             sb.Append(" | Exception: ");
-            sb.Append(exception.Message);
-            if (exception.InnerException != null)
-            {
-                sb.Append(" -> ");
-                sb.Append(exception.InnerException.Message);
-            }
+            sb.Append(exception);
         }
 
         return sb.ToString();

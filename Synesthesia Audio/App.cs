@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using CommunityToolkit.Maui.Views;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls;
 using Synesthesia_Audio.Services;
@@ -11,16 +12,17 @@ namespace Synesthesia_Audio;
 
 public class App : Application
 {
-    private readonly AppShell _shell;
+    private readonly IServiceProvider _services;
     private readonly AudioService _audioService;
     private readonly LibraryCacheService _cacheService;
     private readonly ScanStateService _scanStateService;
     private readonly MainViewModel _mainViewModel;
     private readonly ILogger<App> _logger;
     private bool _desktopChromeApplied;
+    private bool _sessionRestoreStarted;
 
     public App(
-        AppShell shell,
+        IServiceProvider services,
         SettingsService settingsService,
         AudioService audioService,
         LibraryCacheService cacheService,
@@ -28,7 +30,7 @@ public class App : Application
         MainViewModel mainViewModel,
         ILogger<App> logger)
     {
-        _shell = shell;
+        _services = services;
         _audioService = audioService;
         _cacheService = cacheService;
         _scanStateService = scanStateService;
@@ -39,7 +41,15 @@ public class App : Application
         Styles.AppFontSizes.Initialize();
         Services.Logging.FileLogger.PurgeOldLogs();
         _logger.LogInformation("App started — theme: {Theme}", UserAppTheme);
+    }
 
+    protected override Window CreateWindow(IActivationState? activationState)
+    {
+        // A re-created activity needs a fresh, unparented UI graph. Reusing the singleton Shell
+        // made Window.OnPageChanged run against a null MauiContext and killed the process.
+        var shell = _services.GetRequiredService<AppShell>();
+
+        // A view cannot be re-parented into a new window, so each window gets its own element.
         var mediaElement = new MediaElement
         {
             ShouldShowPlaybackControls = true,
@@ -48,25 +58,9 @@ public class App : Application
             Opacity = 0
         };
         _audioService.SetMediaElement(mediaElement);
-        _shell.SetMediaElement(mediaElement);
+        shell.SetMediaElement(mediaElement);
 
-        MainThread.BeginInvokeOnMainThread(async () =>
-        {
-            try
-            {
-                await Task.Delay(300);
-                await _audioService.TryRestoreSessionAsync();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Session restore failed");
-            }
-        });
-    }
-
-    protected override Window CreateWindow(IActivationState? activationState)
-    {
-        var window = new Window(_shell);
+        var window = new Window(shell);
 
 #if WINDOWS
         // Desktop window contract: open at a comfortable size, never below what the wide
@@ -134,6 +128,23 @@ public class App : Application
                 _logger.LogWarning(ex, "Resume handling failed");
             }
         };
+        if (!_sessionRestoreStarted)
+        {
+            _sessionRestoreStarted = true;
+            MainThread.BeginInvokeOnMainThread(async () =>
+            {
+                try
+                {
+                    await Task.Delay(300);
+                    await _audioService.TryRestoreSessionAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Session restore failed");
+                }
+            });
+        }
+
         return window;
     }
 

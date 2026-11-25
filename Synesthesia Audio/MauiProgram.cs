@@ -78,12 +78,15 @@ public static class MauiProgram
         builder.Services.AddSingleton<SettingsViewModel>();
         builder.Services.AddTransient<LogViewerViewModel>();
 
-        builder.Services.AddSingleton<MainPage>();
+        builder.Services.AddTransient<MainPage>();
         builder.Services.AddTransient<AlbumPage>();
         builder.Services.AddTransient<TagMappingPage>();
-        builder.Services.AddSingleton<SettingsPage>();
+        builder.Services.AddTransient<SettingsPage>();
         builder.Services.AddTransient<LogViewerPage>();
-        builder.Services.AddSingleton<AppShell>();
+        // Per-window UI graph: a re-created activity gets its own unparented Shell. Keeping these
+        // singletons let the same Shell be attached to a second window, which crashed the app
+        // inside Window.OnPageChanged with "MauiContext is null".
+        builder.Services.AddTransient<AppShell>();
 
 
 
