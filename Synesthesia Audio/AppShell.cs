@@ -49,7 +49,23 @@ public class AppShell : Shell
 
         FlyoutContent = CreateFlyoutContent();
 
-        _mainViewModel.PropertyChanged += (s, e) =>
+        _mainViewModel.PropertyChanged += FilterChangedHandler;
+
+        Navigated += (s, e) => UpdateFlyoutSelection();
+
+        if (Application.Current != null)
+        {
+            Application.Current.RequestedThemeChanged += ThemeChangedHandler;
+        }
+
+        UpdateFlyoutSelection();
+    }
+
+    private System.ComponentModel.PropertyChangedEventHandler? _filterChangedHandler;
+    private EventHandler<AppThemeChangedEventArgs>? _themeChangedHandler;
+
+    private System.ComponentModel.PropertyChangedEventHandler FilterChangedHandler =>
+        _filterChangedHandler ??= (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.SelectedFilter))
             {
@@ -57,17 +73,32 @@ public class AppShell : Shell
             }
         };
 
-        Navigated += (s, e) => UpdateFlyoutSelection();
+    private EventHandler<AppThemeChangedEventArgs> ThemeChangedHandler =>
+        _themeChangedHandler ??= (_, _) => MainThread.BeginInvokeOnMainThread(UpdateFlyoutSelection);
 
-        if (Application.Current != null)
+    /// <summary>
+    /// The shell is created per window, but it listens to the singleton view model and to the application.
+    /// Those handlers must go when the window does, or every re-created window leaves the previous shell
+    /// alive and still reacting to filter and theme changes.
+    /// </summary>
+    protected override void OnHandlerChanged()
+    {
+        base.OnHandlerChanged();
+
+        if (Handler != null) return;
+
+        if (_filterChangedHandler != null)
         {
-            Application.Current.RequestedThemeChanged += (s, e) =>
-            {
-                MainThread.BeginInvokeOnMainThread(UpdateFlyoutSelection);
-            };
+            _mainViewModel.PropertyChanged -= _filterChangedHandler;
+            _filterChangedHandler = null;
         }
 
-        UpdateFlyoutSelection();
+        if (_themeChangedHandler != null)
+        {
+            if (Application.Current != null)
+                Application.Current.RequestedThemeChanged -= _themeChangedHandler;
+            _themeChangedHandler = null;
+        }
     }
 
     public void SetMediaElement(MediaElement mediaElement)

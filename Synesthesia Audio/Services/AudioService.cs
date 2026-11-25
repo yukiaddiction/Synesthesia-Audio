@@ -112,13 +112,62 @@ public partial class AudioService : ObservableObject, IDisposable
 
     partial void OnIsMutedChanged(bool value) => ApplyVolume();
 
+    /// <summary>Volume factor applied while the OS asked us to duck under another app.</summary>
+    private const double DuckingVolumeFactor = 0.2;
+    private bool _isDucked;
+
+    /// <summary>
+    /// True when the current pause was caused by losing audio focus, so a later focus gain may resume it.
+    /// Cleared on every manual play/pause — otherwise a call ending would restart playback the user had
+    /// deliberately stopped.
+    /// </summary>
+    private bool _pausedByFocusLoss;
+
     private void ApplyVolume()
     {
         if (_mediaElement is null)
             return;
 
-        _mediaElement.Volume = IsMuted ? 0 : Volume;
+        _mediaElement.Volume = IsMuted ? 0 : (_isDucked ? Volume * DuckingVolumeFactor : Volume);
         _mediaElement.ShouldMute = IsMuted;
+    }
+
+    /// <summary>Lowers playback volume while another app holds transient focus.</summary>
+    public void SetDucked(bool ducked)
+    {
+        if (_isDucked == ducked) return;
+        _isDucked = ducked;
+        ApplyVolume();
+    }
+
+    /// <summary>
+    /// Pauses because the OS took audio focus away, and remembers why. Distinct from <see cref="Pause"/>
+    /// so that only a focus-caused pause can be resumed by a focus gain.
+    /// </summary>
+    public void PauseForFocusLoss()
+    {
+        _pausedByFocusLoss = true;
+
+        var me = _mediaElement;
+        if (me == null || !IsPlaying) return;
+        me.Pause();
+        SaveSession();
+    }
+
+    /// <summary>Restores the volume, and resumes playback only if losing focus is what paused it.</summary>
+    public void ResumeAfterFocusGain()
+    {
+        SetDucked(false);
+        if (!_pausedByFocusLoss) return;
+
+        _pausedByFocusLoss = false;
+        if (!_platformService.RequestAudioFocus())
+        {
+            _logger.LogWarning("Not resuming — the OS refused audio focus");
+            return;
+        }
+
+        _mediaElement?.Play();
     }
 
     [RelayCommand]
@@ -449,6 +498,16 @@ public partial class AudioService : ObservableObject, IDisposable
                 me.Source = MediaSource.FromFile(track.FilePath);
             }
 
+            // Ask for focus before the first sample plays. A refusal means another app owns the audio
+            // output (a call, another player), so we must not start.
+            if (!_platformService.RequestAudioFocus())
+            {
+                _logger.LogWarning("Playback not started — the OS refused audio focus");
+                IsBuffering = false;
+                return;
+            }
+
+            _pausedByFocusLoss = false;
             _logger.LogInformation("Calling MediaElement.Play() — handler: {HasHandler}", me.Handler != null);
             me.Play();
             _logger.LogInformation("MediaElement.Play() returned");
@@ -592,6 +651,17 @@ public partial class AudioService : ObservableObject, IDisposable
     {
         var me = _mediaElement;
         if (me == null || IsPlaying) return;
+
+        // A deliberate play clears the focus-loss state, so regaining focus later cannot resume something
+        // the user has already restarted themselves.
+        _pausedByFocusLoss = false;
+
+        if (!_platformService.RequestAudioFocus())
+        {
+            _logger.LogWarning("Playback not started — the OS refused audio focus");
+            return;
+        }
+
         me.Play();
     }
 
@@ -604,6 +674,7 @@ public partial class AudioService : ObservableObject, IDisposable
     {
         var me = _mediaElement;
         if (me == null || !IsPlaying) return;
+        _pausedByFocusLoss = false;
         me.Pause();
         SaveSession();
     }
@@ -621,6 +692,8 @@ public partial class AudioService : ObservableObject, IDisposable
         if (me == null) return;
         _logger.LogInformation("Playback stopped");
         _ = _sessionService.ClearAsync();
+        _pausedByFocusLoss = false;
+        _platformService.AbandonAudioFocus();
         me.Stop();
         CurrentTrack = null;
         IsVideoTrack = false;

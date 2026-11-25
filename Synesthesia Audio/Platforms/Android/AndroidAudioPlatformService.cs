@@ -7,7 +7,8 @@ public class AndroidAudioPlatformService : IAudioPlatformService
     public void OnPlayStarted(MediaElement mediaElement)
     {
         Platforms.Android.MediaSessionHelper.TryWrapSessionPlayer(mediaElement);
-        _ = RequestFocusAfterDelay();
+        // Focus is requested by AudioService *before* playback starts, not 1.5 s afterwards: by then the
+        // first fraction of a second had already played over whatever held focus.
     }
 
     public void OnAlbumChanged(string albumFolderPath)
@@ -40,9 +41,7 @@ public class AndroidAudioPlatformService : IAudioPlatformService
         Platforms.Android.MediaPlaybackForegroundService.StopPlaybackService();
     }
 
-    private static async Task RequestFocusAfterDelay()
-    {
-        await Task.Delay(1500);
-        Platforms.Android.AudioFocusHelper.Instance.RequestFocus();
-    }
+    public bool RequestAudioFocus() => Platforms.Android.AudioFocusHelper.Instance.RequestFocus();
+
+    public void AbandonAudioFocus() => Platforms.Android.AudioFocusHelper.Instance.AbandonFocus();
 }

@@ -206,7 +206,6 @@ public class MainPage : ContentPage
 
         Content = scaffold;
 
-        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         UpdateSubtitle();
     }
 
@@ -247,6 +246,11 @@ public class MainPage : ContentPage
 
         UiEvents.FocusSearchRequested += OnFocusSearchRequested;
 
+        // MainViewModel is a singleton, so a page that subscribed in its constructor and never unsubscribed
+        // kept the whole re-created UI tree alive and reacting after a window was re-created.
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+
         try
         {
             var status = await Permissions.CheckStatusAsync<Permissions.PostNotifications>();
@@ -280,6 +284,7 @@ public class MainPage : ContentPage
     {
         base.OnDisappearing();
         UiEvents.FocusSearchRequested -= OnFocusSearchRequested;
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 
     /// <summary>Ctrl+F from the desktop keyboard handler.</summary>

@@ -9,4 +9,8 @@ public class DefaultAudioPlatformService : IAudioPlatformService
     public void OnPlaybackStateChanged(bool isPlaying, string? trackTitle, string albumFolderPath) { }
     public void OnMediaOpened(string? trackTitle, string albumFolderPath) { }
     public void OnPlaybackStopped() { }
+
+    // Desktop and Apple platforms hand focus out implicitly with the audio session, so nothing to ask.
+    public bool RequestAudioFocus() => true;
+    public void AbandonAudioFocus() { }
 }

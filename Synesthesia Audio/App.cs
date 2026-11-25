@@ -18,7 +18,6 @@ public class App : Application
     private readonly ScanStateService _scanStateService;
     private readonly MainViewModel _mainViewModel;
     private readonly ILogger<App> _logger;
-    private bool _desktopChromeApplied;
     private bool _sessionRestoreStarted;
 
     public App(
@@ -62,6 +61,10 @@ public class App : Application
 
         var window = new Window(shell);
 
+        // Declared outside the WINDOWS block because the shutdown path below unsubscribes it on every
+        // platform; it stays null where there is no desktop chrome to re-apply.
+        EventHandler<AppThemeChangedEventArgs>? themeChangedHandler = null;
+
 #if WINDOWS
         // Desktop window contract: open at a comfortable size, never below what the wide
         // composition needs, and remember whatever the user resized it to.
@@ -70,23 +73,29 @@ public class App : Application
         window.MinimumWidth = 880;
         window.MinimumHeight = 640;
 
+        // Per window, not per app: this used to be a field on the singleton App, so a re-created window
+        // never had its chrome or keyboard shortcuts attached again.
+        var desktopChromeApplied = false;
+
         window.HandlerChanged += (_, _) =>
         {
-            if (_desktopChromeApplied)
+            if (desktopChromeApplied)
                 return;
 
             if (window.Handler?.PlatformView is Microsoft.UI.Xaml.Window native)
             {
-                _desktopChromeApplied = true;
+                desktopChromeApplied = true;
                 Desktop.WindowChrome.Apply(native, Application.Current?.RequestedTheme == AppTheme.Dark);
                 Desktop.KeyboardShortcuts.Attach(native);
             }
         };
 
+        // Application lives for the whole process, so this handler is unsubscribed when the window dies;
+        // otherwise every re-created window leaked another one that still targeted the dead window.
         if (Application.Current != null)
         {
-            Application.Current.RequestedThemeChanged += (_, _) =>
-                MainThread.BeginInvokeOnMainThread(() => ApplyDesktopChrome(window));
+            themeChangedHandler = (_, _) => MainThread.BeginInvokeOnMainThread(() => ApplyDesktopChrome(window));
+            Application.Current.RequestedThemeChanged += themeChangedHandler;
         }
 #endif
 
@@ -94,6 +103,11 @@ public class App : Application
         {
             try
             {
+                if (themeChangedHandler != null && Application.Current != null)
+                {
+                    Application.Current.RequestedThemeChanged -= themeChangedHandler;
+                }
+
                 SaveWindowBounds(window);
                 _cacheService.FlushPendingSave();
                 _scanStateService.FlushPendingSave();

@@ -13,7 +13,6 @@ internal class AudioFocusHelper : Java.Lang.Object, AudioManager.IOnAudioFocusCh
 
     private AudioFocusRequestClass? _focusRequest;
     private volatile bool _hasFocus;
-    private volatile bool _pausedByFocusLoss;
 
     private AudioFocusHelper()
     {
@@ -101,7 +100,6 @@ internal class AudioFocusHelper : Java.Lang.Object, AudioManager.IOnAudioFocusCh
             }
 
             _hasFocus = false;
-            _pausedByFocusLoss = false;
         }
         catch (Exception ex)
         {
@@ -124,21 +122,29 @@ internal class AudioFocusHelper : Java.Lang.Object, AudioManager.IOnAudioFocusCh
                     switch (focusChange)
                     {
                         case AudioFocus.Loss:
+                            // Permanent loss: hand the focus back as well, and stop. There is nothing to
+                            // resume later, so the AudioService records this as a focus-caused pause and
+                            // AbandonFocus clears the request.
+                            AbandonFocus();
+                            audioService.PauseForFocusLoss();
+                            break;
+
                         case AudioFocus.LossTransient:
+                            // Keep the request so a Gain can resume, but stop playing now. Previously this
+                            // only set flags, so audio kept playing over calls and other players.
                             _hasFocus = false;
-                            _pausedByFocusLoss = focusChange == AudioFocus.LossTransient;
+                            audioService.PauseForFocusLoss();
                             break;
 
                         case AudioFocus.LossTransientCanDuck:
+                            // We may keep playing, but quietly.
+                            audioService.SetDucked(true);
                             break;
 
                         case AudioFocus.Gain:
                             _hasFocus = true;
-                            if (_pausedByFocusLoss && !audioService.IsPlaying)
-                            {
-                                _pausedByFocusLoss = false;
-                                audioService.TogglePlayPause();
-                            }
+                            // Restores volume, and resumes only if the focus loss is what paused playback.
+                            audioService.ResumeAfterFocusGain();
                             break;
                     }
                 }
