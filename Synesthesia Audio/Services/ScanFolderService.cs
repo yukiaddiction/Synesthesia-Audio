@@ -589,8 +589,9 @@ public class ScanFolderService : IDisposable
                     _logger.LogInformation("Restored missing cover for {Title}", work.Title);
                 }
 
+                // No per-work write here: ReplaceAll below persists the whole list, so this only added a
+                // full-file rewrite per work (PERF-05).
                 finalWorks.Add(work);
-                _cacheService.UpdateWork(work);
             }
         }
 

@@ -45,6 +45,10 @@ public static class ScanListing
     /// Walks <paramref name="rootPath"/> breadth-first, collecting audio files and remembering every
     /// folder that failed. A failing subtree is recorded and skipped; it never aborts the whole walk
     /// (unless it is the root itself, which is reported through <see cref="ScanListingResult.RootFailed"/>).
+    ///
+    /// Folders are listed <paramref name="maxParallelism"/> at a time. A WebDAV library spent the whole walk
+    /// waiting on one round trip per folder, which is where most of a cloud scan's time went (PERF-02); the
+    /// cap keeps the fan-out polite to the server. Local disk listing is effectively unaffected.
     /// </summary>
     public static async Task<ScanListingResult> CollectAudioFilesAsync(
         IScanFileSource source,
@@ -52,10 +56,12 @@ public static class ScanListing
         Func<string, bool> isAudioFile,
         Func<string, bool>? isIgnoredPath = null,
         Action<int>? onAudioFileCount = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int maxParallelism = 4)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(isAudioFile);
+        if (maxParallelism < 1) maxParallelism = 1;
 
         var result = new ScanListingResult();
         var pending = new Queue<string>();
@@ -65,32 +71,34 @@ public static class ScanListing
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var directory = pending.Dequeue();
-            IReadOnlyList<ScanEntry> entries;
+            // Take a batch of folders and list them together. `pending` is only touched by this thread.
+            var batch = new List<string>(maxParallelism);
+            while (batch.Count < maxParallelism && pending.Count > 0) batch.Add(pending.Dequeue());
 
-            try
-            {
-                entries = await source.ListAsync(directory, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                // Record it and keep walking: one unreadable folder must not decide the whole scan.
-                result.FailedPaths.Add(directory);
-                if (IsSameDirectory(directory, rootPath)) result.RootFailed = true;
-                continue;
-            }
+            var listings = await Task.WhenAll(batch.Select(ListOneAsync)).ConfigureAwait(false);
 
-            foreach (var entry in entries)
+            foreach (var listing in listings)
             {
-                if (isIgnoredPath != null && isIgnoredPath(entry.Path)) continue;
-
-                if (entry.IsDirectory)
+                if (listing.Error != null)
                 {
-                    pending.Enqueue(entry.Path);
+                    // Record it and keep walking: one unreadable folder must not decide the whole scan.
+                    result.FailedPaths.Add(listing.Directory);
+                    if (IsSameDirectory(listing.Directory, rootPath)) result.RootFailed = true;
+                    continue;
                 }
-                else if (isAudioFile(entry.Path))
+
+                foreach (var entry in listing.Entries)
                 {
-                    result.AudioFiles.Add(entry.Path);
+                    if (isIgnoredPath != null && isIgnoredPath(entry.Path)) continue;
+
+                    if (entry.IsDirectory)
+                    {
+                        pending.Enqueue(entry.Path);
+                    }
+                    else if (isAudioFile(entry.Path))
+                    {
+                        result.AudioFiles.Add(entry.Path);
+                    }
                 }
             }
 
@@ -99,6 +107,19 @@ public static class ScanListing
         }
 
         return result;
+
+        async Task<(string Directory, IReadOnlyList<ScanEntry> Entries, Exception? Error)> ListOneAsync(string directory)
+        {
+            try
+            {
+                var entries = await source.ListAsync(directory, cancellationToken).ConfigureAwait(false);
+                return (directory, entries, null);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                return (directory, Array.Empty<ScanEntry>(), ex);
+            }
+        }
     }
 
     /// <summary>Forward-slash, no trailing separator — the form comparisons below expect.</summary>
