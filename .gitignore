@@ -54,3 +54,7 @@ TestResult.xml
 nunit-*.xml
 /.vs
 *.md
+
+# IDE and publish-profile user settings: machine-specific, never committed (SEC-m-08).
+*.user
+*.pubxml.user

@@ -68,6 +68,20 @@
 	  <AndroidKeyStore>False</AndroidKeyStore>
 	</PropertyGroup>
 
+	<!--
+	  Release signing (SEC-m-08). The keystore path, alias and both passwords come from the build environment,
+	  which MSBuild surfaces as properties of the same name, so CI supplies them as secrets. Nothing here
+	  commits a keystore or a password; when the variables are unset the group does not apply and packaging
+	  behaves exactly as before.
+	-->
+	<PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(AndroidSigningKeyStore)' != ''">
+	  <AndroidKeyStore>True</AndroidKeyStore>
+	  <AndroidSigningKeyStore>$(AndroidSigningKeyStore)</AndroidSigningKeyStore>
+	  <AndroidSigningKeyAlias>$(AndroidSigningKeyAlias)</AndroidSigningKeyAlias>
+	  <AndroidSigningKeyPass>$(AndroidSigningKeyPass)</AndroidSigningKeyPass>
+	  <AndroidSigningStorePass>$(AndroidSigningStorePass)</AndroidSigningStorePass>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#112A3E" />

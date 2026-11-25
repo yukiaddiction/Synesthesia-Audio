@@ -8,14 +8,21 @@ name: Name data refresh
 # nuget.org's own repository signature, and the IPADIC digest is published in the meta file so the app can
 # refuse a swapped dictionary. Signing the meta file itself still needs a key this repository does not
 # have; see AUDIT.md SEC-M-04.
+#
+# Hardening (SEC-m-07): actions are pinned to commit SHAs, the workflow token is read-only by default and
+# widened only for this job, checkout does not persist credentials, and the push uses an explicit token.
+# The workflow still pushes to the default branch rather than opening a pull request on purpose — the EDRDG
+# licence requires the data to be refreshed on a schedule, and a weekly PR that waits for a human turns that
+# obligation into a manual chore that silently lapses when nobody is around.
 
 on:
   schedule:
     - cron: '0 4 * * 1'   # Mondays 04:00 UTC
   workflow_dispatch:
 
+# Read-only by default; the job below opts into write for the commit, push and release steps.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: names-data-refresh
@@ -24,12 +31,17 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
+      # Pinned by SHA so a compromised or retagged action cannot change what runs here.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          dotnet-version: '9.0.x'
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '9.0.100'
 
       - name: Download JMnedict
         run: |
@@ -106,6 +118,8 @@ jobs:
           working but cannot prove the manifest came from this project - see AUDIT.md SEC-M-04."
 
       - name: Commit snapshot if it changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -116,7 +130,9 @@ jobs:
             echo "Name data unchanged; nothing to commit."
           else
             git commit -m "chore(names): refresh EDRDG JMnedict name data"
-            git push
+            # Checkout does not persist credentials (SEC-m-07), so the push carries an explicit token in the
+            # URL rather than leaving it behind in .git/config.
+            git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${GITHUB_REF_NAME}"
           fi
 
       # Published regardless of repository visibility: the assets become anonymously fetchable the
