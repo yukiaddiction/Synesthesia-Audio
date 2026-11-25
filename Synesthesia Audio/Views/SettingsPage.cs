@@ -40,7 +40,7 @@ public class SettingsPage : ContentPage
         _appearanceGroup = new VerticalStackLayout
         {
             Spacing = AppLayout.GlassSectionGap,
-            Children = { GlassTheme.SectionLabel("APPEARANCE"), CreateTagManagementCard(tagService, cacheService, mainViewModel) }
+            Children = { GlassTheme.SectionLabel("LIBRARY"), CreateTagManagementCard(tagService, cacheService, mainViewModel) }
         };
 
         _diagnosticsGroup = new VerticalStackLayout
