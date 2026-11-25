@@ -12,9 +12,23 @@ public sealed class RetryAfterCaptureHandler : DelegatingHandler
     {
     }
 
-    public TimeSpan? LastRetryAfter { get; private set; }
+    private readonly object _lock = new();
+    private TimeSpan? _lastRetryAfter;
 
-    public void Reset() => LastRetryAfter = null;
+    /// <summary>
+    /// Best-effort: the translator owns the request, so there is no per-call channel to carry this back.
+    /// Access is locked because translation calls run concurrently (BUG-m-22).
+    /// </summary>
+    public TimeSpan? LastRetryAfter
+    {
+        get { lock (_lock) return _lastRetryAfter; }
+        private set { lock (_lock) _lastRetryAfter = value; }
+    }
+
+    public void Reset()
+    {
+        lock (_lock) _lastRetryAfter = null;
+    }
 
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
@@ -22,7 +36,14 @@ public sealed class RetryAfterCaptureHandler : DelegatingHandler
         var response = await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (response.StatusCode is HttpStatusCode.TooManyRequests or (HttpStatusCode)529)
-            LastRetryAfter = ReadRetryAfter(response) ?? LastRetryAfter;
+        {
+            var captured = ReadRetryAfter(response);
+            lock (_lock)
+            {
+                // Never let a response without Retry-After erase one that arrived with it.
+                _lastRetryAfter = captured ?? _lastRetryAfter;
+            }
+        }
 
         return response;
     }

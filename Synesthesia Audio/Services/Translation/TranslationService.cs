@@ -17,11 +17,15 @@ public sealed class TranslationService : ITranslationService
     private readonly RateLimitCooldown _cooldown = new();
 
     private GTranslateProvider? _gTranslateProvider;
+
+    /// <summary>Consecutive rate limits, used to pick the backoff step. Touched atomically (BUG-m-22).</summary>
     private int _consecutiveRateLimits;
 
-    public string? LastError { get; private set; }
+    private string? _lastError;
 
-    public void ClearError() => LastError = null;
+    public string? LastError => Volatile.Read(ref _lastError);
+
+    public void ClearError() => Volatile.Write(ref _lastError, null);
 
     public TranslationService(SettingsService settingsService, ILogger<TranslationService> logger)
     {
@@ -100,13 +104,13 @@ public sealed class TranslationService : ITranslationService
 
         if (translated == null || translated.Count != texts.Count)
         {
-            LastError = $"{provider.Name} could not translate right now. Please try again later.";
+            Volatile.Write(ref _lastError, $"{provider.Name} could not translate right now. Please try again later.");
             _logger.LogWarning("{Provider} returned no usable translation for {Count} strings", provider.Name, texts.Count);
             return results;
         }
 
-        _consecutiveRateLimits = 0;
-        LastError = null;
+        Interlocked.Exchange(ref _consecutiveRateLimits, 0);
+        Volatile.Write(ref _lastError, null);
 
         for (var i = 0; i < indices.Count; i++)
             results[indices[i]] = translated[i];
@@ -116,10 +120,12 @@ public sealed class TranslationService : ITranslationService
 
     private void EnterCooldown(TranslationRateLimitedException limited)
     {
-        _consecutiveRateLimits++;
+        // Increment and read in one step: concurrent rate limits used to compute their backoff from a torn
+        // counter, so two requests could both advance to the same step (BUG-m-22).
+        var attempts = Interlocked.Increment(ref _consecutiveRateLimits);
 
         var delay = TranslationBackoff.Next(
-            _consecutiveRateLimits,
+            attempts,
             limited.RetryAfter,
             TimeSpan.FromSeconds(AppConstants.TranslationRateLimitBaseCooldownSeconds),
             TimeSpan.FromSeconds(AppConstants.TranslationRateLimitMaxCooldownSeconds));
@@ -127,7 +133,7 @@ public sealed class TranslationService : ITranslationService
         _cooldown.Trip(DateTimeOffset.UtcNow, delay);
 
         // Rate limiting is not an error: the UI shows a countdown instead of a failure message.
-        LastError = null;
+        Volatile.Write(ref _lastError, null);
         _logger.LogWarning("Translation rate limited by {Provider}; cooling down for {Seconds:0}s",
             limited.ProviderName, delay.TotalSeconds);
     }
