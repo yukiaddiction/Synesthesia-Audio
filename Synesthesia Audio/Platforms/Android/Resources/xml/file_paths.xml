@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  SEC-m-06: only the cover folder is shared with other processes, not the whole cache directory.
+
+  The only file this app hands a URI for is the current track's cover, which the system UI reads for the
+  lock-screen artwork. It lives in AppData/covers, which is "files-path" on Android. The previous entry
+  exposed `cache-path "."` — the entire cache — so any app holding a single cover URI could also enumerate
+  and read every other cached file.
+
+  The move matters in both directions: covers used to live in the cache directory, so the old entry was also
+  the only reason artwork worked. After they moved to AppData/covers that root no longer matched and
+  GetUriForFile threw, and the caller swallowed it — which is why the lock screen showed no artwork.
+-->
 <paths>
-  <cache-path name="cache" path="." />
+  <files-path name="covers" path="covers" />
 </paths>

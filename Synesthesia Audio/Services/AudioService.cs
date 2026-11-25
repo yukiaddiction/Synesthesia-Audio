@@ -40,6 +40,32 @@ public partial class AudioService : ObservableObject, IDisposable
     private void ResetDurationObservation() =>
         _durationObserved = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
+#if ANDROID
+    /// <summary>
+    /// The cover URI currently shared with the system UI, so the grant can be revoked when the track changes or
+    /// the window goes away instead of accumulating for the life of the process (SEC-m-06).
+    /// </summary>
+    private string? _grantedArtworkUri;
+
+    private void RevokeGrantedArtwork(global::Android.Content.Context context)
+    {
+        var previous = _grantedArtworkUri;
+        _grantedArtworkUri = null;
+        if (previous == null) return;
+
+        try
+        {
+            context.RevokeUriPermission(
+                global::Android.Net.Uri.Parse(previous),
+                global::Android.Content.ActivityFlags.GrantReadUriPermission);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Revoking a previous artwork grant failed");
+        }
+    }
+#endif
+
     public AudioService(SettingsService settingsService, Cloud.ICloudProvider cloudProvider, Cloud.LocalHttpProxy localHttpProxy, PlaybackSessionService sessionService, IAudioPlatformService platformService, ILogger<AudioService> logger)
     {
         _settingsService = settingsService;
@@ -348,6 +374,16 @@ public partial class AudioService : ObservableObject, IDisposable
         {
             _logger.LogWarning(ex, "Resetting the Android media session during detach failed");
         }
+
+        // Nothing should keep read access to a cover once this window is gone (SEC-m-06).
+        try
+        {
+            RevokeGrantedArtwork(global::Android.App.Application.Context);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Revoking the artwork grant during detach failed");
+        }
 #endif
 
         // Remember where we were so reopening the window can offer to resume.
@@ -499,19 +535,31 @@ public partial class AudioService : ObservableObject, IDisposable
                 try
                 {
 #if ANDROID
+                    var context = global::Android.App.Application.Context;
                     var file = new Java.IO.File(track.CoverImagePath);
                     var uri = AndroidX.Core.Content.FileProvider.GetUriForFile(
-                        global::Android.App.Application.Context,
-                        global::Android.App.Application.Context.PackageName + ".fileprovider",
+                        context,
+                        context.PackageName + ".fileprovider",
                         file);
-                    global::Android.App.Application.Context.GrantUriPermission(
+
+                    // The previous track's grant is no longer needed. Without this the process accumulated a
+                    // read grant per cover it ever displayed (SEC-m-06).
+                    RevokeGrantedArtwork(context);
+
+                    context.GrantUriPermission(
                         "com.android.systemui", uri, global::Android.Content.ActivityFlags.GrantReadUriPermission);
-                    me.MetadataArtworkUrl = uri.ToString();
+                    _grantedArtworkUri = uri.ToString();
+                    me.MetadataArtworkUrl = _grantedArtworkUri;
 #else
                     me.MetadataArtworkUrl = new Uri(System.IO.Path.GetFullPath(track.CoverImagePath)).AbsoluteUri;
 #endif
                 }
-                catch { me.MetadataArtworkUrl = string.Empty; }
+                catch (Exception ex)
+                {
+                    // Previously an empty catch: a FileProvider path misconfiguration silently produced no artwork.
+                    _logger.LogWarning(ex, "Artwork could not be published to the lock screen");
+                    me.MetadataArtworkUrl = string.Empty;
+                }
             }
             else
             {
