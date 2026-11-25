@@ -224,6 +224,15 @@ public class ScanFolderService : IDisposable
         // The cache reads lazily; finish that read before deciding which works are stale or new.
         await _cacheService.Loaded.ConfigureAwait(false);
 
+        // Trim a trailing separator once, up front. Leaving it made every relative-path comparison below
+        // wrong and could make the old substring maths throw on cloud paths (BUG-m-07). A lone separator
+        // (the cloud root) is kept as-is.
+        if (!string.IsNullOrEmpty(basePath) && basePath.Length > 1)
+        {
+            var trimmed = basePath.TrimEnd('/', '\\');
+            if (trimmed.Length > 0) basePath = trimmed;
+        }
+
         _failedFolders = new List<string>();
         var settings = _settingsService.CurrentSettings;
         bool isCloud = settings.StorageType == "WebDAV";
@@ -480,20 +489,8 @@ public class ScanFolderService : IDisposable
 
             var subAlbumGroups = files.GroupBy(f =>
             {
-                if (isCloud)
-                {
-                    var fileDir = GetCloudDirectoryName(f);
-                    if (fileDir == null || fileDir.Equals(workPath, StringComparison.OrdinalIgnoreCase)) return "Main";
-                    var relPath = fileDir.Substring(workPath.Length).TrimStart('/', '\\');
-                    return string.IsNullOrEmpty(relPath) ? "Main" : relPath;
-                }
-                else
-                {
-                    var fileDir = Path.GetDirectoryName(f);
-                    if (fileDir == null || fileDir.Equals(workPath, StringComparison.OrdinalIgnoreCase)) return "Main";
-                    var relPath = fileDir.Substring(workPath.Length).TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                    return string.IsNullOrEmpty(relPath) ? "Main" : relPath;
-                }
+                var fileDir = isCloud ? GetCloudDirectoryName(f) : Path.GetDirectoryName(f);
+                return GetSubAlbumName(fileDir, workPath) ?? "Main";
             });
 
             foreach (var subGroup in subAlbumGroups)
@@ -647,78 +644,33 @@ public class ScanFolderService : IDisposable
         string.Equals(work.Title, "DLsite", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(work.Title, "Unknown Title", StringComparison.OrdinalIgnoreCase);
 
-    private string DetermineWorkFolder(string filePath, string basePath, bool isCloud)
+    /// <summary>
+    /// Which folder counts as "the work" for this track. Delegated to Core so the disc/format folder rules
+    /// (CD1, Disc 2, Vol3, mp3, wav, …) are covered by tests instead of only by scanning real libraries.
+    /// </summary>
+    private static string DetermineWorkFolder(string filePath, string basePath, bool isCloud) =>
+        WorkFolderResolver.Resolve(filePath, basePath, isCloud);
+
+    /// <summary>
+    /// Sub-album name of a track's folder beneath the work folder, or null when the file sits directly in
+    /// the work folder. Returns null rather than throwing when the folder is not actually inside the work —
+    /// an un-normalised base path used to make the old <c>Substring</c> overflow.
+    /// </summary>
+    private static string? GetSubAlbumName(string? fileDirectory, string workPath)
     {
-        if (isCloud)
-        {
-            var dir = GetCloudDirectoryName(filePath);
-            var current = dir;
-            var baseNorm = basePath.Replace('\\', '/').TrimEnd('/');
-            if (string.IsNullOrEmpty(baseNorm)) baseNorm = "/";
+        if (string.IsNullOrEmpty(fileDirectory)) return null;
+        if (string.Equals(fileDirectory, workPath, StringComparison.OrdinalIgnoreCase)) return null;
 
-            while (current != null && current.Length >= baseNorm.Length)
-            {
-                var folderName = GetCloudFileName(current);
-                if (Regex.IsMatch(folderName, @"(RJ\d{6,8})", RegexOptions.IgnoreCase))
-                {
-                    return current;
-                }
-                current = GetCloudDirectoryName(current);
-            }
+        var normalizedFileDir = fileDirectory.Replace('\\', '/').TrimEnd('/');
+        var normalizedWork = workPath.Replace('\\', '/').TrimEnd('/');
 
-            if (dir == null || string.Equals(dir, baseNorm, StringComparison.OrdinalIgnoreCase))
-            {
-                return basePath;
-            }
+        if (!normalizedFileDir.StartsWith(normalizedWork, StringComparison.OrdinalIgnoreCase)) return null;
 
-            var parent = GetCloudDirectoryName(dir);
-            if (parent == null || string.Equals(parent, baseNorm, StringComparison.OrdinalIgnoreCase))
-            {
-                return dir;
-            }
+        var relative = normalizedFileDir.Length > normalizedWork.Length
+            ? normalizedFileDir[(normalizedWork.Length + 1)..]
+            : string.Empty;
 
-            var dirName = GetCloudFileName(dir);
-            if (Regex.IsMatch(dirName, @"^(disc|cd|vol|volume|bonus|track|side|part|effect|se)\b", RegexOptions.IgnoreCase))
-            {
-                return parent;
-            }
-
-            return dir;
-        }
-        else
-        {
-            var dir = Path.GetDirectoryName(filePath);
-            var current = dir;
-
-            while (current != null && current.Length >= basePath.Length && current.StartsWith(basePath, StringComparison.OrdinalIgnoreCase))
-            {
-                var folderName = Path.GetFileName(current);
-                if (Regex.IsMatch(folderName, @"(RJ\d{6,8})", RegexOptions.IgnoreCase))
-                {
-                    return current;
-                }
-                current = Path.GetDirectoryName(current);
-            }
-
-            if (dir == null || dir.Equals(basePath, StringComparison.OrdinalIgnoreCase))
-            {
-                return basePath;
-            }
-
-            var parent = Path.GetDirectoryName(dir);
-            if (parent == null || parent.Equals(basePath, StringComparison.OrdinalIgnoreCase))
-            {
-                return dir;
-            }
-
-            var dirName = Path.GetFileName(dir);
-            if (Regex.IsMatch(dirName, @"^(disc|cd|vol|volume|bonus|track|side|part|effect|se)\b", RegexOptions.IgnoreCase))
-            {
-                return parent;
-            }
-
-            return dir;
-        }
+        return string.IsNullOrEmpty(relative) ? null : relative;
     }
 
     private int GetExtensionPriority(string ext)
