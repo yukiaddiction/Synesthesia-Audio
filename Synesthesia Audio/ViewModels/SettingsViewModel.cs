@@ -178,8 +178,7 @@ public partial class SettingsViewModel : BaseViewModel
 
         if (_suppressInstantSave) return;
 
-        _settingsService.CurrentSettings.TranslationProvider = value;
-        _settingsService.SaveSettings(_settingsService.CurrentSettings);
+        _settingsService.UpdateSettings(s => s.TranslationProvider = value);
         _logger.LogInformation("Translation provider changed to {Provider}", value);
     }
 
@@ -213,9 +212,13 @@ public partial class SettingsViewModel : BaseViewModel
         var originalHeader = _settingsService.CurrentSettings.TranslationCustomAuthHeader;
         var originalKey = _settingsService.CurrentSettings.TranslationApiKey;
 
-        _settingsService.CurrentSettings.TranslationProvider = TranslationProvider;
-        _settingsService.CurrentSettings.TranslationCustomBaseUrl = TranslationCustomBaseUrl;
-        _settingsService.CurrentSettings.TranslationApiKey = TranslationApiKey;
+        // Applied inside the service's lock so a concurrent reader never sees a half-applied override (PAT-03).
+        _settingsService.UpdateSettingsInMemory(s =>
+        {
+            s.TranslationProvider = TranslationProvider;
+            s.TranslationCustomBaseUrl = TranslationCustomBaseUrl;
+            s.TranslationApiKey = TranslationApiKey;
+        });
 
         TranslationStatus = "Testing…";
         try
@@ -237,10 +240,13 @@ public partial class SettingsViewModel : BaseViewModel
         }
         finally
         {
-            _settingsService.CurrentSettings.TranslationProvider = originalProvider;
-            _settingsService.CurrentSettings.TranslationCustomBaseUrl = originalBaseUrl;
-            _settingsService.CurrentSettings.TranslationCustomAuthHeader = originalHeader;
-            _settingsService.CurrentSettings.TranslationApiKey = originalKey;
+            _settingsService.UpdateSettingsInMemory(s =>
+            {
+                s.TranslationProvider = originalProvider;
+                s.TranslationCustomBaseUrl = originalBaseUrl;
+                s.TranslationCustomAuthHeader = originalHeader;
+                s.TranslationApiKey = originalKey;
+            });
         }
     }
 
@@ -267,8 +273,7 @@ public partial class SettingsViewModel : BaseViewModel
                 Application.Current.UserAppTheme = value ? AppTheme.Dark : AppTheme.Light;
         });
 
-        _settingsService.CurrentSettings.IsDarkMode = value;
-        _settingsService.SaveSettings(_settingsService.CurrentSettings);
+        _settingsService.UpdateSettings(s => s.IsDarkMode = value);
         _logger.LogInformation("App theme changed to {Theme}", value ? "Dark" : "Light");
     }
 
@@ -276,8 +281,7 @@ public partial class SettingsViewModel : BaseViewModel
     {
         if (_suppressInstantSave) return;
 
-        _settingsService.CurrentSettings.TranslateDlsiteTags = value;
-        _settingsService.SaveSettings(_settingsService.CurrentSettings);
+        _settingsService.UpdateSettings(s => s.TranslateDlsiteTags = value);
         _logger.LogInformation("Translate DLsite tags setting changed to {Value}", value);
     }
 
@@ -295,17 +299,21 @@ public partial class SettingsViewModel : BaseViewModel
 
         if (!await ConfirmInsecureCloudUrlAsync()) return;
 
-        _settingsService.CurrentSettings.BaseAudioFolderPath = BaseAudioFolderPath;
-        _settingsService.CurrentSettings.IsDarkMode = IsDarkMode;
-        _settingsService.CurrentSettings.TranslateDlsiteTags = TranslateDlsiteTags;
-        _settingsService.CurrentSettings.StorageType = StorageType;
-        _settingsService.CurrentSettings.CloudServerUrl = CloudServerUrl;
-        _settingsService.CurrentSettings.CloudUsername = CloudUsername;
-        _settingsService.CurrentSettings.CloudPassword = CloudPassword;
-        _settingsService.CurrentSettings.TranslationProvider = TranslationProvider;
-        _settingsService.CurrentSettings.TranslationCustomBaseUrl = TranslationCustomBaseUrl;
-        _settingsService.CurrentSettings.TranslationApiKey = TranslationApiKey;
-        _settingsService.SaveSettings(_settingsService.CurrentSettings);
+        // One atomic update instead of eleven writes followed by a save: a reader can no longer observe a
+        // settings document that is half the old form and half the new one (PAT-03).
+        _settingsService.UpdateSettings(s =>
+        {
+            s.BaseAudioFolderPath = BaseAudioFolderPath;
+            s.IsDarkMode = IsDarkMode;
+            s.TranslateDlsiteTags = TranslateDlsiteTags;
+            s.StorageType = StorageType;
+            s.CloudServerUrl = CloudServerUrl;
+            s.CloudUsername = CloudUsername;
+            s.CloudPassword = CloudPassword;
+            s.TranslationProvider = TranslationProvider;
+            s.TranslationCustomBaseUrl = TranslationCustomBaseUrl;
+            s.TranslationApiKey = TranslationApiKey;
+        });
 
         if (Application.Current != null)
         {

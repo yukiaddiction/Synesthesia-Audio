@@ -494,8 +494,7 @@ public partial class MainViewModel : BaseViewModel
 
                     if (!Directory.Exists(pathToScan)) return;
 
-                    _settingsService.CurrentSettings.BaseAudioFolderPath = pathToScan;
-                    _settingsService.SaveSettings(_settingsService.CurrentSettings);
+                    _settingsService.UpdateSettings(s => s.BaseAudioFolderPath = pathToScan);
                 }
                 catch (Exception ex)
                 {
@@ -523,8 +522,7 @@ public partial class MainViewModel : BaseViewModel
                 pathToScan = AndroidStoragePath.ToFileSystemPath(pick.Folder.Path);
                 if (!Directory.Exists(pathToScan)) return;
 
-                _settingsService.CurrentSettings.BaseAudioFolderPath = pathToScan;
-                _settingsService.SaveSettings(_settingsService.CurrentSettings);
+                _settingsService.UpdateSettings(s => s.BaseAudioFolderPath = pathToScan);
             }
         }
 

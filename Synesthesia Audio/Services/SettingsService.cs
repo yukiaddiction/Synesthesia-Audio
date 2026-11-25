@@ -23,10 +23,60 @@ public class SettingsService
     private bool _savedSinceConstruction;
     private GeneralSettings _currentSettings = new();
 
+    /// <summary>
+    /// A snapshot of the current settings.
+    ///
+    /// A copy on purpose (PAT-03): this used to hand out the live object, so any caller could mutate shared state
+    /// at any time — which is what made "temporarily swap the settings, do something, swap them back" look safe
+    /// (BUG-M-04). Assigning to a property of the returned object now changes nothing; use
+    /// <see cref="UpdateSettings"/>.
+    /// </summary>
     public GeneralSettings CurrentSettings
     {
-        get { lock (_settingsLock) return _currentSettings; }
-        private set { lock (_settingsLock) _currentSettings = value; }
+        get { lock (_settingsLock) return Clone(_currentSettings); }
+    }
+
+    /// <summary>
+    /// Applies a change to the settings under the lock and persists it. The supported way to write settings.
+    /// </summary>
+    public void UpdateSettings(Action<GeneralSettings> mutate)
+    {
+        if (mutate == null) return;
+
+        GeneralSettings snapshot;
+        lock (_settingsLock)
+        {
+            mutate(_currentSettings);
+            snapshot = Clone(_currentSettings);
+            _savedSinceConstruction = true;
+        }
+
+        // Secrets are [JsonIgnore]d in the document, so they persist through the secure store instead.
+        _ = PersistSecretAsync(CloudPasswordKey, snapshot.CloudPassword);
+        _ = PersistSecretAsync(TranslationApiKeyKey, snapshot.TranslationApiKey);
+
+        ResetSecretLoadTasks();
+
+        _store.Replace(snapshot);
+
+        _logger.LogInformation("Settings updated — storage: {Storage}, darkMode: {DarkMode}, translateTags: {TranslateTags}, translation: {Provider}",
+            snapshot.StorageType, snapshot.IsDarkMode, snapshot.TranslateDlsiteTags, snapshot.TranslationProvider);
+    }
+
+    /// <summary>
+    /// Changes the in-memory value without writing anything — used when a secret is loaded from the secure store,
+    /// which must not trigger a save of what was just read.
+    /// </summary>
+    public void UpdateSettingsInMemory(Action<GeneralSettings> mutate)
+    {
+        if (mutate == null) return;
+        lock (_settingsLock) mutate(_currentSettings);
+    }
+
+    private void ResetSecretLoadTasks()
+    {
+        lock (_passwordLoadLock) _passwordLoadTask = Task.CompletedTask;
+        lock (_apiKeyLoadLock) _apiKeyLoadTask = Task.CompletedTask;
     }
 
     /// <summary>Non-null when the platform could not persist a secret, so the UI can say so.</summary>
@@ -147,10 +197,8 @@ public class SettingsService
         try
         {
             var password = await _secureStore.GetAsync(CloudPasswordKey).ConfigureAwait(false);
-            if (string.IsNullOrEmpty(CurrentSettings.CloudPassword))
-            {
-                CurrentSettings.CloudPassword = password ?? string.Empty;
-            }
+            // In-memory only: a secret just read from the secure store must not be written back.
+            UpdateSettingsInMemory(s => s.CloudPassword = password ?? string.Empty);
         }
         catch (Exception ex)
         {
@@ -163,10 +211,7 @@ public class SettingsService
         try
         {
             var apiKey = await _secureStore.GetAsync(TranslationApiKeyKey).ConfigureAwait(false);
-            if (string.IsNullOrEmpty(CurrentSettings.TranslationApiKey))
-            {
-                CurrentSettings.TranslationApiKey = apiKey ?? string.Empty;
-            }
+            UpdateSettingsInMemory(s => s.TranslationApiKey = apiKey ?? string.Empty);
         }
         catch (Exception ex)
         {
@@ -176,7 +221,7 @@ public class SettingsService
 
     public void SaveSettings(GeneralSettings settings)
     {
-        CurrentSettings = settings;
+        lock (_settingsLock) _currentSettings = settings;
 
         lock (_passwordLoadLock)
         {
