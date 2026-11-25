@@ -15,11 +15,17 @@ public sealed class NameRomanizer
 {
     private readonly NameReadingTable _table;
     private readonly Func<string, string> _kanaToRomaji;
+    private readonly Func<string, string?>? _unknownKanjiFallback;
 
-    public NameRomanizer(NameReadingTable table, Func<string, string> kanaToRomaji)
+    /// <param name="unknownKanjiFallback">
+    /// Optional last resort for kanji the table does not know, such as a MeCab/Kawazu reading.
+    /// Returning null leaves the kanji verbatim, which is always preferable to dropping it.
+    /// </param>
+    public NameRomanizer(NameReadingTable table, Func<string, string> kanaToRomaji, Func<string, string?>? unknownKanjiFallback = null)
     {
         _table = table;
         _kanaToRomaji = kanaToRomaji;
+        _unknownKanjiFallback = unknownKanjiFallback;
     }
 
     /// <summary>Splits a cast list on the separators DLsite uses and romanises each entry.</summary>
@@ -113,11 +119,21 @@ public sealed class NameRomanizer
                 }
                 else
                 {
-                    // Unknown kanji is kept rather than dropped — losing the character is worse than
-                    // showing it unromanised.
-                    builder.Append(c);
+                    // Consume the whole unknown kanji run, then try the optional fallback once with
+                    // the full span so a parser sees the word in context rather than character by
+                    // character. If it yields nothing, the kanji is kept verbatim — losing the
+                    // character is worse than showing it unromanised.
+                    var runStart = i;
+                    while (i < word.Length && IsKanji(word[i]))
+                    {
+                        if (i > runStart && _table.TryMatchLongest(word, i, out _, out _)) break;
+                        i++;
+                    }
+
+                    var run = word[runStart..i];
+                    var fallback = _unknownKanjiFallback?.Invoke(run);
+                    builder.Append(string.IsNullOrWhiteSpace(fallback) ? run : fallback);
                     emittedKanji = true;
-                    i++;
                 }
             }
             else if (IsKana(c))

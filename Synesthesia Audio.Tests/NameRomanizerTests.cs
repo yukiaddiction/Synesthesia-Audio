@@ -117,4 +117,42 @@ public class NameRomanizerTests
 
         Assert.Equal("五十嵐", romanizer.RomanizeName("五十嵐"));
     }
+
+    /// <summary>
+    /// The Kawazu fallback receives the whole unknown kanji run, not one character at a time, so a
+    /// parser can read it in context.
+    /// </summary>
+    [Fact]
+    public void UnknownKanjiFallsBackWithTheWholeRun()
+    {
+        var seen = new List<string>();
+        var romanizer = new NameRomanizer(NameReadingTable.Empty, Kana, span =>
+        {
+            seen.Add(span);
+            return span == "五十嵐" ? "Igarashi" : null;
+        });
+
+        Assert.Equal("Igarashi", romanizer.RomanizeName("五十嵐"));
+        Assert.Equal(new[] { "五十嵐" }, seen);
+    }
+
+    /// <summary>A fallback that returns nothing must still leave the text intact.</summary>
+    [Fact]
+    public void FallbackReturningNullKeepsTheKanji()
+    {
+        var romanizer = new NameRomanizer(NameReadingTable.Empty, Kana, _ => null);
+
+        Assert.Equal("五十嵐", romanizer.RomanizeName("五十嵐"));
+    }
+
+    /// <summary>Table hits must not consult the fallback at all.</summary>
+    [Fact]
+    public void FallbackIsNotUsedWhenTheTableMatches()
+    {
+        var calls = 0;
+        var romanizer = new NameRomanizer(Table, Kana, _ => { calls++; return "WRONG"; });
+
+        Assert.Equal("Tanaka", romanizer.RomanizeName("田中"));
+        Assert.Equal(0, calls);
+    }
 }

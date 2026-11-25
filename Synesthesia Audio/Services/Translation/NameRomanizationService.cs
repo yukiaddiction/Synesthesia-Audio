@@ -26,16 +26,18 @@ public sealed class NameRomanizationService
 
     private readonly ILogger<NameRomanizationService> _logger;
     private readonly ITranslationService _translationService;
+    private readonly KawazuKanjiRomanizer _kawazu;
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(30) };
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private Task<NameRomanizer>? _loadTask;
     private bool _refreshStarted;
 
-    public NameRomanizationService(ILogger<NameRomanizationService> logger, ITranslationService translationService)
+    public NameRomanizationService(ILogger<NameRomanizationService> logger, ITranslationService translationService, KawazuKanjiRomanizer kawazu)
     {
         _logger = logger;
         _translationService = translationService;
+        _kawazu = kawazu;
     }
 
     /// <summary>Creation date of the name data actually in use.</summary>
@@ -91,6 +93,10 @@ public sealed class NameRomanizationService
         if (meta is { } bundledMeta && bundledMeta.TryGetProperty("created", out var created))
             BundledDataCreated = created.GetString();
 
+        // Warm the optional MeCab dictionary in the background; until it exists the fallback simply
+        // returns null and unknown kanji stay verbatim.
+        _ = _kawazu.WarmUpAsync();
+
         try
         {
             var overrides = await ReadLinesAsync("name_overrides.tsv").ConfigureAwait(false);
@@ -101,7 +107,7 @@ public sealed class NameRomanizationService
             _logger.LogWarning(ex, "Failed to load name overrides");
         }
 
-        return new NameRomanizer(table, _translationService.ToRomaji);
+        return new NameRomanizer(table, _translationService.ToRomaji, _kawazu.TryRomanize);
     }
 
     private NameReadingTable? TryGetCachedTable()

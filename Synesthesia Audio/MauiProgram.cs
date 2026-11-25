@@ -61,6 +61,7 @@ public static class MauiProgram
         });
         builder.Services.AddSingleton<ITranslationService, TranslationService>();
         builder.Services.AddSingleton<NameRomanizationService>();
+        builder.Services.AddSingleton<KawazuKanjiRomanizer>();
         builder.Services.AddSingleton<DLsiteService>();
         builder.Services.AddSingleton<Synesthesia_Audio.Services.Cloud.ICloudProvider, Synesthesia_Audio.Services.Cloud.WebDavCloudProvider>();
         builder.Services.AddSingleton<Synesthesia_Audio.Services.Cloud.LocalHttpProxy>();

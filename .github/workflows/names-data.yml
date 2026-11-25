@@ -58,6 +58,20 @@ jobs:
             git push
           fi
 
+      # Kawazu (MeCab) needs IPADIC on disk, which is ~50 MB and far too large for the APK or git.
+      # Fetch the package straight from nuget.org here rather than restoring the MAUI project, which
+      # would drag in the whole mobile workload on a Linux runner.
+      - name: Package the Kawazu dictionary
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 \
+            -o "$RUNNER_TEMP/kawazu.nupkg" \
+            https://api.nuget.org/v3-flatcontainer/kawazu/1.1.4/kawazu.1.1.4.nupkg
+          mkdir -p "$RUNNER_TEMP/ipadic"
+          unzip -j -o "$RUNNER_TEMP/kawazu.nupkg" 'content/*' -d "$RUNNER_TEMP/ipadic"
+          ( cd "$RUNNER_TEMP/ipadic" && zip -9 "$RUNNER_TEMP/ipadic.zip" ./*.bin ./*.dic )
+          ls -lh "$RUNNER_TEMP/ipadic.zip"
+
       # Published regardless of repository visibility: the assets become anonymously fetchable the
       # moment the repository is made public, which is what activates the in-app refresh.
       - name: Publish names-data release asset
@@ -68,8 +82,9 @@ jobs:
           gh release view names-data >/dev/null 2>&1 || \
             gh release create names-data \
               --title "Name data" \
-              --notes "Kanji to romaji name readings derived from EDRDG JMnedict (CC BY-SA 4.0). Modified: personal-name pairs only."
+              --notes "Kanji to romaji name readings derived from EDRDG JMnedict (CC BY-SA 4.0). Modified: personal-name pairs only. ipadic.zip is the NAIST IPADIC dictionary used by the Kawazu fallback."
           gh release upload names-data \
             "Synesthesia Audio/Resources/Raw/name_readings.tsv.gz" \
             "Synesthesia Audio/Resources/Raw/name_readings.meta.json" \
+            "$RUNNER_TEMP/ipadic.zip" \
             --clobber
