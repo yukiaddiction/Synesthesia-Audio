@@ -138,7 +138,7 @@ public class ScanFolderService : IDisposable
             {
                 FolderPath = path,
                 Title = folderName,
-                AgeRating = "SFW"
+                AgeRating = AgeRatings.Unknown
             };
 
             if (rjCode != null)
@@ -163,7 +163,7 @@ public class ScanFolderService : IDisposable
                     work.TranslatedTitle = meta.TranslatedTitle ?? "";
                     work.Circle = meta.Circle ?? "Unknown Circle";
                     work.VA = meta.VA ?? "";
-                    work.AgeRating = meta.AgeRating ?? "SFW";
+                    work.AgeRating = meta.AgeRating ?? AgeRatings.Unknown;
                     work.Genre = meta.Genre ?? "";
                     work.CoverImagePath = meta.CoverImagePath ?? "";
                 }
@@ -328,7 +328,7 @@ public class ScanFolderService : IDisposable
             {
                 FolderPath = workPath,
                 Title = folderName,
-                AgeRating = "SFW"
+                AgeRating = AgeRatings.Unknown
             };
 
             var cachedWork = _cacheService.GetWork(workPath);

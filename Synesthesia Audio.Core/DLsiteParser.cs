@@ -11,7 +11,7 @@ public static class DLsiteParser
         public string Circle { get; init; } = "Unknown Circle";
         public string CoverUrl { get; init; } = "";
         public string VaRaw { get; init; } = "";
-        public string AgeRating { get; init; } = "SFW";
+        public string AgeRating { get; init; } = AgeRatings.Unknown;
         public string Genre { get; init; } = "";
         public bool IsEngPage { get; init; }
         public bool TitleFound { get; init; }
@@ -75,7 +75,10 @@ public static class DLsiteParser
         string circle = "Unknown Circle";
         string coverUrl = "";
         string vaRaw = "";
-        string ageRating = "SFW";
+        string ageRating = AgeRatings.Sfw;
+        // A real product page always carries an age row, so "no signal" means the page we parsed was not
+        // the product page. Reporting SFW there put R-18 works in the All-Age list.
+        bool ageRatingFound = false;
         string genre = "";
 
         // Strategy 1: JSON-LD structured data (most reliable, standards-based).
@@ -302,19 +305,27 @@ public static class DLsiteParser
             if (!string.IsNullOrEmpty(ageText))
             {
                 ageRating = ResolveAgeRating(ageText);
+                ageRatingFound = true;
             }
             else if (Regex.IsMatch(html, "label_r18", RegexOptions.IgnoreCase))
             {
-                ageRating = "NSFW";
+                ageRating = AgeRatings.Nsfw;
+                ageRatingFound = true;
             }
 
             var ageMatch = Regex.Match(html, @"<th[^>]*>\s*(?:年齢指定|年齢制限|Age\s+Restriction|Age\s+rating)\s*</th>\s*<td[^>]*>(.*?)</td>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            if (ageMatch.Success && ageRating == "SFW")
+            if (ageMatch.Success)
             {
+                ageRatingFound = true;
                 var tdContent = ageMatch.Groups[1].Value;
                 if (Regex.IsMatch(tdContent, @"(R-?18|18\+|ADL|18禁|18歳未満使用禁止)", RegexOptions.IgnoreCase))
-                    ageRating = "NSFW";
+                    ageRating = AgeRatings.Nsfw;
             }
+        }
+
+        if (!ageRatingFound)
+        {
+            ageRating = AgeRatings.Unknown;
         }
 
         if (string.IsNullOrEmpty(genre))
@@ -873,14 +884,14 @@ public static class DLsiteParser
                 coverUrl = "https:" + coverUrl;
             }
 
-            string ageRating = "SFW";
+            // The API only reports an adult flag, so a missing field is "not stated" rather than all-ages.
+            string ageRating = AgeRatings.Unknown;
             if (element.TryGetProperty("age_category_string", out var ageProp))
             {
                 var ageStr = ageProp.GetString();
-                if (string.Equals(ageStr, "adult", StringComparison.OrdinalIgnoreCase))
-                {
-                    ageRating = "NSFW";
-                }
+                ageRating = string.Equals(ageStr, "adult", StringComparison.OrdinalIgnoreCase)
+                    ? AgeRatings.Nsfw
+                    : AgeRatings.Sfw;
             }
 
             string vaRaw = "";

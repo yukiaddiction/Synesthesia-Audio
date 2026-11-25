@@ -76,5 +76,9 @@ public enum StorageType
 public enum AgeRating
 {
     SFW,
-    NSFW
+    NSFW,
+
+    /// <summary>Metadata could not be read. Never treated as SFW, so an unknown work cannot slip into
+    /// the All-Age list.</summary>
+    Unknown
 }

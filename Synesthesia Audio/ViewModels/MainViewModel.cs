@@ -24,6 +24,22 @@ public partial class MainViewModel : BaseViewModel
 
     public ObservableCollection<WorkMetadata> Albums { get; set; } = new();
 
+    /// <summary>Filter that shows everything, including works whose rating could not be determined.</summary>
+    public const string FilterAll = "All";
+
+    /// <summary>Filter that shows only works confirmed as all-ages.</summary>
+    public const string FilterAllAge = AgeRatings.Sfw;
+
+    /// <summary>Filter that shows only works confirmed as R-18.</summary>
+    public const string FilterR18 = AgeRatings.Nsfw;
+
+    private static string FilterTitle(string? filter)
+    {
+        if (string.Equals(filter, FilterR18, StringComparison.OrdinalIgnoreCase)) return "Library (R-18)";
+        if (string.Equals(filter, FilterAllAge, StringComparison.OrdinalIgnoreCase)) return "Library (All Age)";
+        return "Library (All)";
+    }
+
     [ObservableProperty]
     private string _searchText = string.Empty;
 
@@ -70,9 +86,9 @@ public partial class MainViewModel : BaseViewModel
     public MainViewModel(ScanFolderService scanService, SettingsService settingsService, LibraryCacheService cacheService, ScanStateService scanStateService, ILogger<MainViewModel> logger)
     {
         _logger = logger;
-        var savedFilter = Preferences.Get("LastSelectedFilter", "SFW");
+        var savedFilter = Preferences.Get("LastSelectedFilter", FilterAllAge);
         SelectedFilter = savedFilter;
-        Title = savedFilter == "NSFW" ? "Library (R-18)" : "Library (All Age)";
+        Title = FilterTitle(savedFilter);
         SortOption = Preferences.Get("LastSortOption", "Title A-Z");
 
         _scanService = scanService;
@@ -91,7 +107,7 @@ public partial class MainViewModel : BaseViewModel
     }
     partial void OnSelectedFilterChanged(string value)
     {
-        Title = value == "NSFW" ? "Library (R-18)" : "Library (All Age)";
+        Title = FilterTitle(value);
         Preferences.Set("LastSelectedFilter", value);
         _logger.LogInformation("Library filter changed to {Filter}", value);
         ApplyFilters();
@@ -389,8 +405,12 @@ public partial class MainViewModel : BaseViewModel
     {
         var filtered = _allWorks.AsEnumerable();
 
-        bool wantNsfw = SelectedFilter == "NSFW";
-        filtered = filtered.Where(w => w.IsNsfw == wantNsfw);
+        // Unknown ratings are deliberately excluded from All Age: a work we could not read must never be
+        // presented as all-ages. They stay reachable through the All filter.
+        if (string.Equals(SelectedFilter, FilterR18, StringComparison.OrdinalIgnoreCase))
+            filtered = filtered.Where(w => w.IsNsfw);
+        else if (string.Equals(SelectedFilter, FilterAllAge, StringComparison.OrdinalIgnoreCase))
+            filtered = filtered.Where(w => w.IsSfw);
 
         if (!string.IsNullOrWhiteSpace(SearchText))
         {

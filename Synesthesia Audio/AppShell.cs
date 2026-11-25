@@ -14,6 +14,7 @@ public class AppShell : Shell
 {
     private readonly MainViewModel _mainViewModel;
     private MediaElement? _mediaElement;
+    private NavItem _allNav = null!;
     private NavItem _allAgeNav = null!;
     private NavItem _r18Nav = null!;
     private NavItem _settingsNav = null!;
@@ -80,6 +81,27 @@ public class AppShell : Shell
 
     private View CreateFlyoutContent()
     {
+        // "All" is the home for works whose age rating could not be determined: they must not appear in
+        // All Age, but they also must not become unreachable when DLsite is blocked.
+        _allNav = CreateNavItem("All");
+        _allNav.Container.GestureRecognizers.Add(new TapGestureRecognizer
+        {
+            Command = new Command(async () =>
+            {
+                try
+                {
+                    _mainViewModel.SelectedFilter = MainViewModel.FilterAll;
+                    FlyoutIsPresented = false;
+                    await GoToAsync("//Library");
+                    UpdateFlyoutSelection();
+                }
+                catch (Exception ex)
+                {
+                    Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (All)");
+                }
+            })
+        });
+
         _allAgeNav = CreateNavItem("All Age");
         _allAgeNav.Container.GestureRecognizers.Add(new TapGestureRecognizer
         {
@@ -157,6 +179,7 @@ public class AppShell : Shell
 
                 GlassTheme.SectionLabel("LIBRARY"),
 
+                _allNav.Container,
                 _allAgeNav.Container,
                 _r18Nav.Container,
 
@@ -221,18 +244,24 @@ public class AppShell : Shell
             return;
         }
 
-        if (_mainViewModel.SelectedFilter == "NSFW")
+        var filter = _mainViewModel.SelectedFilter;
+        if (string.Equals(filter, MainViewModel.FilterR18, StringComparison.OrdinalIgnoreCase))
         {
             SetSelectedNav(_r18Nav);
         }
-        else
+        else if (string.Equals(filter, MainViewModel.FilterAllAge, StringComparison.OrdinalIgnoreCase))
         {
             SetSelectedNav(_allAgeNav);
+        }
+        else
+        {
+            SetSelectedNav(_allNav);
         }
     }
 
     private void SetSelectedNav(NavItem selected)
     {
+        ApplyNavState(_allNav, ReferenceEquals(_allNav, selected));
         ApplyNavState(_allAgeNav, ReferenceEquals(_allAgeNav, selected));
         ApplyNavState(_r18Nav, ReferenceEquals(_r18Nav, selected));
         ApplyNavState(_settingsNav, ReferenceEquals(_settingsNav, selected));

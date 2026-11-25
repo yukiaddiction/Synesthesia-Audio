@@ -12,9 +12,15 @@ public class WorkMetadata
     public string VA { get; set; } = string.Empty;
     public string CoverImagePath { get; set; } = string.Empty;
     public string Genre { get; set; } = string.Empty;
-    public string AgeRating { get; set; } = "SFW";
+    public string AgeRating { get; set; } = Synesthesia_Audio.Core.AgeRatings.Sfw;
     public bool IsDlsiteWork => !string.IsNullOrEmpty(ProductId);
-    public bool IsNsfw => AgeRating.Equals("NSFW", StringComparison.OrdinalIgnoreCase);
+
+    // A null AgeRating in an older cache file used to throw here, which broke the library filter.
+    public bool IsNsfw => Synesthesia_Audio.Core.AgeRatings.IsNsfw(AgeRating);
+    public bool IsSfw => Synesthesia_Audio.Core.AgeRatings.IsSfw(AgeRating);
+
+    /// <summary>True when the rating could not be determined, so the work must not be shown as all-ages.</summary>
+    public bool IsAgeRatingUnknown => Synesthesia_Audio.Core.AgeRatings.IsUnknown(AgeRating);
     public string FolderPath { get; set; } = string.Empty;
     public ObservableCollection<SubAlbum> SubAlbums { get; set; } = new();
 

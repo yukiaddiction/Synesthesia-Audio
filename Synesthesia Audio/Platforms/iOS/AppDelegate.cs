@@ -23,7 +23,7 @@ public class AppDelegate : MauiUIApplicationDelegate
 		commandCenter.PlayCommand.AddTarget(cmd =>
 		{
 			var audioService = IPlatformApplication.Current!.Services.GetRequiredService<Services.AudioService>();
-			MainThread.BeginInvokeOnMainThread(() => audioService.TogglePlayPause());
+			MainThread.BeginInvokeOnMainThread(() => audioService.Play());
 			return MPRemoteCommandHandlerStatus.Success;
 		});
 
@@ -31,7 +31,7 @@ public class AppDelegate : MauiUIApplicationDelegate
 		commandCenter.PauseCommand.AddTarget(cmd =>
 		{
 			var audioService = IPlatformApplication.Current!.Services.GetRequiredService<Services.AudioService>();
-			MainThread.BeginInvokeOnMainThread(() => audioService.TogglePlayPause());
+			MainThread.BeginInvokeOnMainThread(() => audioService.Pause());
 			return MPRemoteCommandHandlerStatus.Success;
 		});
 

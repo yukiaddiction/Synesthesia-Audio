@@ -478,7 +478,9 @@ public class DLsiteParseWorkPageHtmlTests
         Assert.Equal("", result.CoverUrl);
         Assert.Equal("Unknown Circle", result.Circle);
         Assert.Equal("", result.VaRaw);
-        Assert.Equal("SFW", result.AgeRating);
+        // An empty page carries no age row, so the rating is unknown. It used to default to SFW, which
+        // put R-18 works in the All-Age list whenever DLsite was blocked (BUG-M-13).
+        Assert.Equal(AgeRatings.Unknown, result.AgeRating);
         Assert.Equal("", result.Genre);
         Assert.False(result.TitleFound);
     }

@@ -174,7 +174,7 @@ public class DLsiteService
                         "OK");
                 });
             }
-            return ("", "", "", "", "", "SFW", "");
+            return ("", "", "", "", "", AgeRatings.Unknown, "");
         }
 
         _dlsiteUnreachableAlerted = false;
@@ -203,7 +203,7 @@ public class DLsiteService
                     _logger.LogInformation("DLsite non-product page for {RjCode} ({Detail})", rjCode, detail);
                 }
 
-                return ("", "", "", "", "", "SFW", "");
+                return ("", "", "", "", "", AgeRatings.Unknown, "");
             }
 
             string title;

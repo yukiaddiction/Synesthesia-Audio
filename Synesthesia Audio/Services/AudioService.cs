@@ -27,6 +27,10 @@ public partial class AudioService : ObservableObject, IDisposable
     private double _restorePositionSeconds;
     private int _sourceGeneration;
 
+    /// <summary>Consecutive MediaFailed events. Reset whenever a track opens successfully.</summary>
+    private int _consecutiveFailures;
+    private const int MaxConsecutivePlaybackFailures = 3;
+
     public AudioService(SettingsService settingsService, Cloud.ICloudProvider cloudProvider, Cloud.LocalHttpProxy localHttpProxy, PlaybackSessionService sessionService, IAudioPlatformService platformService, ILogger<AudioService> logger)
     {
         _settingsService = settingsService;
@@ -205,6 +209,7 @@ public partial class AudioService : ObservableObject, IDisposable
             _mediaElement.StateChanged -= OnStateChanged;
             _mediaElement.MediaOpened -= OnMediaOpened;
             _mediaElement.MediaEnded -= OnMediaEnded;
+            _mediaElement.MediaFailed -= OnMediaFailed;
         }
 
         _mediaElement = mediaElement;
@@ -215,6 +220,7 @@ public partial class AudioService : ObservableObject, IDisposable
             _mediaElement.StateChanged += OnStateChanged;
             _mediaElement.MediaOpened += OnMediaOpened;
             _mediaElement.MediaEnded += OnMediaEnded;
+            _mediaElement.MediaFailed += OnMediaFailed;
         }
 
         ApplyVolume();
@@ -270,7 +276,11 @@ public partial class AudioService : ObservableObject, IDisposable
         if (session.CurrentTrackIndex < 0 || session.CurrentTrackIndex >= session.Playlist.Count) return;
 
         var sessionTrack = session.Playlist[session.CurrentTrackIndex];
-        if (!File.Exists(sessionTrack.FilePath)) return;
+
+        // A remote path never exists on the local disk, so this check must only apply to local storage.
+        // Running it first made WebDAV session restore dead code.
+        var isCloudSession = _settingsService.CurrentSettings.StorageType == "WebDAV";
+        if (!isCloudSession && !File.Exists(sessionTrack.FilePath)) return;
 
         Track track;
         // rebuild playlist from session DTOs
@@ -307,7 +317,7 @@ public partial class AudioService : ObservableObject, IDisposable
         _isRestoringSession = true;
         _restorePositionSeconds = session.PositionSeconds;
 
-        if (_settingsService.CurrentSettings.StorageType == "WebDAV")
+        if (isCloudSession)
         {
             string streamUrl;
             try
@@ -569,17 +579,33 @@ public partial class AudioService : ObservableObject, IDisposable
 
     public void TogglePlayPause()
     {
+        if (IsPlaying) Pause();
+        else Play();
+    }
+
+    /// <summary>
+    /// Starts playback. Separate from <see cref="TogglePlayPause"/> so a remote "play" command is
+    /// idempotent — pressing play while already playing must not pause.
+    /// </summary>
+    [RelayCommand]
+    public void Play()
+    {
         var me = _mediaElement;
-        if (me == null) return;
-        if (IsPlaying)
-        {
-            me.Pause();
-            SaveSession();
-        }
-        else
-        {
-            me.Play();
-        }
+        if (me == null || IsPlaying) return;
+        me.Play();
+    }
+
+    /// <summary>
+    /// Pauses playback. Idempotent, which is what a remote "pause" command means: pausing while already
+    /// paused used to start playback again.
+    /// </summary>
+    [RelayCommand]
+    public void Pause()
+    {
+        var me = _mediaElement;
+        if (me == null || !IsPlaying) return;
+        me.Pause();
+        SaveSession();
     }
 
     public void SetCurrentAlbumFolderPath(string folderPath)
@@ -645,6 +671,32 @@ public partial class AudioService : ObservableObject, IDisposable
         }
     }
 
+    private void OnMediaFailed(object? sender, MediaFailedEventArgs e)
+    {
+        // A corrupt file, an unsupported codec or a proxy error used to leave the player stalled forever
+        // with the buffering spinner still turning, because nothing subscribed to this event.
+        IsBuffering = false;
+        IsPlaying = false;
+
+        var title = CurrentTrack?.Title ?? "This file";
+        _logger.LogError("Playback failed — track: {Title}, error: {Error}", title, e.ErrorMessage);
+
+        var failures = Interlocked.Increment(ref _consecutiveFailures);
+        if (failures >= MaxConsecutivePlaybackFailures)
+        {
+            // Stop rather than loop through a playlist in which nothing is playable.
+            Interlocked.Exchange(ref _consecutiveFailures, 0);
+            _logger.LogError("Giving up after {Count} consecutive playback failures", failures);
+            _ = ShowPlaybackAlertAsync($"These files could not be played:\n{e.ErrorMessage}");
+            return;
+        }
+
+        // Deliberately not awaited: the play gate is not held here, so the message cannot block the
+        // next track from starting.
+        _ = ShowPlaybackAlertAsync($"{title} could not be played:\n{e.ErrorMessage}");
+        MainThread.BeginInvokeOnMainThread(() => PlayNext(isAuto: true));
+    }
+
     private void OnStateChanged(object? sender, MediaStateChangedEventArgs e)
     {
         IsPlaying = e.NewState == MediaElementState.Playing;
@@ -664,6 +716,9 @@ public partial class AudioService : ObservableObject, IDisposable
         {
             var me = _mediaElement;
             if (me == null) return;
+
+            // A track that opened proves the pipeline works, so the failure run is over.
+            Interlocked.Exchange(ref _consecutiveFailures, 0);
 
             _logger.LogInformation("OnMediaOpened fired — gen: {Gen}, latest: {Latest}, isRestoring: {IsRestoring}",
                 gen, _sourceGeneration, _isRestoringSession);

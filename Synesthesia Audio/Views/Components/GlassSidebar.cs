@@ -15,6 +15,7 @@ namespace Synesthesia_Audio.Views.Components;
 /// </summary>
 public sealed class GlassSidebar : Border
 {
+    private readonly GlassNavItem _all;
     private readonly GlassNavItem _allAge;
     private readonly GlassNavItem _r18;
     private readonly GlassNavItem _settings;
@@ -29,8 +30,9 @@ public sealed class GlassSidebar : Border
         Margin = new Thickness(12, 12, 0, 12);
         Padding = new Thickness(10);
 
-        _allAge = new GlassNavItem("All Age", (_, _) => NavigateAsync("SFW", "//Library"));
-        _r18 = new GlassNavItem("R-18", (_, _) => NavigateAsync("NSFW", "//Library"));
+        _all = new GlassNavItem("All", (_, _) => NavigateAsync(MainViewModel.FilterAll, "//Library"));
+        _allAge = new GlassNavItem("All Age", (_, _) => NavigateAsync(MainViewModel.FilterAllAge, "//Library"));
+        _r18 = new GlassNavItem("R-18", (_, _) => NavigateAsync(MainViewModel.FilterR18, "//Library"));
         _settings = new GlassNavItem("Settings", (_, _) => NavigateAsync(null, "//Settings"));
 
         var brand = new VerticalStackLayout
@@ -52,6 +54,7 @@ public sealed class GlassSidebar : Border
             Children =
             {
                 GlassTheme.SectionLabel("LIBRARY"),
+                _all,
                 _allAge,
                 _r18,
                 new BoxView { HeightRequest = 1, Margin = new Thickness(8, 10) }
@@ -135,10 +138,12 @@ public sealed class GlassSidebar : Border
     {
         var location = Shell.Current?.CurrentState?.Location?.OriginalString ?? string.Empty;
         var onSettings = location.Contains("Settings", StringComparison.OrdinalIgnoreCase);
-        var isNsfw = _viewModel?.SelectedFilter == "NSFW";
+        var isNsfw = string.Equals(_viewModel?.SelectedFilter, MainViewModel.FilterR18, StringComparison.OrdinalIgnoreCase);
+        var isAllAge = string.Equals(_viewModel?.SelectedFilter, MainViewModel.FilterAllAge, StringComparison.OrdinalIgnoreCase);
 
         _settings.SetActive(onSettings);
-        _allAge.SetActive(!onSettings && !isNsfw);
+        _all.SetActive(!onSettings && !isNsfw && !isAllAge);
+        _allAge.SetActive(!onSettings && !isNsfw && isAllAge);
         _r18.SetActive(!onSettings && isNsfw);
     }
 
