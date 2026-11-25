@@ -318,19 +318,14 @@ public partial class SettingsViewModel : BaseViewModel
     {
         _logger.LogInformation("Browsing cloud folders — server: {ServerUrl}", CloudServerUrl);
 
-        var originalType = _settingsService.CurrentSettings.StorageType;
-        var originalUrl = _settingsService.CurrentSettings.CloudServerUrl;
-        var originalUser = _settingsService.CurrentSettings.CloudUsername;
-        var originalPass = _settingsService.CurrentSettings.CloudPassword;
-
-        _settingsService.CurrentSettings.StorageType = "WebDAV";
-        _settingsService.CurrentSettings.CloudServerUrl = CloudServerUrl;
-        _settingsService.CurrentSettings.CloudUsername = CloudUsername;
-        _settingsService.CurrentSettings.CloudPassword = CloudPassword;
+        // Build the connection from the form instead of overwriting the saved settings. The old
+        // swap-then-restore only stayed applied until the picker page was shown, so the first folder tap
+        // in the picker went out with stale credentials and browse failed.
+        var connection = new Services.Cloud.WebDavConnection(CloudServerUrl, CloudUsername, CloudPassword);
 
         try
         {
-            var result = await _cloudProvider.TestConnectionAsync();
+            var result = await _cloudProvider.TestConnectionAsync(connection);
             if (!result.Success)
             {
                 _logger.LogWarning("Cloud folder browse aborted — connection test failed: {Error}", result.ErrorMessage);
@@ -338,7 +333,7 @@ public partial class SettingsViewModel : BaseViewModel
                 return;
             }
 
-            var modal = new Views.CloudFolderPickerPage(_cloudProvider, BaseAudioFolderPath, (selectedPath) =>
+            var modal = new Views.CloudFolderPickerPage(_cloudProvider, connection, BaseAudioFolderPath, (selectedPath) =>
             {
                 BaseAudioFolderPath = selectedPath;
                 _logger.LogInformation("Cloud folder selected: {Path}", selectedPath);
@@ -351,13 +346,6 @@ public partial class SettingsViewModel : BaseViewModel
             _logger.LogError(ex, "Failed to browse cloud folders");
             await Shell.Current.DisplayAlert("Browse Error", $"Failed to browse cloud folders: {ex.Message}", "OK");
         }
-        finally
-        {
-            _settingsService.CurrentSettings.StorageType = originalType;
-            _settingsService.CurrentSettings.CloudServerUrl = originalUrl;
-            _settingsService.CurrentSettings.CloudUsername = originalUser;
-            _settingsService.CurrentSettings.CloudPassword = originalPass;
-        }
     }
 
     [RelayCommand]
@@ -365,22 +353,12 @@ public partial class SettingsViewModel : BaseViewModel
     {
         _logger.LogInformation("Testing WebDAV connection — server: {ServerUrl}", CloudServerUrl);
 
-        // the cloud provider reads credentials from CurrentSettings, but we want to test
-        // whatever the user has typed into the form fields, not what's already saved.
-        // so we temporarily swap them in, test, then swap them back.
-        var originalType = _settingsService.CurrentSettings.StorageType;
-        var originalUrl = _settingsService.CurrentSettings.CloudServerUrl;
-        var originalUser = _settingsService.CurrentSettings.CloudUsername;
-        var originalPass = _settingsService.CurrentSettings.CloudPassword;
-
-        _settingsService.CurrentSettings.StorageType = StorageType;
-        _settingsService.CurrentSettings.CloudServerUrl = CloudServerUrl;
-        _settingsService.CurrentSettings.CloudUsername = CloudUsername;
-        _settingsService.CurrentSettings.CloudPassword = CloudPassword;
+        // Test exactly what the user has typed, without touching the saved settings.
+        var connection = new Services.Cloud.WebDavConnection(CloudServerUrl, CloudUsername, CloudPassword);
 
         try
         {
-            var result = await _cloudProvider.TestConnectionAsync();
+            var result = await _cloudProvider.TestConnectionAsync(connection);
             if (result.Success)
             {
                 _logger.LogInformation("WebDAV connection test succeeded — server: {ServerUrl}", CloudServerUrl);
@@ -396,13 +374,6 @@ public partial class SettingsViewModel : BaseViewModel
         {
             _logger.LogError(ex, "WebDAV connection test error — server: {ServerUrl}", CloudServerUrl);
             await Shell.Current.DisplayAlert("Connection Error", $"An error occurred: {ex.Message}", "OK");
-        }
-        finally
-        {
-            _settingsService.CurrentSettings.StorageType = originalType;
-            _settingsService.CurrentSettings.CloudServerUrl = originalUrl;
-            _settingsService.CurrentSettings.CloudUsername = originalUser;
-            _settingsService.CurrentSettings.CloudPassword = originalPass;
         }
     }
 

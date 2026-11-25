@@ -99,6 +99,9 @@ public partial class MainViewModel : BaseViewModel
 
     private bool _isInitializing;
     private Timer? _scanPollTimer;
+    private readonly object _scanPollLock = new();
+    private int _scanFinishedHandled;
+    private const int PollIntervalMs = 500;
 
     public async Task InitializeAsync()
     {
@@ -106,6 +109,11 @@ public partial class MainViewModel : BaseViewModel
         _isInitializing = true;
         try
         {
+            // Every store reads its file lazily so nothing does I/O in a constructor. Wait for them here
+            // before the first read: otherwise the UI races the load and shows an empty library with
+            // default settings, and the "quick check for new works" believes every folder is new.
+            await Task.WhenAll(_cacheService.Loaded, _settingsService.Loaded, _scanStateService.Loaded);
+
             _logger.LogInformation("Library initializing — works in cache: {Count}", _allWorks.Count);
 #if ANDROID
             Platforms.Android.BatteryOptimizationHelper.RequestIgnoreBatteryOptimizations();
@@ -285,7 +293,7 @@ public partial class MainViewModel : BaseViewModel
         StopScanPolling();
         IsScanning = false;
         ReloadFromCache();
-        HandleScanFinished(_scanStateService.Snapshot());
+        if (TryClaimScanFinished()) HandleScanFinished(_scanStateService.Snapshot());
     }
 
     private void HandleScanFinished(ScanState state)
@@ -325,13 +333,38 @@ public partial class MainViewModel : BaseViewModel
 
     private void StartScanPolling()
     {
-        _scanPollTimer ??= new Timer(_ => PollScanStatus(), null, 500, 500);
+        lock (_scanPollLock)
+        {
+            // A new scan may report its own completion exactly once.
+            _scanFinishedHandled = 0;
+
+            if (_scanPollTimer == null)
+            {
+                _scanPollTimer = new Timer(_ => PollScanStatus(), null, PollIntervalMs, PollIntervalMs);
+                return;
+            }
+
+            // StopScanPolling only pauses the existing timer. Leaving it paused made the second and every
+            // later scan invisible to the poller, so IsScanning stayed true forever and the Rescan button
+            // looked dead until the app was restarted.
+            _scanPollTimer.Change(PollIntervalMs, PollIntervalMs);
+        }
     }
 
     private void StopScanPolling()
     {
-        _scanPollTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+        lock (_scanPollLock)
+        {
+            _scanPollTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+        }
     }
+
+    /// <summary>
+    /// True for the first caller of the current scan only. The in-process task and the poller can both
+    /// observe the same finished scan, which used to raise the completion alert twice.
+    /// </summary>
+    private bool TryClaimScanFinished() =>
+        Interlocked.Exchange(ref _scanFinishedHandled, 1) == 0;
 
     private void PollScanStatus()
     {
@@ -343,7 +376,7 @@ public partial class MainViewModel : BaseViewModel
                 StopScanPolling();
                 IsScanning = false;
                 ReloadFromCache();
-                HandleScanFinished(state);
+                if (TryClaimScanFinished()) HandleScanFinished(state);
                 return;
             }
 

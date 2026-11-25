@@ -6,30 +6,38 @@ using System.Linq;
 using System.Text.Json;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
+using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Services;
 
 public class TagMappingService
 {
     private readonly ConcurrentDictionary<string, string> _tagMap = new(StringComparer.OrdinalIgnoreCase);
-    private readonly string _filePath;
+    private readonly JsonFileStore<Dictionary<string, string>> _store;
     private readonly ILogger<TagMappingService> _logger;
 
     public TagMappingService(ILogger<TagMappingService> logger)
     {
         _logger = logger;
-        _filePath = Path.Combine(FileSystem.AppDataDirectory, "tag_mappings.json");
+        _store = new JsonFileStore<Dictionary<string, string>>(
+            Path.Combine(FileSystem.AppDataDirectory, "tag_mappings.json"),
+            saveDebounceMs: 500);
+        _store.LoadFailed += ex => _logger.LogError(ex, "Tag mappings could not be read — the previous file was kept as .bak");
+        _store.SaveFailed += ex => _logger.LogError(ex, "SaveUserMappings failed");
+
         LoadInitialMappings();
         LoadUserMappings();
 
         // Save permanent cache file on first launch if it doesn't exist yet
-        if (!File.Exists(_filePath))
+        if (!File.Exists(FilePath))
         {
-            SaveUserMappings();
+            SaveUserMappings(force: true);
         }
 
         _logger.LogInformation("TagMappingService initialized — {Count} mappings loaded", _tagMap.Count);
     }
+
+    private string FilePath => _store.Path;
 
     private void LoadInitialMappings()
     {
@@ -62,23 +70,19 @@ public class TagMappingService
     {
         try
         {
-            if (File.Exists(_filePath))
+            // Mappings are read through the shared store, and awaited here on purpose: MapTag/MapGenres
+            // are synchronous call sites (scanning, genre re-mapping), so the table has to be complete
+            // before the first call. The store has no thread-affine waits, so this cannot deadlock.
+            var saved = _store.Loaded.GetAwaiter().GetResult();
+            foreach (var kvp in saved)
             {
-                var json = File.ReadAllText(_filePath);
-                var saved = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
-                if (saved != null)
+                // Filter out corrupt dictionary artifacts automatically
+                if (!IsCorruptDictionaryArtifact(kvp.Value))
                 {
-                    foreach (var kvp in saved)
-                    {
-                        // Filter out corrupt dictionary artifacts automatically
-                        if (!IsCorruptDictionaryArtifact(kvp.Value))
-                        {
-                            _tagMap[kvp.Key] = kvp.Value;
-                        }
-                    }
-                    _logger.LogDebug("User tag mappings loaded — {Count} entries", saved.Count);
+                    _tagMap[kvp.Key] = kvp.Value;
                 }
             }
+            _logger.LogDebug("User tag mappings loaded — {Count} entries", saved.Count);
         }
         catch (Exception ex) { _logger.LogError(ex, "LoadUserMappings failed"); }
     }
@@ -104,16 +108,20 @@ public class TagMappingService
         return string.IsNullOrWhiteSpace(clean) ? raw.Trim() : clean;
     }
 
-    private void SaveUserMappings()
+    /// <summary>
+    /// Queues the current table for writing. The store debounces (several DLsite tasks add mappings in
+    /// parallel) and writes atomically, so concurrent adds can no longer corrupt the file.
+    /// </summary>
+    private void SaveUserMappings(bool force = false)
     {
-        try
-        {
-            var json = JsonSerializer.Serialize(_tagMap, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_filePath, json);
-            _logger.LogDebug("Tag mappings saved — {Count} entries", _tagMap.Count);
-        }
-        catch (Exception ex) { _logger.LogError(ex, "SaveUserMappings failed"); }
+        _store.Replace(new Dictionary<string, string>(_tagMap, StringComparer.OrdinalIgnoreCase));
+        _logger.LogDebug("Tag mappings save queued — {Count} entries", _tagMap.Count);
+
+        if (force) FlushAsync().GetAwaiter().GetResult();
     }
+
+    /// <summary>Writes any pending mapping change now. Called on shutdown.</summary>
+    public Task FlushAsync() => _store.FlushAsync();
 
     public string MapTag(string rawTag)
     {
@@ -164,7 +172,7 @@ public class TagMappingService
             _tagMap.TryRemove(key, out _);
         }
         LoadInitialMappings();
-        SaveUserMappings();
+        SaveUserMappings(force: true);
         _logger.LogInformation("Bad tag mappings cleaned — {Count} corrupt entries removed", badKeys.Count);
     }
 }

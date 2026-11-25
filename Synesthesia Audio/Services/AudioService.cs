@@ -197,7 +197,7 @@ public partial class AudioService : ObservableObject, IDisposable
             me.Play();
     }
 
-    public void SetMediaElement(MediaElement mediaElement)
+    public void SetMediaElement(MediaElement? mediaElement)
     {
         if (_mediaElement != null)
         {
@@ -220,11 +220,52 @@ public partial class AudioService : ObservableObject, IDisposable
         ApplyVolume();
     }
 
+    /// <summary>
+    /// Detaches the UI element when its window goes away and resets playback state, without disposing
+    /// this singleton. The process outlives the window on Android, so a re-created window gets the same
+    /// instance back; disposing it here used to leave the play gate dead and every later play silently
+    /// failed with <see cref="ObjectDisposedException"/>.
+    /// </summary>
+    public void DetachMediaElement()
+    {
+        var me = _mediaElement;
+
+        try
+        {
+            me?.Stop();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Stopping the media element during detach failed");
+        }
+
+        SetMediaElement(null);
+
+        IsPlaying = false;
+        IsBuffering = false;
+        IsSeeking = false;
+        Position = TimeSpan.Zero;
+        Duration = TimeSpan.Zero;
+        SeekPosition = TimeSpan.Zero;
+
+        try
+        {
+            _platformService.OnPlaybackStopped();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Resetting platform playback state during detach failed");
+        }
+
+        // Remember where we were so reopening the window can offer to resume.
+        SaveSession();
+    }
+
     public async Task TryRestoreSessionAsync()
     {
         var me = _mediaElement;
         if (me == null) return;
-        var session = _sessionService.Load();
+        var session = await _sessionService.LoadAsync();
         if (session == null || session.Playlist.Count == 0) return;
         if (session.CurrentTrackIndex < 0 || session.CurrentTrackIndex >= session.Playlist.Count) return;
 
@@ -268,13 +309,17 @@ public partial class AudioService : ObservableObject, IDisposable
 
         if (_settingsService.CurrentSettings.StorageType == "WebDAV")
         {
-            if (!_localHttpProxy.EnsureRunning())
+            string streamUrl;
+            try
             {
-                _logger.LogWarning("TryRestore: Cloud proxy not running, skipping session restore");
+                streamUrl = _localHttpProxy.CreateStreamUrl(track.FilePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "TryRestore: cloud streaming proxy could not start, skipping session restore");
                 _isRestoringSession = false;
                 return;
             }
-            var streamUrl = _localHttpProxy.GetProxyUrl(track.FilePath);
             me.Source = MediaSource.FromUri(streamUrl);
         }
         else
@@ -371,14 +416,21 @@ public partial class AudioService : ObservableObject, IDisposable
             if (_settingsService.CurrentSettings.StorageType == "WebDAV")
             {
                 _logger.LogInformation("Using WebDAV proxy. Proxy running: {Running}", _localHttpProxy.IsRunning);
-                if (!_localHttpProxy.EnsureRunning())
+
+                string streamUrl;
+                try
                 {
-                    _logger.LogError("WebDAV proxy failed to start");
+                    streamUrl = _localHttpProxy.CreateStreamUrl(track.FilePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "WebDAV proxy failed to start");
                     await ShowPlaybackAlertAsync("Cloud streaming proxy could not start.");
                     return;
                 }
-                var streamUrl = _localHttpProxy.GetProxyUrl(track.FilePath);
-                _logger.LogInformation("Proxy URL: {Url}", streamUrl);
+
+                // The URL carries the per-run proxy token, so it is never written to the log.
+                _logger.LogInformation("Cloud stream prepared through the loopback proxy");
                 me.Source = MediaSource.FromUri(streamUrl);
             }
             else
@@ -542,7 +594,7 @@ public partial class AudioService : ObservableObject, IDisposable
         var me = _mediaElement;
         if (me == null) return;
         _logger.LogInformation("Playback stopped");
-        _sessionService.Clear();
+        _ = _sessionService.ClearAsync();
         me.Stop();
         CurrentTrack = null;
         IsVideoTrack = false;
@@ -705,15 +757,9 @@ public partial class AudioService : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        try
-        {
-            _mediaElement?.Stop();
-            SetMediaElement(null!);
-            _playGate.Dispose();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "AudioService dispose error");
-        }
+        // Detach only. This service is a DI singleton that outlives the window: the process stays alive
+        // across an Android activity re-creation, so disposing the semaphore here made every later play
+        // throw ObjectDisposedException. There is no state that genuinely needs releasing at window close.
+        DetachMediaElement();
     }
 }

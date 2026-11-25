@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Xml.Linq;
 using System.Linq;
 using Microsoft.Extensions.Logging;
+using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Services.Cloud;
 
@@ -43,45 +44,87 @@ public class WebDavCloudProvider : ICloudProvider
                 return false;
             }
 
-            if (!settings.CloudServerUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("WebDAV cloud server URL is not using HTTPS — credentials will be sent in plain text");
-            }
+            WarnIfInsecure(settings.CloudServerUrl);
 
             return true;
         }
     }
 
-    private async Task<AuthenticationHeaderValue> BuildAuthHeaderAsync()
+    private void WarnIfInsecure(string serverUrl)
     {
-        await _settingsService.EnsurePasswordLoadedAsync().ConfigureAwait(false);
+        if (!serverUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("WebDAV cloud server URL is not using HTTPS — credentials will be sent in plain text");
+        }
+    }
+
+    /// <summary>
+    /// The connection an operation should use: the caller's explicit one when supplied (form values the
+    /// user has not saved yet), otherwise the saved settings if WebDAV is the active storage.
+    /// </summary>
+    private WebDavConnection? ResolveConnection(WebDavConnection? explicitConnection)
+    {
+        if (explicitConnection != null)
+        {
+            return explicitConnection.IsComplete ? explicitConnection : null;
+        }
+
+        if (!IsConfigured) return null;
+
         var settings = _settingsService.GetSettingsSnapshot();
-        var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{settings.CloudUsername}:{settings.CloudPassword}"));
+        return WebDavConnection.FromSettings(settings);
+    }
+
+    private async Task<AuthenticationHeaderValue> BuildAuthHeaderAsync(WebDavConnection? connection)
+    {
+        var resolved = connection;
+        if (resolved == null)
+        {
+            await _settingsService.EnsurePasswordLoadedAsync().ConfigureAwait(false);
+            resolved = WebDavConnection.FromSettings(_settingsService.GetSettingsSnapshot());
+        }
+
+        var authString = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{resolved.Username}:{resolved.Password}"));
         return new AuthenticationHeaderValue("Basic", authString);
     }
 
+    /// <summary>
+    /// Converts a library-relative path into the path portion of a URL. The rule itself lives in
+    /// <see cref="RemotePath"/> so it can be unit-tested; this only assembles the URL and re-checks that
+    /// the resolved address really is still under the configured folder.
+    /// </summary>
+    private static string BuildRelativeUrlPath(string? path) => RemotePath.NormalizeRelative(path);
+
     private static string BuildFileUrl(string baseUrl, string path)
     {
-        var normalizedBase = baseUrl.TrimEnd('/');
-        if (!normalizedBase.EndsWith("/")) normalizedBase += "/";
-        var cleanPath = path.Replace('\\', '/').TrimStart('/');
-        return normalizedBase + Uri.EscapeDataString(cleanPath).Replace("%2F", "/");
+        var normalizedBase = baseUrl.TrimEnd('/') + "/";
+        var relative = BuildRelativeUrlPath(path);
+        var url = normalizedBase + Uri.EscapeDataString(relative).Replace("%2F", "/");
+
+        // Belt and braces: after resolution the URL must still live under the configured folder.
+        if (Uri.TryCreate(url, UriKind.Absolute, out var resolved) &&
+            Uri.TryCreate(normalizedBase, UriKind.Absolute, out var baseUri))
+        {
+            if (!resolved.AbsolutePath.StartsWith(baseUri.AbsolutePath.TrimEnd('/') + "/", StringComparison.Ordinal))
+                throw new ArgumentException($"WebDAV path escapes the configured base folder: {path}", nameof(path));
+        }
+
+        return url;
     }
 
-    public async Task<(bool Success, string ErrorMessage)> TestConnectionAsync()
+    public async Task<(bool Success, string ErrorMessage)> TestConnectionAsync(WebDavConnection? connection = null)
     {
-        if (!IsConfigured) return (false, "Storage credentials not fully configured in settings.");
+        var conn = ResolveConnection(connection);
+        if (conn == null) return (false, "Storage credentials not fully configured in settings.");
         try
         {
-            var settings = _settingsService.CurrentSettings;
-            var url = settings.CloudServerUrl.TrimEnd('/');
-            if (!url.EndsWith("/")) url += "/";
-            
-            var request = new HttpRequestMessage(new HttpMethod("PROPFIND"), url)
+            WarnIfInsecure(conn.ServerUrl);
+
+            var request = new HttpRequestMessage(new HttpMethod("PROPFIND"), conn.NormalizedServerUrl)
             {
                 Content = new StringContent(GetPropFindRequestBody(), Encoding.UTF8, "text/xml")
             };
-            request.Headers.Authorization = await BuildAuthHeaderAsync();
+            request.Headers.Authorization = await BuildAuthHeaderAsync(conn);
             request.Headers.Add("Depth", "0");
             
             using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
@@ -109,22 +152,25 @@ public class WebDavCloudProvider : ICloudProvider
         }
     }
 
-    public async Task<List<CloudFileInfo>> ListFilesAsync(string path)
+    public async Task<List<CloudFileInfo>> ListFilesAsync(string path, WebDavConnection? connection = null)
     {
         var fileList = new List<CloudFileInfo>();
-        if (!IsConfigured) return fileList;
+        var conn = ResolveConnection(connection);
+        if (conn == null) return fileList;
 
         try
         {
-            var settings = _settingsService.CurrentSettings;
-            
-            var baseUrl = settings.CloudServerUrl.TrimEnd('/');
-            if (!baseUrl.EndsWith("/")) baseUrl += "/";
+            var baseUrl = conn.NormalizedServerUrl;
             
             string targetUrl = baseUrl;
             if (!string.IsNullOrEmpty(path))
             {
-                targetUrl = baseUrl + Uri.EscapeDataString(path.Replace('\\', '/')).Replace("%2F", "/");
+                // Same guard as file access: a listing must not be able to walk above the base folder.
+                var relative = BuildRelativeUrlPath(path);
+                if (relative.Length > 0)
+                {
+                    targetUrl = baseUrl + Uri.EscapeDataString(relative).Replace("%2F", "/");
+                }
             }
             
             if (!targetUrl.EndsWith("/")) targetUrl += "/";
@@ -133,7 +179,7 @@ public class WebDavCloudProvider : ICloudProvider
             {
                 Content = new StringContent(GetPropFindRequestBody(), Encoding.UTF8, "text/xml")
             };
-            request.Headers.Authorization = await BuildAuthHeaderAsync();
+            request.Headers.Authorization = await BuildAuthHeaderAsync(conn);
             request.Headers.Add("Depth", "1");
             
             using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
@@ -168,7 +214,7 @@ public class WebDavCloudProvider : ICloudProvider
                     size = parsedSize;
                 }
 
-                var baseUri = new Uri(baseUrl + "/");
+                var baseUri = new Uri(baseUrl);
                 var itemUri = new Uri(baseUri, href);
                 var relativePath = baseUri.MakeRelativeUri(itemUri).ToString();
                 relativePath = Uri.UnescapeDataString(relativePath).TrimEnd('/');
@@ -200,13 +246,15 @@ public class WebDavCloudProvider : ICloudProvider
         return fileList;
     }
 
-    public async Task<Stream> GetFileStreamAsync(string path)
+    public async Task<Stream> GetFileStreamAsync(string path, WebDavConnection? connection = null)
     {
-        var settings = _settingsService.GetSettingsSnapshot();
-        var targetUrl = BuildFileUrl(settings.CloudServerUrl, path);
+        var conn = ResolveConnection(connection);
+        if (conn == null) throw new InvalidOperationException("WebDAV is not configured.");
+
+        var targetUrl = BuildFileUrl(conn.NormalizedServerUrl, path);
 
         var request = new HttpRequestMessage(HttpMethod.Get, targetUrl);
-        request.Headers.Authorization = await BuildAuthHeaderAsync();
+        request.Headers.Authorization = await BuildAuthHeaderAsync(conn);
 
         var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
@@ -252,13 +300,15 @@ public class WebDavCloudProvider : ICloudProvider
         }
     }
 
-    public async Task<HttpResponseMessage> GetFileResponseAsync(string path, string? rangeHeader)
+    public async Task<HttpResponseMessage> GetFileResponseAsync(string path, string? rangeHeader, WebDavConnection? connection = null)
     {
-        var settings = _settingsService.CurrentSettings;
-        var targetUrl = BuildFileUrl(settings.CloudServerUrl, path);
+        var conn = ResolveConnection(connection);
+        if (conn == null) throw new InvalidOperationException("WebDAV is not configured.");
+
+        var targetUrl = BuildFileUrl(conn.NormalizedServerUrl, path);
 
         var request = new HttpRequestMessage(HttpMethod.Get, targetUrl);
-        request.Headers.Authorization = await BuildAuthHeaderAsync();
+        request.Headers.Authorization = await BuildAuthHeaderAsync(conn);
         if (!string.IsNullOrEmpty(rangeHeader))
         {
             request.Headers.Add("Range", rangeHeader);
@@ -267,16 +317,17 @@ public class WebDavCloudProvider : ICloudProvider
         return await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
     }
 
-    public async Task<bool> FileExistsAsync(string path)
+    public async Task<bool> FileExistsAsync(string path, WebDavConnection? connection = null)
     {
-        if (!IsConfigured) return false;
+        var conn = ResolveConnection(connection);
+        if (conn == null) return false;
+
         try
         {
-            var settings = _settingsService.CurrentSettings;
-            var targetUrl = BuildFileUrl(settings.CloudServerUrl, path);
+            var targetUrl = BuildFileUrl(conn.NormalizedServerUrl, path);
 
             var request = new HttpRequestMessage(HttpMethod.Head, targetUrl);
-            request.Headers.Authorization = await BuildAuthHeaderAsync();
+            request.Headers.Authorization = await BuildAuthHeaderAsync(conn);
             using var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
             return response.IsSuccessStatusCode;
         }

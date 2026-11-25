@@ -1,5 +1,5 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Synesthesia_Audio.Core;
 using Synesthesia_Audio.Models;
 using Synesthesia_Audio.Services.Storage;
 
@@ -13,12 +13,16 @@ public class SettingsService
     private readonly string _settingsFilePath;
     private readonly ILogger<SettingsService> _logger;
     private readonly ISecureStore _secureStore;
+    private readonly JsonFileStore<GeneralSettings> _store;
     private readonly object _passwordLoadLock = new();
     private readonly object _settingsLock = new();
     private readonly object _apiKeyLoadLock = new();
     private Task? _passwordLoadTask;
     private Task? _apiKeyLoadTask;
+    private Task? _loadTask;
+    private bool _savedSinceConstruction;
     private GeneralSettings _currentSettings = new();
+
     public GeneralSettings CurrentSettings
     {
         get { lock (_settingsLock) return _currentSettings; }
@@ -38,58 +42,85 @@ public class SettingsService
 
         string appDataDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         _settingsFilePath = Path.Combine(appDataDir, "SynesthesiaAudio_Settings.json");
-        CurrentSettings = new GeneralSettings();
-        _ = InitializeAsync();
+
+        // No I/O here on purpose: the document is read by Loaded, which startup awaits before the UI
+        // reads any setting. The store owns its own copy of the document, so UI code that mutates
+        // CurrentSettings can never race a save.
+        _store = new JsonFileStore<GeneralSettings>(_settingsFilePath, saveDebounceMs: 250);
+        _store.LoadFailed += ex => _logger.LogError(ex, "Settings could not be read — the previous file was kept as .bak");
+        _store.SaveFailed += ex => _logger.LogError(ex, "SaveSettings: failed to write settings file");
+    }
+
+    /// <summary>
+    /// Completes once settings and both secrets have been read. Startup awaits this before showing the
+    /// UI, so an early save cannot be overwritten by a late load.
+    /// </summary>
+    public Task Loaded
+    {
+        get
+        {
+            lock (_settingsLock)
+            {
+                return _loadTask ??= InitializeAsync();
+            }
+        }
     }
 
     private async Task InitializeAsync()
     {
-        await LoadSettingsAsync().ConfigureAwait(false);
+        try
+        {
+            // Carries any settings saved while the read was in flight (see JsonFileStore).
+            var persisted = await _store.Loaded.ConfigureAwait(false);
+
+            bool adopt;
+            lock (_settingsLock)
+            {
+                // A save made during the load already put the authoritative values in CurrentSettings;
+                // adopting the file copy would undo it.
+                adopt = !_savedSinceConstruction;
+                if (adopt) _currentSettings = Clone(persisted);
+            }
+
+            if (adopt)
+            {
+                _logger.LogInformation("Settings loaded — storage: {Storage}, darkMode: {DarkMode}, basePath set: {HasPath}, translation: {Provider}",
+                    persisted.StorageType, persisted.IsDarkMode, !string.IsNullOrEmpty(persisted.BaseAudioFolderPath), persisted.TranslationProvider);
+            }
+            else
+            {
+                _logger.LogInformation("Settings load finished after a save — keeping the saved values");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "LoadSettings: deserialization failed, falling back to defaults");
+        }
+
         await EnsurePasswordLoadedAsync().ConfigureAwait(false);
         await EnsureApiKeyLoadedAsync().ConfigureAwait(false);
     }
 
-    private async Task LoadSettingsAsync()
+    private static GeneralSettings Clone(GeneralSettings source) => new()
     {
-        if (File.Exists(_settingsFilePath))
-        {
-            try
-            {
-                var json = await File.ReadAllTextAsync(_settingsFilePath).ConfigureAwait(false);
-                var settings = JsonSerializer.Deserialize<GeneralSettings>(json) ?? new GeneralSettings();
-
-                CurrentSettings = settings;
-                _logger.LogInformation("Settings loaded — storage: {Storage}, darkMode: {DarkMode}, basePath set: {HasPath}, translation: {Provider}",
-                    settings.StorageType, settings.IsDarkMode, !string.IsNullOrEmpty(settings.BaseAudioFolderPath), settings.TranslationProvider);
-                return;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "LoadSettings: deserialization failed, falling back to defaults");
-            }
-        }
-
-        _logger.LogInformation("Settings file not found, using default settings");
-    }
+        BaseAudioFolderPath = source.BaseAudioFolderPath,
+        IsDarkMode = source.IsDarkMode,
+        TranslateDlsiteTags = source.TranslateDlsiteTags,
+        StorageType = source.StorageType,
+        CloudServerUrl = source.CloudServerUrl,
+        CloudUsername = source.CloudUsername,
+        CloudPassword = source.CloudPassword,
+        TranslationProvider = source.TranslationProvider,
+        TranslationCustomBaseUrl = source.TranslationCustomBaseUrl,
+        TranslationCustomAuthHeader = source.TranslationCustomAuthHeader,
+        TranslationApiKey = source.TranslationApiKey
+    };
 
     public GeneralSettings GetSettingsSnapshot()
     {
         lock (_settingsLock)
         {
-            return new GeneralSettings
-            {
-                BaseAudioFolderPath = _currentSettings.BaseAudioFolderPath,
-                IsDarkMode = _currentSettings.IsDarkMode,
-                TranslateDlsiteTags = _currentSettings.TranslateDlsiteTags,
-                StorageType = _currentSettings.StorageType,
-                CloudServerUrl = _currentSettings.CloudServerUrl,
-                CloudUsername = _currentSettings.CloudUsername,
-                CloudPassword = _currentSettings.CloudPassword,
-                TranslationProvider = _currentSettings.TranslationProvider,
-                TranslationCustomBaseUrl = _currentSettings.TranslationCustomBaseUrl,
-                TranslationCustomAuthHeader = _currentSettings.TranslationCustomAuthHeader,
-                TranslationApiKey = _currentSettings.TranslationApiKey
-            };
+            return Clone(_currentSettings);
         }
     }
 
@@ -155,37 +186,18 @@ public class SettingsService
         {
             _apiKeyLoadTask = Task.CompletedTask;
         }
+        lock (_settingsLock)
+        {
+            _savedSinceConstruction = true;
+        }
 
         _ = PersistSecretAsync(CloudPasswordKey, settings.CloudPassword);
         _ = PersistSecretAsync(TranslationApiKeyKey, settings.TranslationApiKey);
 
-        // serialize a clone instead of mutating the live settings object. the model has
-        // [JsonIgnore] on the secret fields, but we set them to empty here anyway just in
-        // case something bypasses the attribute.
-        var clone = new GeneralSettings
-        {
-            BaseAudioFolderPath = settings.BaseAudioFolderPath,
-            IsDarkMode = settings.IsDarkMode,
-            TranslateDlsiteTags = settings.TranslateDlsiteTags,
-            StorageType = settings.StorageType,
-            CloudServerUrl = settings.CloudServerUrl,
-            CloudUsername = settings.CloudUsername,
-            CloudPassword = string.Empty,
-            TranslationProvider = settings.TranslationProvider,
-            TranslationCustomBaseUrl = settings.TranslationCustomBaseUrl,
-            TranslationCustomAuthHeader = settings.TranslationCustomAuthHeader,
-            TranslationApiKey = string.Empty
-        };
+        // Persist a copy: GeneralSettings carries [JsonIgnore] on the secrets, and keeping the store's
+        // document distinct from the live object means a later mutation cannot tear a concurrent write.
+        _store.Replace(Clone(settings));
 
-        var json = JsonSerializer.Serialize(clone);
-        try
-        {
-            File.WriteAllText(_settingsFilePath, json);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "SaveSettings: failed to write settings file");
-        }
         _logger.LogInformation("Settings saved — storage: {Storage}, darkMode: {DarkMode}, translateTags: {TranslateTags}, translation: {Provider}",
             settings.StorageType, settings.IsDarkMode, settings.TranslateDlsiteTags, settings.TranslationProvider);
     }

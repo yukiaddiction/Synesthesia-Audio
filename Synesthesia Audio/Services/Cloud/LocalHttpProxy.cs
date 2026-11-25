@@ -5,12 +5,25 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Services.Cloud;
 
+/// <summary>
+/// Loopback HTTP bridge used to stream WebDAV files into the media element.
+///
+/// Any process on the machine can reach a loopback port, so the proxy is not a public service:
+/// <list type="bullet">
+///   <item>it only starts when a WebDAV track actually needs streaming, so a Local library never opens a port;</item>
+///   <item>every request must carry a 32-byte token generated for this run, compared in constant time;</item>
+///   <item>callers reference files by an opaque id this class maps to a path, so a request can never name
+///   an arbitrary file on the WebDAV account.</item>
+/// </list>
+/// </summary>
 public class LocalHttpProxy : IDisposable
 {
     private static readonly ConcurrentQueue<string> _appLog = new();
@@ -33,6 +46,24 @@ public class LocalHttpProxy : IDisposable
     private volatile bool _isRunning;
     private int _requestCount;
 
+    /// <summary>Per-run secret. A request without it is refused, so another local process cannot borrow
+    /// the user's WebDAV credentials.</summary>
+    private readonly ProxyAccessToken _token = ProxyAccessToken.Create();
+
+    /// <summary>Opaque id to remote path. Callers pick the id we gave them, never the path.</summary>
+    private readonly ConcurrentDictionary<string, string> _pathById = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _idByPath = new(StringComparer.Ordinal);
+
+    public LocalHttpProxy(ICloudProvider cloudProvider, ILogger<LocalHttpProxy> logger)
+    {
+        _cloudProvider = cloudProvider;
+        _logger = logger;
+        _staticLogger = logger;
+
+        // Deliberately not started here: constructing the singleton at app start used to open a port for
+        // every user, including the ones on a purely local library.
+    }
+
     public bool IsRunning => _isRunning;
     public int Port => _port;
 
@@ -47,14 +78,6 @@ public class LocalHttpProxy : IDisposable
     }
 
     public string LogText => string.Join("\n", Entries);
-
-    public LocalHttpProxy(ICloudProvider cloudProvider, ILogger<LocalHttpProxy> logger)
-    {
-        _cloudProvider = cloudProvider;
-        _logger = logger;
-        _staticLogger = logger;
-        Start();
-    }
 
     private void AddLog(string msg)
     {
@@ -73,12 +96,12 @@ public class LocalHttpProxy : IDisposable
                 _port = ((IPEndPoint)_listener.LocalEndpoint).Port;
                 _isRunning = true;
                 AddLog($"Proxy STARTED on http://127.0.0.1:{_port}/");
-                AddLog($"Loopback IPs: {string.Join(", ", Dns.GetHostEntry(Dns.GetHostName()).AddressList.Where(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork))}");
                 _ = Task.Run(ListenLoopAsync);
             }
             catch (Exception ex)
             {
                 _isRunning = false;
+                _listener = null;
                 AddLog($"FAILED to start: {ex.GetType().Name}: {ex.Message}");
             }
         }
@@ -98,13 +121,30 @@ public class LocalHttpProxy : IDisposable
         }
     }
 
-    public string GetProxyUrl(string path)
+    /// <summary>
+    /// Starts the proxy if needed and returns a URL the media element can play. The path is registered
+    /// behind an opaque id; the caller never passes a path to the HTTP surface.
+    /// </summary>
+    public string CreateStreamUrl(string path)
     {
-        var base64Path = Convert.ToBase64String(Encoding.UTF8.GetBytes(path));
-        var url = $"http://127.0.0.1:{_port}/stream?path={Uri.EscapeDataString(base64Path)}";
-        AddLog($"GetProxyUrl: {path.Substring(0, Math.Min(path.Length, 60))}... -> {url}");
+        if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("A remote path is required.", nameof(path));
+
+        if (!EnsureRunning())
+            throw new InvalidOperationException("The cloud streaming proxy could not be started.");
+
+        var id = _idByPath.GetOrAdd(path, _ => ToUrlSafeBase64(RandomNumberGenerator.GetBytes(18)));
+        _pathById[id] = path;
+
+        var url = $"http://127.0.0.1:{_port}/stream/{_token.Value}/{id}";
+        AddLog($"CreateStreamUrl: {path.Substring(0, Math.Min(path.Length, 60))}... -> {url}");
         return url;
     }
+
+    private static string ToUrlSafeBase64(byte[] bytes) =>
+        Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+
+    /// <summary>Constant-time token check so a local attacker cannot probe it byte by byte.</summary>
+    private bool IsValidToken(string? candidate) => _token.Matches(candidate);
 
     private async Task ListenLoopAsync()
     {
@@ -179,8 +219,6 @@ public class LocalHttpProxy : IDisposable
                     return;
                 }
 
-                AddLog($"#{reqNum} > {requestLine}");
-
                 var requestParts = requestLine.Split(' ');
                 if (requestParts.Length < 2 || requestParts[0] != "GET")
                 {
@@ -189,26 +227,35 @@ public class LocalHttpProxy : IDisposable
                 }
 
                 var url = requestParts[1];
-                var queryIndex = url.IndexOf('?');
-                if (queryIndex < 0)
+                var pathPart = url.Split('?')[0];
+
+                if (!pathPart.StartsWith("/stream/", StringComparison.Ordinal))
                 {
-                    AddLog($"#{reqNum} No query string in URL: {url}");
+                    AddLog($"#{reqNum} Unknown path {pathPart} — refusing");
+                    await WriteErrorAsync(networkStream, 404, "Not Found");
                     return;
                 }
 
-                var pathPart = url.Substring(0, queryIndex);
-                var queryPart = url.Substring(queryIndex + 1);
-
-                if (!pathPart.StartsWith("/stream"))
+                var segments = pathPart.Substring("/stream/".Length).Split('/');
+                if (segments.Length != 2 || segments[0].Length == 0 || segments[1].Length == 0)
                 {
-                    AddLog($"#{reqNum} Not /stream path: {pathPart}");
+                    AddLog($"#{reqNum} Malformed stream URL — refusing");
+                    await WriteErrorAsync(networkStream, 404, "Not Found");
                     return;
                 }
 
-                var base64Path = ExtractQueryParam(queryPart, "path");
-                if (string.IsNullOrEmpty(base64Path))
+                if (!IsValidToken(segments[0]))
                 {
-                    AddLog($"#{reqNum} No 'path' param in query: {queryPart}");
+                    // No token, wrong token, stale token from a previous run: never forward credentials.
+                    AddLog($"#{reqNum} Invalid or missing proxy token — 403");
+                    await WriteErrorAsync(networkStream, 403, "Forbidden");
+                    return;
+                }
+
+                if (!_pathById.TryGetValue(segments[1], out var path))
+                {
+                    AddLog($"#{reqNum} Unknown stream id — 404");
+                    await WriteErrorAsync(networkStream, 404, "Not Found");
                     return;
                 }
 
@@ -223,10 +270,7 @@ public class LocalHttpProxy : IDisposable
                     }
                 }
 
-                var path = Encoding.UTF8.GetString(Convert.FromBase64String(
-                    Uri.UnescapeDataString(base64Path)));
-
-                AddLog($"#{reqNum} Decoded path: {path}");
+                AddLog($"#{reqNum} Authorised request for a registered file");
                 AddLog($"#{reqNum} Requesting from WebDAV...");
 
                 using var webDavResponse = await _cloudProvider.GetFileResponseAsync(path, rangeHeader);
@@ -262,6 +306,15 @@ public class LocalHttpProxy : IDisposable
                 AddLog($"#{reqNum} ERROR: {ex.GetType().Name}: {ex.Message}");
             }
         }
+    }
+
+    private static async Task WriteErrorAsync(NetworkStream stream, int status, string reason)
+    {
+        var body = Encoding.UTF8.GetBytes($"{status} {reason}");
+        var header = $"HTTP/1.1 {status} {reason}\r\nContent-Type: text/plain\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(header), 0, header.Length);
+        await stream.WriteAsync(body, 0, body.Length);
+        await stream.FlushAsync();
     }
 
     private async Task WriteStatusAndHeadersAsync(NetworkStream stream, HttpResponseMessage webDavResponse, string path, int reqNum)
@@ -331,25 +384,6 @@ public class LocalHttpProxy : IDisposable
         await stream.FlushAsync();
     }
 
-    private static string? ExtractQueryParam(string queryString, string paramName)
-    {
-        var pairs = queryString.Split('&');
-        foreach (var pair in pairs)
-        {
-            var eqIndex = pair.IndexOf('=');
-            if (eqIndex >= 0)
-            {
-                var key = pair.Substring(0, eqIndex);
-                var value = pair.Substring(eqIndex + 1);
-                if (string.Equals(key, paramName, StringComparison.OrdinalIgnoreCase))
-                {
-                    return value;
-                }
-            }
-        }
-        return null;
-    }
-
     public void Stop()
     {
         lock (_startLock)
@@ -359,6 +393,11 @@ public class LocalHttpProxy : IDisposable
                 _isRunning = false;
                 _listener?.Stop();
                 _listener = null;
+
+                // Ids are only meaningful for the run that issued them.
+                _pathById.Clear();
+                _idByPath.Clear();
+
                 AddLog("Proxy STOPPED.");
             }
             catch (Exception ex) { AddLog($"Stop error: {ex.Message}"); }

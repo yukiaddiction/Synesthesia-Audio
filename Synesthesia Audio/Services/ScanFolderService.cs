@@ -221,6 +221,9 @@ public class ScanFolderService : IDisposable
 
     public async Task<ScanResult> ScanLibraryAsync(string basePath, IProgress<(double, string)>? progress = null)
     {
+        // The cache reads lazily; finish that read before deciding which works are stale or new.
+        await _cacheService.Loaded.ConfigureAwait(false);
+
         _failedFolders = new List<string>();
         var settings = _settingsService.CurrentSettings;
         bool isCloud = settings.StorageType == "WebDAV";
@@ -241,31 +244,53 @@ public class ScanFolderService : IDisposable
         var workGroups = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         List<string> allAudioFiles = new();
 
-        if (isCloud)
+        if (isCloud && !_cloudProvider.IsConfigured)
         {
-            if (!_cloudProvider.IsConfigured)
-            {
-                _scanStateService.MarkFailed("WebDAV is not configured. Add your server details in Settings.");
-                return new ScanResult();
-            }
-            await ScanCloudDirectoryRecursiveAsync(basePath, basePath, allAudioFiles, workGroups, (worksCount, filesCount) =>
-            {
-                Report(0.15 * Math.Min(1.0, filesCount / 500.0),
-                    $"Scan Library Found {worksCount} Work{(worksCount == 1 ? "" : "s")}, {filesCount} Audio File{(filesCount == 1 ? "" : "s")}");
-            });
+            _scanStateService.MarkFailed("WebDAV is not configured. Add your server details in Settings.");
+            return new ScanResult();
         }
-        else
+
+        if (!isCloud && !Directory.Exists(basePath))
         {
-            if (!Directory.Exists(basePath))
+            _scanStateService.MarkFailed($"The configured folder no longer exists: {basePath}");
+            return new ScanResult();
+        }
+
+        // One walk for both storage types: the failures it records are what stops a partial listing
+        // from being written back as "the whole library".
+        IScanFileSource fileSource = isCloud
+            ? new CloudScanFileSource(_cloudProvider)
+            : new LocalScanFileSource();
+
+        var listing = await ScanListing.CollectAudioFilesAsync(
+            fileSource,
+            basePath,
+            AppConstants.IsMediaFile,
+            AppConstants.IsSystemFileOrDir,
+            filesFound => Report(0.15 * Math.Min(1.0, filesFound / 500.0),
+                $"Scan Library Found {filesFound} Audio File{(filesFound == 1 ? "" : "s")}"));
+
+        _failedFolders = listing.FailedPaths;
+
+        if (listing.RootFailed)
+        {
+            // Nothing is known about the library, so the cache must not be touched at all.
+            var reason = $"The library folder could not be read: {basePath}. Your library was left unchanged.";
+            _logger.LogError("Scan aborted — root listing failed for {BasePath}", basePath);
+            _scanStateService.MarkFailed(reason, listing.FailedPaths.Count, listing.FailedPaths);
+            return new ScanResult { FailedFolders = listing.FailedPaths };
+        }
+
+        allAudioFiles = listing.AudioFiles;
+        foreach (var file in allAudioFiles)
+        {
+            var workFolder = DetermineWorkFolder(file, basePath, isCloud);
+            if (!workGroups.TryGetValue(workFolder, out var fileList))
             {
-                _scanStateService.MarkFailed($"The configured folder no longer exists: {basePath}");
-                return new ScanResult();
+                fileList = new List<string>();
+                workGroups[workFolder] = fileList;
             }
-            await ScanLocalDirectoryRecursiveAsync(basePath, basePath, allAudioFiles, workGroups, (worksCount, filesCount) =>
-            {
-                Report(0.15 * Math.Min(1.0, filesCount / 500.0),
-                    $"Scan Library Found {worksCount} Work{(worksCount == 1 ? "" : "s")}, {filesCount} Audio File{(filesCount == 1 ? "" : "s")}");
-            });
+            fileList.Add(file);
         }
 
         int totalFoundWorks = workGroups.Count;
@@ -506,7 +531,27 @@ public class ScanFolderService : IDisposable
             }
         }
 
-        _cacheService.ReplaceAll(finalWorks);
+        if (LibraryCacheMergePolicy.CanReplaceWholeCache(listing))
+        {
+            _cacheService.ReplaceAll(finalWorks);
+        }
+        else
+        {
+            // Part of the library could not be listed. Keep the cached works that live under those
+            // folders: they are probably still on disk, and replacing the cache wholesale would throw
+            // away their metadata, covers and translations.
+            var merged = LibraryCacheMergePolicy.Merge(
+                finalWorks,
+                _cacheService.GetAllWorks(),
+                listing.FailedPaths,
+                work => work.FolderPath);
+
+            _logger.LogWarning("Scan incomplete — {Failed} folder(s) unreadable; kept {Kept} cached work(s) under them",
+                listing.FailedPaths.Count, merged.Count - finalWorks.Count);
+
+            _cacheService.ReplaceAll(merged);
+            finalWorks = merged;
+        }
 
         Report(1.0, "scan: done");
         _logger.LogInformation("Library scan complete — {Count} works, {AudioFiles} audio files, {Failures} failed folders", finalWorks.Count, allAudioFiles.Count, _failedFolders.Count);
@@ -679,93 +724,44 @@ public class ScanFolderService : IDisposable
         };
     }
 
-    private async Task ScanLocalDirectoryRecursiveAsync(
-        string currentDir,
-        string basePath,
-        List<string> allAudioFiles,
-        Dictionary<string, List<string>> workGroups,
-        Action<int, int> onProgress)
+    /// <summary>Walks a folder on the local disk. Listing failures surface as exceptions and are
+    /// recorded by <see cref="ScanListing"/>.</summary>
+    private sealed class LocalScanFileSource : IScanFileSource
     {
-        try
+        public Task<IReadOnlyList<ScanEntry>> ListAsync(string path, CancellationToken cancellationToken = default)
         {
-            var filesInDir = Directory.EnumerateFiles(currentDir, "*.*", SearchOption.TopDirectoryOnly)
-                .Where(f => AppConstants.IsMediaFile(f))
-                .ToList();
+            var entries = new List<ScanEntry>();
 
-            if (filesInDir.Count > 0)
+            foreach (var directory in Directory.EnumerateDirectories(path))
             {
-                foreach (var file in filesInDir)
-                {
-                    var workFolder = DetermineWorkFolder(file, basePath, isCloud: false);
-                    if (!workGroups.TryGetValue(workFolder, out var list))
-                    {
-                        list = new List<string>();
-                        workGroups[workFolder] = list;
-                    }
-                    list.Add(file);
-                    allAudioFiles.Add(file);
-                }
-
-                onProgress(workGroups.Count, allAudioFiles.Count);
-                await Task.Delay(15);
+                entries.Add(new ScanEntry(directory, isDirectory: true));
             }
 
-            var subDirs = Directory.GetDirectories(currentDir);
-            foreach (var subDir in subDirs)
+            foreach (var file in Directory.EnumerateFiles(path, "*.*", SearchOption.TopDirectoryOnly))
             {
-                await ScanLocalDirectoryRecursiveAsync(subDir, basePath, allAudioFiles, workGroups, onProgress);
+                entries.Add(new ScanEntry(file, isDirectory: false));
             }
-        }
-        catch (Exception ex)
-        {
-            _failedFolders.Add(currentDir);
-            _logger.LogWarning(ex, "Local scan error at {Directory}", currentDir);
+
+            return Task.FromResult<IReadOnlyList<ScanEntry>>(entries);
         }
     }
 
-    private async Task ScanCloudDirectoryRecursiveAsync(
-        string currentPath,
-        string basePath,
-        List<string> allAudioFiles,
-        Dictionary<string, List<string>> workGroups,
-        Action<int, int> onProgress)
+    /// <summary>Walks a WebDAV folder through the configured cloud provider.</summary>
+    private sealed class CloudScanFileSource : IScanFileSource
     {
-        try
+        private readonly Services.Cloud.ICloudProvider _cloudProvider;
+
+        public CloudScanFileSource(Services.Cloud.ICloudProvider cloudProvider)
         {
-            var items = await _cloudProvider.ListFilesAsync(currentPath);
-            var filesInDir = items.Where(i => !i.IsDirectory)
-                .Select(i => i.Path)
-                .Where(f => AppConstants.IsMediaFile(f) && !AppConstants.IsSystemFileOrDir(f))
-                .ToList();
-
-            if (filesInDir.Count > 0)
-            {
-                foreach (var file in filesInDir)
-                {
-                    var workFolder = DetermineWorkFolder(file, basePath, isCloud: true);
-                    if (!workGroups.TryGetValue(workFolder, out var list))
-                    {
-                        list = new List<string>();
-                        workGroups[workFolder] = list;
-                    }
-                    list.Add(file);
-                    allAudioFiles.Add(file);
-                }
-
-                onProgress(workGroups.Count, allAudioFiles.Count);
-                await Task.Delay(15);
-            }
-
-            var subDirs = items.Where(i => i.IsDirectory && !AppConstants.IsSystemFileOrDir(i.Path)).Select(i => i.Path);
-            foreach (var subDir in subDirs)
-            {
-                await ScanCloudDirectoryRecursiveAsync(subDir, basePath, allAudioFiles, workGroups, onProgress);
-            }
+            _cloudProvider = cloudProvider;
         }
-        catch (Exception ex)
+
+        public async Task<IReadOnlyList<ScanEntry>> ListAsync(string path, CancellationToken cancellationToken = default)
         {
-            _failedFolders.Add(currentPath);
-            _logger.LogWarning(ex, "Cloud scan error at {Path}", currentPath);
+            var items = await _cloudProvider.ListFilesAsync(path).ConfigureAwait(false);
+            return items
+                .Select(item => new ScanEntry(item.Path, item.IsDirectory))
+                .ToList();
         }
     }
 

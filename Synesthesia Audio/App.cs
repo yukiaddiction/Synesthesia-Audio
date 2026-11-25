@@ -97,7 +97,7 @@ public class App : Application
                 SaveWindowBounds(window);
                 _cacheService.FlushPendingSave();
                 _scanStateService.FlushPendingSave();
-                _audioService.Dispose();
+                _audioService.DetachMediaElement();
             }
             catch (Exception ex)
             {

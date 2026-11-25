@@ -6,40 +6,54 @@ namespace Synesthesia_Audio.Services;
 
 public class ScanStateService : IDisposable
 {
-    private readonly string _filePath;
+    private readonly JsonFileStore<ScanState> _store;
     private readonly ILogger<ScanStateService> _logger;
     private readonly object _lock = new();
     private ScanState _state = new();
-    private Timer? _saveTimer;
-    private const int SaveDebounceMs = 400;
+    private Task? _loaded;
 
     public ScanStateService(ILogger<ScanStateService> logger)
     {
         _logger = logger;
-        _filePath = Path.Combine(FileSystem.AppDataDirectory, "scan_state.json");
-        _ = LoadAsync();
+        _store = new JsonFileStore<ScanState>(
+            Path.Combine(FileSystem.AppDataDirectory, "scan_state.json"),
+            saveDebounceMs: 400);
+        _store.LoadFailed += ex => _logger.LogError(ex, "Scan state could not be read — the previous file was kept as .bak");
+        _store.SaveFailed += ex => _logger.LogError(ex, "Scan state save failed");
     }
 
-    private async Task LoadAsync()
+    /// <summary>
+    /// Completes once the persisted scan status has been read. Startup awaits this so a scan that was
+    /// running when the app was killed is seen as Interrupted instead of Idle.
+    /// </summary>
+    public Task Loaded
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _loaded ??= LoadIntoMemoryAsync();
+            }
+        }
+    }
+
+    private async Task LoadIntoMemoryAsync()
     {
         try
         {
-            if (File.Exists(_filePath))
+            // The store replays any status written while this read was in flight, so the value here is
+            // the merged one — never a stale file copy that would rewind a scan that already started.
+            var persisted = await _store.Loaded.ConfigureAwait(false);
+            lock (_lock)
             {
-                var json = await File.ReadAllTextAsync(_filePath).ConfigureAwait(false);
-                var loaded = JsonSerializer.Deserialize<ScanState>(json);
-                if (loaded != null)
-                {
-                    lock (_lock) _state = loaded;
-                    _logger.LogInformation("Scan state loaded — status: {Status}", loaded.Status);
-                }
+                _state = persisted;
             }
-            else
-            {
-                _logger.LogInformation("Scan state file not found, starting fresh");
-            }
+            _logger.LogInformation("Scan state loaded — status: {Status}", persisted.Status);
         }
-        catch (Exception ex) { _logger.LogError(ex, "LoadScanState failed"); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "LoadScanState failed");
+        }
     }
 
     public ScanState Snapshot()
@@ -55,8 +69,14 @@ public class ScanStateService : IDisposable
     {
         lock (_lock)
         {
-            mutate(_state);
-            RequestSave();
+            // Mutating through the store keeps the persisted document and the in-memory snapshot the
+            // same instance, so a load that finishes later cannot discard this write.
+            _store.Update(state =>
+            {
+                mutate(state);
+                _state = state;
+                return state;
+            });
         }
     }
 
@@ -111,45 +131,28 @@ public class ScanStateService : IDisposable
 
     public void MarkAlertShown() => Update(s => s.AlertShown = true);
 
+    /// <summary>Writes any debounced status change now. Called on window stop/destroy.</summary>
     public void FlushPendingSave()
     {
-        lock (_lock)
+        try
         {
-            _saveTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            _store.FlushAsync().GetAwaiter().GetResult();
         }
-        SaveState();
-    }
-
-    private void RequestSave()
-    {
-        lock (_lock)
+        catch (Exception ex)
         {
-            _saveTimer ??= new Timer(_ => SaveState(), null, Timeout.Infinite, Timeout.Infinite);
-            _saveTimer.Change(SaveDebounceMs, Timeout.Infinite);
-        }
-    }
-
-    private void SaveState()
-    {
-        lock (_lock)
-        {
-            try
-            {
-                var json = JsonSerializer.Serialize(_state);
-                var tempPath = _filePath + ".tmp";
-                File.WriteAllText(tempPath, json);
-                File.Move(tempPath, _filePath, overwrite: true);
-            }
-            catch (Exception ex) { _logger.LogError(ex, "SaveState failed"); }
+            _logger.LogError(ex, "SaveState failed");
         }
     }
 
     public void Dispose()
     {
-        lock (_lock)
+        try
         {
-            _saveTimer?.Dispose();
-            _saveTimer = null;
+            _store.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Scan state dispose failed");
         }
     }
 }

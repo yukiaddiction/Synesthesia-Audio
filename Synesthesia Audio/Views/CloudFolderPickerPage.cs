@@ -14,6 +14,7 @@ namespace Synesthesia_Audio.Views;
 public class CloudFolderPickerPage : ContentPage
 {
     private readonly ICloudProvider _cloudProvider;
+    private readonly WebDavConnection? _connection;
     private readonly Action<string> _onFolderSelected;
     private string _currentPath;
     private readonly ObservableCollection<CloudFileInfo> _directories = new();
@@ -22,9 +23,10 @@ public class CloudFolderPickerPage : ContentPage
     private readonly ActivityIndicator _loader;
     private readonly Button _selectButton;
 
-    public CloudFolderPickerPage(ICloudProvider cloudProvider, string startPath, Action<string> onFolderSelected)
+    public CloudFolderPickerPage(ICloudProvider cloudProvider, WebDavConnection? connection, string startPath, Action<string> onFolderSelected)
     {
         _cloudProvider = cloudProvider;
+        _connection = connection;
         _onFolderSelected = onFolderSelected;
 
         _currentPath = (startPath ?? string.Empty).Replace('\\', '/').Trim('/');
@@ -166,7 +168,9 @@ public class CloudFolderPickerPage : ContentPage
 
         try
         {
-            var files = await _cloudProvider.ListFilesAsync(_currentPath);
+            // Every level re-uses the connection captured when the picker opened, so a user who has not
+            // saved yet can still browse several levels deep.
+            var files = await _cloudProvider.ListFilesAsync(_currentPath, _connection);
             var dirs = files.Where(f => f.IsDirectory).OrderBy(d => d.Name).ToList();
 
             foreach (var dir in dirs)
