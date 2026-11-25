@@ -155,7 +155,11 @@ public class SettingsPage : ContentPage
                     {
                         new Label { Text = "Synesthesia Audio", FontSize = AppFontSizes.GroupTitle, FontAttributes = AppFonts.Bold }
                             .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
-                        CreateCardCaption(_viewModel.AppVersionText)
+                        CreateCardCaption(_viewModel.AppVersionText),
+
+                        GlassTheme.PillButton("About & Sources", AppFontSizes.Caption)
+                            .Bind(Button.CommandProperty, nameof(SettingsViewModel.OpenAboutCommand))
+                            .Invoke(b => b.HorizontalOptions = LayoutOptions.Start)
                     }
                 }
                 .Column(0),

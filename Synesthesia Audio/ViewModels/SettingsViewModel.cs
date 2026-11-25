@@ -17,6 +17,7 @@ public partial class SettingsViewModel : BaseViewModel
 
     private readonly Synesthesia_Audio.Services.Cloud.ICloudProvider _cloudProvider;
     private readonly ITranslationService _translationService;
+    private readonly Services.Translation.NameRomanizationService _nameRomanization;
 
     private bool _suppressInstantSave = true;
 
@@ -88,7 +89,7 @@ public partial class SettingsViewModel : BaseViewModel
 
     public string AppVersionText => $"Version {AppInfo.Current.VersionString}";
 
-    public SettingsViewModel(SettingsService settingsService, LibraryCacheService cacheService, MainViewModel mainViewModel, Synesthesia_Audio.Services.Cloud.ICloudProvider cloudProvider, LogService logService, ITranslationService translationService, ILogger<SettingsViewModel> logger)
+    public SettingsViewModel(SettingsService settingsService, LibraryCacheService cacheService, MainViewModel mainViewModel, Synesthesia_Audio.Services.Cloud.ICloudProvider cloudProvider, LogService logService, ITranslationService translationService, Services.Translation.NameRomanizationService nameRomanization, ILogger<SettingsViewModel> logger)
     {
         Title = "Settings";
         _settingsService = settingsService;
@@ -97,6 +98,7 @@ public partial class SettingsViewModel : BaseViewModel
         _cloudProvider = cloudProvider;
         _logService = logService;
         _translationService = translationService;
+        _nameRomanization = nameRomanization;
         _logger = logger;
 
         BaseAudioFolderPath = _settingsService.CurrentSettings.BaseAudioFolderPath;
@@ -178,6 +180,24 @@ public partial class SettingsViewModel : BaseViewModel
         _settingsService.CurrentSettings.TranslationProvider = value;
         _settingsService.SaveSettings(_settingsService.CurrentSettings);
         _logger.LogInformation("Translation provider changed to {Provider}", value);
+    }
+
+    /// <summary>
+    /// Opens the About &amp; Sources screen. The EDRDG licence requires attribution on a screen
+    /// reachable from a menu, not on a splash page, and it has to show how fresh the name data is.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenAboutAsync()
+    {
+        try
+        {
+            var created = await _nameRomanization.GetBundledDataCreatedAsync();
+            await Shell.Current.Navigation.PushModalAsync(new Views.AboutSourcesPage(AppInfo.Current.VersionString, created));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not open the About & Sources screen");
+        }
     }
 
     /// <summary>

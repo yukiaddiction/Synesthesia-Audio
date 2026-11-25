@@ -1,0 +1,48 @@
+Synesthesia Audio - third-party notices
+=======================================
+
+This application displays Japanese work metadata. Romanising Japanese names requires data and
+libraries that are not ours. The notices below are reproduced here, and in the app under
+Settings -> About & Sources, as required by their licences.
+
+
+1. Japanese name data - EDRDG JMnedict
+--------------------------------------
+The bundled name-reading table (name_readings.tsv.gz) is derived from JMnedict, published by the
+Electronic Dictionary Research and Development Group (EDRDG).
+
+    JMnedict - Japanese-Multilingual Dictionary File (Japanese Names File)
+    Copyright (c) James William BREEN and The Electronic Dictionary Research and Development Group.
+    Licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0).
+    Licence: https://creativecommons.org/licenses/by-sa/4.0/
+    Source:  https://www.edrdg.org/enamdict/enamdict_doc.html
+
+MODIFICATIONS: the original file is not included. We distribute a derived, reduced work consisting
+only of kanji -> romanisation pairs for personal names, with place names, organisation names,
+product names and work titles removed, and one reading selected per kanji spelling. The derived
+table keeps this licence (CC BY-SA 4.0).
+
+The data is refreshed automatically; the creation date of the bundled copy is shown in
+Settings -> About & Sources. Source data is updated by EDRDG; keeping it current is a condition of
+the licence, and the update procedure is documented in README.md.
+
+
+2. GTranslate
+-------------
+    GTranslate (c) d4n3436, MIT Licence
+    https://github.com/d4n3436/GTranslate
+    Used for machine translation of titles and tags. Not used for names.
+
+
+3. Kawazu and MeCab/IPADIC dictionary
+-------------------------------------
+    Kawazu (c) 2020 Cutano, MIT Licence
+    https://github.com/Cutano/Kawazu
+    IPADIC dictionary: Copyright 2000-2003 Nara Institute of Science and Technology (NAIST).
+    Distributed with the permission of NAIST; the copyright notice above must be retained.
+
+
+4. Synesthesia Audio
+--------------------
+Application code is licensed by its author. The third-party components above remain under their
+own licences and are not covered by the application licence.

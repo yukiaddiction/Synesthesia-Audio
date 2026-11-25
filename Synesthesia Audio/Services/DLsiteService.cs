@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls;
 using Synesthesia_Audio.Core;
 using Synesthesia_Audio.Models;
+using Synesthesia_Audio.Services.Translation;
 
 namespace Synesthesia_Audio.Services;
 
@@ -20,16 +21,18 @@ public class DLsiteService
     private readonly HttpClient _httpClient;
     private readonly TagMappingService _tagMappingService;
     private readonly ITranslationService _translationService;
+    private readonly NameRomanizationService _nameRomanization;
     private readonly ILogger<DLsiteService> _logger;
 
     private static volatile bool _dlsiteUnreachableAlerted;
     private static volatile bool _nonProductPageWarned;
     private static readonly ConcurrentDictionary<string, Task> _englishTagFetches = new();
 
-    public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, ILogger<DLsiteService> logger)
+    public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, NameRomanizationService nameRomanization, ILogger<DLsiteService> logger)
     {
         _tagMappingService = tagMappingService;
         _translationService = translationService;
+        _nameRomanization = nameRomanization;
         _logger = logger;
         var handler = new SocketsHttpHandler { MaxConnectionsPerServer = 16 };
         _httpClient = new HttpClient(handler);
@@ -352,12 +355,12 @@ public class DLsiteService
 
         if (!string.IsNullOrEmpty(work.Circle))
         {
-            work.Circle = TransliterateToRomaji(work.Circle);
+            work.Circle = await _nameRomanization.RomanizeNameAsync(work.Circle);
         }
 
         if (!string.IsNullOrEmpty(work.VA))
         {
-            work.VA = TranslateVaNames(work.VA);
+            work.VA = await _nameRomanization.RomanizeCastAsync(work.VA);
         }
 
         await TranslateWorkTracksAsync(work);
@@ -386,30 +389,6 @@ public class DLsiteService
                 tracksToTranslate[i].TranslatedTitle = translations[i];
             }
         }
-    }
-
-    private string TranslateVaNames(string vaText)
-    {
-        if (string.IsNullOrWhiteSpace(vaText)) return string.Empty;
-
-        var names = vaText.Split(new[] { ',', '/' }, StringSplitOptions.RemoveEmptyEntries)
-                          .Select(n => n.Trim())
-                          .ToList();
-
-        var translatedNames = new List<string>();
-        foreach (var name in names)
-        {
-            translatedNames.Add(TransliterateToRomaji(name));
-        }
-
-        return string.Join(", ", translatedNames);
-    }
-
-    private string TransliterateToRomaji(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
-        if (!AppConstants.JapaneseTextRegex.IsMatch(text)) return text;
-        return _translationService.ToRomaji(text);
     }
 
     public async Task<string> TranslateTrackTitleAsync(string text)

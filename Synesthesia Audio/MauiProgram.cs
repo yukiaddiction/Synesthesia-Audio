@@ -60,6 +60,7 @@ public static class MauiProgram
             return factory.GetOrCreate("translation", () => new HttpClient());
         });
         builder.Services.AddSingleton<ITranslationService, TranslationService>();
+        builder.Services.AddSingleton<NameRomanizationService>();
         builder.Services.AddSingleton<DLsiteService>();
         builder.Services.AddSingleton<Synesthesia_Audio.Services.Cloud.ICloudProvider, Synesthesia_Audio.Services.Cloud.WebDavCloudProvider>();
         builder.Services.AddSingleton<Synesthesia_Audio.Services.Cloud.LocalHttpProxy>();

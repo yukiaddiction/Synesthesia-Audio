@@ -39,9 +39,12 @@
 		     the app): the UI graph is now per-window instead of reusing singleton pages.
 		     2.2.0: minor - translation moved from the hand-rolled Lingva chain to the GTranslate
 		     library, rate limits now back off and ask the user to wait, an own DeepL or custom API
-		     key can be configured, and secrets persist again on unpackaged Windows. -->
-		<ApplicationDisplayVersion>2.2.0</ApplicationDisplayVersion>
-		<ApplicationVersion>6</ApplicationVersion>
+		     key can be configured, and secrets persist again on unpackaged Windows.
+		     2.3.0: minor - voice actor and circle names are romanised locally from a bundled EDRDG
+		     JMnedict table instead of being mangled or machine-translated, the name data refreshes
+		     itself and is attributed in a new About & Sources screen. -->
+		<ApplicationDisplayVersion>2.3.0</ApplicationDisplayVersion>
+		<ApplicationVersion>7</ApplicationVersion>
 
 		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->
 		<WindowsPackageType>None</WindowsPackageType>

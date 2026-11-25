@@ -1,0 +1,75 @@
+name: Name data refresh
+
+# The bundled name table is derived from EDRDG JMnedict, which is updated continuously. EDRDG treats
+# shipping stale data as a licence violation, so this workflow regenerates the table on a schedule
+# and publishes it as the `names-data` release asset that the app downloads at launch.
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'   # Mondays 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: names-data-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Download JMnedict
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-delay 5 \
+            -o "$RUNNER_TEMP/JMnedict.xml.gz" \
+            http://ftp.edrdg.org/pub/Nihongo/JMnedict.xml.gz
+          gunzip -f "$RUNNER_TEMP/JMnedict.xml.gz"
+
+      - name: Regenerate name table
+        run: |
+          set -euo pipefail
+          CREATED="$(date -u +%F)"
+          dotnet run --project tools/NameDataGen -c Release -- \
+            --input "$RUNNER_TEMP/JMnedict.xml" \
+            --output "Synesthesia Audio/Resources/Raw/name_readings.tsv.gz" \
+            --meta "Synesthesia Audio/Resources/Raw/name_readings.meta.json" \
+            --created "$CREATED"
+
+      - name: Commit snapshot if it changed
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "Synesthesia Audio/Resources/Raw/name_readings.tsv.gz" \
+                  "Synesthesia Audio/Resources/Raw/name_readings.meta.json"
+          if git diff --cached --quiet; then
+            echo "Name data unchanged; nothing to commit."
+          else
+            git commit -m "chore(names): refresh EDRDG JMnedict name data"
+            git push
+          fi
+
+      # Published regardless of repository visibility: the assets become anonymously fetchable the
+      # moment the repository is made public, which is what activates the in-app refresh.
+      - name: Publish names-data release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view names-data >/dev/null 2>&1 || \
+            gh release create names-data \
+              --title "Name data" \
+              --notes "Kanji to romaji name readings derived from EDRDG JMnedict (CC BY-SA 4.0). Modified: personal-name pairs only."
+          gh release upload names-data \
+            "Synesthesia Audio/Resources/Raw/name_readings.tsv.gz" \
+            "Synesthesia Audio/Resources/Raw/name_readings.meta.json" \
+            --clobber
