@@ -88,6 +88,10 @@ public sealed class SecureStore : ISecureStore
                 MarkSessionOnly(key, ex);
             }
         }
+        else
+        {
+            MarkSessionOnly(key, new InvalidOperationException("The encrypted file container is unavailable."));
+        }
 #else
         try
         {
@@ -104,7 +108,10 @@ public sealed class SecureStore : ISecureStore
 
         lock (_sessionLock)
             _sessionOnly[key] = value;
-        return true;
+
+        // False means "this value did not reach durable storage". Callers surface that to the user instead
+        // of letting a credential quietly disappear when the app closes.
+        return false;
     }
 
     public async Task RemoveAsync(string key)

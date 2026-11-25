@@ -99,8 +99,10 @@ public class SecureFileStoreTests : IDisposable
         var store = CreateStore();
         await store.SetAsync("DeepL", "secret");
 
-        // Simulate a blob protected under another Windows user: the unprotector now always fails.
-        var hostile = CreateStore(unprotect: _ => throw new InvalidOperationException("cannot decrypt"));
+        // Simulate a blob protected under another Windows user: decryption itself fails, which is the
+        // CryptographicException case. A generic failure is covered separately and must NOT drop the key
+        // (BUG-m-21), because a transient platform error would otherwise destroy the stored password.
+        var hostile = CreateStore(unprotect: _ => throw new System.Security.Cryptography.CryptographicException("cannot decrypt"));
 
         Assert.Null(await hostile.GetAsync("DeepL"));
     }

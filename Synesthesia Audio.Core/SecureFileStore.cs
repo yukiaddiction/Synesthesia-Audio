@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Synesthesia_Audio.Core;
@@ -35,10 +36,11 @@ public sealed class SecureFileStore
             {
                 return await _unprotectAsync(stored).ConfigureAwait(false);
             }
-            catch
+            catch (CryptographicException)
             {
-                // A blob protected under another Windows user cannot be decrypted. Drop it so the
-                // caller re-prompts instead of failing forever.
+                // Genuinely undecryptable — for example a blob protected under another Windows user. Only
+                // in that case is dropping the entry right. Deleting it on *any* exception silently
+                // destroyed a credential that a transient platform failure had merely failed to read.
                 entries.Remove(key);
                 await PersistAsync(entries).ConfigureAwait(false);
                 return null;
@@ -94,7 +96,17 @@ public sealed class SecureFileStore
             }
             catch (JsonException)
             {
-                // Corrupt store: start clean rather than wedging every credential read.
+                // Corrupt store: keep the file aside so the encrypted blobs stay recoverable, then start
+                // clean rather than wedging every credential read. Starting clean without the copy lost
+                // the passwords outright.
+                try
+                {
+                    File.Move(_path, _path + ".bak", overwrite: true);
+                }
+                catch
+                {
+                    // Best effort: if the copy cannot be made, still avoid wedging reads.
+                }
             }
         }
 
