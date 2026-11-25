@@ -291,7 +291,7 @@ public partial class SettingsViewModel : BaseViewModel
     private async Task SaveSettingsAsync()
     {
         _logger.LogInformation("Saving library settings — storage: {Storage}, basePath: {BasePath}, serverUrl: {ServerUrl}",
-            StorageType, BaseAudioFolderPath, CloudServerUrl);
+            StorageType, LogRedactor.FileName(BaseAudioFolderPath), LogRedactor.Url(CloudServerUrl));
 
         if (!await ConfirmInsecureCloudUrlAsync()) return;
 
@@ -354,7 +354,7 @@ public partial class SettingsViewModel : BaseViewModel
     [RelayCommand]
     private async Task BrowseCloudFolderAsync()
     {
-        _logger.LogInformation("Browsing cloud folders — server: {ServerUrl}", CloudServerUrl);
+        _logger.LogInformation("Browsing cloud folders — server: {ServerUrl}", LogRedactor.Url(CloudServerUrl));
 
         // Build the connection from the form instead of overwriting the saved settings. The old
         // swap-then-restore only stayed applied until the picker page was shown, so the first folder tap
@@ -374,7 +374,7 @@ public partial class SettingsViewModel : BaseViewModel
             var modal = new Views.CloudFolderPickerPage(_cloudProvider, connection, BaseAudioFolderPath, (selectedPath) =>
             {
                 BaseAudioFolderPath = selectedPath;
-                _logger.LogInformation("Cloud folder selected: {Path}", selectedPath);
+                _logger.LogInformation("Cloud folder selected: {Path}", LogRedactor.FileName(selectedPath));
             });
 
             await Shell.Current.Navigation.PushModalAsync(new NavigationPage(modal));
@@ -389,7 +389,7 @@ public partial class SettingsViewModel : BaseViewModel
     [RelayCommand]
     private async Task TestCloudConnectionAsync()
     {
-        _logger.LogInformation("Testing WebDAV connection — server: {ServerUrl}", CloudServerUrl);
+        _logger.LogInformation("Testing WebDAV connection — server: {ServerUrl}", LogRedactor.Url(CloudServerUrl));
 
         // Test exactly what the user has typed, without touching the saved settings.
         var connection = new Services.Cloud.WebDavConnection(CloudServerUrl, CloudUsername, CloudPassword);
@@ -399,12 +399,12 @@ public partial class SettingsViewModel : BaseViewModel
             var result = await _cloudProvider.TestConnectionAsync(connection);
             if (result.Success)
             {
-                _logger.LogInformation("WebDAV connection test succeeded — server: {ServerUrl}", CloudServerUrl);
+                _logger.LogInformation("WebDAV connection test succeeded — server: {ServerUrl}", LogRedactor.Url(CloudServerUrl));
                 await Shell.Current.DisplayAlert("Connection Success", "Successfully connected to WebDAV server!", "OK");
             }
             else
             {
-                _logger.LogWarning("WebDAV connection test failed — server: {ServerUrl}, error: {Error}", CloudServerUrl, result.ErrorMessage);
+                _logger.LogWarning("WebDAV connection test failed — server: {ServerUrl}, error: {Error}", LogRedactor.Url(CloudServerUrl), result.ErrorMessage);
                 await Shell.Current.DisplayAlert("Connection Failed", $"Could not connect to WebDAV server.\n\nDetails:\n{result.ErrorMessage}", "OK");
             }
         }
@@ -444,7 +444,7 @@ public partial class SettingsViewModel : BaseViewModel
         // raw "/tree/primary:…" and every later scan reported it missing (BUG-m-18).
         var folderPath = AndroidStoragePath.ToFileSystemPath(result.Folder.Path);
         BaseAudioFolderPath = folderPath;
-        _logger.LogInformation("Local library folder picked: {Path}", folderPath);
+        _logger.LogInformation("Local library folder picked: {Path}", LogRedactor.FileName(folderPath));
     }
 
     [RelayCommand]
