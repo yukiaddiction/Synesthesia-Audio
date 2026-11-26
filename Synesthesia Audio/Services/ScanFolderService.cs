@@ -60,12 +60,7 @@ public class ScanFolderService : IDisposable
         {
             try
             {
-                var localImages = Directory.GetFiles(folderPath, "*.*", SearchOption.TopDirectoryOnly)
-                    .Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
-                                f.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-                if (localImages.Any())
-                    coverPath = localImages.First();
+                coverPath = ChooseBestLocalCover(folderPath);
             }
             catch (Exception ex) { _logger.LogDebug(ex, "Local cover fallback failed"); }
         }
@@ -643,9 +638,11 @@ public class ScanFolderService : IDisposable
             try
             {
                 var folderFiles = await _cloudProvider.ListFilesAsync(workPath);
-                var remoteImage = folderFiles.FirstOrDefault(f => !f.IsDirectory &&
-                    (f.Path.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
-                     f.Path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)));
+                // Ranked the same way as a local folder: a "cover.jpg" beats a bigger screenshot (DUP-04).
+                var remotePath = LocalCoverFinder.SelectBest(folderFiles
+                    .Where(f => !f.IsDirectory)
+                    .Select(f => (f.Path, f.Size)));
+                var remoteImage = remotePath == null ? null : folderFiles.First(f => f.Path == remotePath);
 
                 if (remoteImage != null)
                 {
@@ -660,14 +657,8 @@ public class ScanFolderService : IDisposable
         }
         else
         {
-            var localImages = Directory.GetFiles(workPath, "*.*", SearchOption.TopDirectoryOnly)
-                .Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
-                            f.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            if (localImages.Any())
-            {
-                work.CoverImagePath = localImages.First();
-            }
+            var best = ChooseBestLocalCover(workPath);
+            if (best != null) work.CoverImagePath = best;
         }
     }
 
@@ -754,6 +745,28 @@ public class ScanFolderService : IDisposable
     /// Which folder counts as "the work" for this track. Delegated to Core so the disc/format folder rules
     /// (CD1, Disc 2, Vol3, mp3, wav, …) are covered by tests instead of only by scanning real libraries.
     /// </summary>
+    /// <summary>Best cover image in a local album folder, ranked by <see cref="LocalCoverFinder"/>.</summary>
+    private static string? ChooseBestLocalCover(string folderPath)
+    {
+        try
+        {
+            var candidates = Directory.GetFiles(folderPath, "*.*", SearchOption.TopDirectoryOnly)
+                .Select(f =>
+                {
+                    long size = 0;
+                    try { size = new FileInfo(f).Length; } catch { /* size is only a tie-break */ }
+                    return (Path: f, Length: size);
+                });
+
+            return LocalCoverFinder.SelectBest(candidates);
+        }
+        catch
+        {
+            // An unreadable folder simply has no local cover.
+            return null;
+        }
+    }
+
     private static string DetermineWorkFolder(string filePath, string basePath, bool isCloud) =>
         WorkFolderResolver.Resolve(filePath, basePath, isCloud);
 
