@@ -22,6 +22,7 @@ public partial class MainViewModel : BaseViewModel
     private readonly LibraryCacheService _cacheService;
     private readonly ILogger<MainViewModel> _logger;
     private readonly IDialogService _dialog;
+    private readonly INavigationService _navigation;
 
     public ObservableCollection<WorkMetadata> Albums { get; set; } = new();
 
@@ -84,9 +85,11 @@ public partial class MainViewModel : BaseViewModel
 
     public bool HasFolderSelected => !string.IsNullOrEmpty(_settingsService.CurrentSettings.BaseAudioFolderPath);
 
-    public MainViewModel(ScanFolderService scanService, SettingsService settingsService, LibraryCacheService cacheService, ScanStateService scanStateService, IDialogService dialogService, ILogger<MainViewModel> logger)
+    public MainViewModel(ScanFolderService scanService, SettingsService settingsService, LibraryCacheService cacheService, ScanStateService scanStateService, IDialogService dialogService, INavigationService navigationService, ILogger<MainViewModel> logger)
     {
         _logger = logger;
+        _dialog = dialogService;
+        _navigation = navigationService;
         var savedFilter = Preferences.Get("LastSelectedFilter", FilterAllAge);
         SelectedFilter = savedFilter;
         Title = FilterTitle(savedFilter);
@@ -582,13 +585,13 @@ public partial class MainViewModel : BaseViewModel
         // A double tap fires the single-tap handler as well, and both used to push while the first push was
         // still animating, stacking two copies of the same album page.
         await NavigationGuard.RunAsync(() =>
-            Shell.Current.GoToAsync(nameof(AlbumPage), new Dictionary<string, object> { { "Album", album } }));
+            _navigation.GoToAsync(nameof(AlbumPage), new Dictionary<string, object> { { "Album", album } }));
     }
 
     [RelayCommand]
     private async Task GoToSettingsAsync()
     {
-        await Shell.Current.GoToAsync("//Settings");
+        await _navigation.GoToAsync("//Settings");
     }
 
     public void ClearAllWorks()

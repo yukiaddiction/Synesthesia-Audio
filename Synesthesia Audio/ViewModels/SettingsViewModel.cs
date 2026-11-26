@@ -16,6 +16,7 @@ public partial class SettingsViewModel : BaseViewModel
     private readonly LogService _logService;
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly IDialogService _dialog;
+    private readonly INavigationService _navigation;
 
     private readonly Synesthesia_Audio.Services.Cloud.ICloudProvider _cloudProvider;
     private readonly ITranslationService _translationService;
@@ -101,7 +102,7 @@ public partial class SettingsViewModel : BaseViewModel
 
     public string AppVersionText => $"Version {AppInfo.Current.VersionString}";
 
-    public SettingsViewModel(SettingsService settingsService, LibraryCacheService cacheService, MainViewModel mainViewModel, Synesthesia_Audio.Services.Cloud.ICloudProvider cloudProvider, LogService logService, ITranslationService translationService, Services.Translation.NameRomanizationService nameRomanization, IDialogService dialogService, ILogger<SettingsViewModel> logger)
+    public SettingsViewModel(SettingsService settingsService, LibraryCacheService cacheService, MainViewModel mainViewModel, Synesthesia_Audio.Services.Cloud.ICloudProvider cloudProvider, LogService logService, ITranslationService translationService, Services.Translation.NameRomanizationService nameRomanization, IDialogService dialogService, INavigationService navigationService, ILogger<SettingsViewModel> logger)
     {
         Title = "Settings";
         _settingsService = settingsService;
@@ -111,6 +112,8 @@ public partial class SettingsViewModel : BaseViewModel
         _logService = logService;
         _translationService = translationService;
         _nameRomanization = nameRomanization;
+        _dialog = dialogService;
+        _navigation = navigationService;
         _logger = logger;
 
         BaseAudioFolderPath = _settingsService.CurrentSettings.BaseAudioFolderPath;
@@ -205,7 +208,7 @@ public partial class SettingsViewModel : BaseViewModel
         try
         {
             var created = await _nameRomanization.GetBundledDataCreatedAsync();
-            await Shell.Current.Navigation.PushModalAsync(new Views.AboutSourcesPage(AppInfo.Current.VersionString, created));
+            await _navigation.PushModalAsync(new Views.AboutSourcesPage(AppInfo.Current.VersionString, created));
         }
         catch (Exception ex)
         {
@@ -388,7 +391,7 @@ public partial class SettingsViewModel : BaseViewModel
                 _logger.LogInformation("Cloud folder selected: {Path}", LogRedactor.FileName(selectedPath));
             });
 
-            await Shell.Current.Navigation.PushModalAsync(new NavigationPage(modal));
+            await _navigation.PushModalAsync(new NavigationPage(modal));
         }
         catch (Exception ex)
         {
@@ -480,7 +483,7 @@ public partial class SettingsViewModel : BaseViewModel
     private async Task ViewLogsAsync()
     {
         _logger.LogDebug("Opening log viewer page");
-        await Shell.Current.GoToAsync(nameof(Views.LogViewerPage));
+        await _navigation.GoToAsync(nameof(Views.LogViewerPage));
     }
 
     [RelayCommand]

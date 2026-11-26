@@ -41,6 +41,7 @@ public static class MauiProgram
 
         builder.Services.AddSingleton<LogService>();
         builder.Services.AddSingleton<IDialogService, DialogService>();
+        builder.Services.AddSingleton<INavigationService, NavigationService>();
         builder.Services.AddSingleton<ISecureStore, SecureStore>();
         builder.Services.AddSingleton<SettingsService>();
         builder.Services.AddSingleton<TagMappingService>();

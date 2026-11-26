@@ -22,6 +22,7 @@ public partial class LogViewerViewModel : BaseViewModel
     public LogViewerViewModel(LogService logService, IDialogService dialogService)
     {
         _logService = logService;
+        _dialog = dialogService;
         Title = "Application Logs";
     }
 
