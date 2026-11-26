@@ -18,6 +18,8 @@ public class MainPage : ContentPage
     private readonly MainViewModel _viewModel;
     private readonly Label _subtitleLabel;
     private GlassScaffold? _scaffold;
+    private bool _notificationPermissionChecked;
+    private bool _initialized;
 
     public MainPage(MainViewModel viewModel, Services.AudioService audioService)
     {
@@ -271,20 +273,29 @@ public class MainPage : ContentPage
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
+        // Once per page instance, not once per appearance: returning to the library from any page used to
+        // re-prompt for notification permission and re-run initialization every single time (UX-04).
         try
         {
-            var status = await Permissions.CheckStatusAsync<Permissions.PostNotifications>();
-            if (status != PermissionStatus.Granted)
+            if (!_notificationPermissionChecked)
             {
-                await Permissions.RequestAsync<Permissions.PostNotifications>();
+                _notificationPermissionChecked = true;
+                var status = await Permissions.CheckStatusAsync<Permissions.PostNotifications>();
+                if (status != PermissionStatus.Granted)
+                {
+                    await Permissions.RequestAsync<Permissions.PostNotifications>();
+                }
             }
         }
         catch (Exception ex) { Synesthesia_Audio.Services.Logging.AppLog.Get<MainPage>().LogWarning(ex, "Notification permission request failed"); }
 
         try
         {
-            if (BindingContext is MainViewModel vm)
+            // The view model is a singleton and guards its own initialization; this only avoids the repeat
+            // work when returning to the page.
+            if (BindingContext is MainViewModel vm && !_initialized)
             {
+                _initialized = true;
                 await vm.InitializeAsync();
             }
 

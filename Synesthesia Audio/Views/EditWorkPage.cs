@@ -126,7 +126,10 @@ public class EditWorkPage : ContentPage
             }
         };
 
-        var scaffold = new GlassScaffold("Edit Album Info", menu: false);
+        // back: true gives the page an app-bar back button. It had none, so on desktop the only way out was the
+        // Cancel button at the bottom of the form, and on a phone only the system back gesture (UX-04).
+        // The button navigates back rather than running Cancel, so unsaved edits are still the user's to discard.
+        var scaffold = new GlassScaffold("Edit Album Info", back: true, menu: false);
         scaffold.SetBody(scroll);
 
         Content = scaffold;

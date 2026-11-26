@@ -20,6 +20,7 @@ public class TagMappingPage : ContentPage
     private readonly SearchBar _searchBar;
 
     private Dictionary<string, string> _allMappings = new();
+    private Timer? _searchDebounce;
 
     public TagMappingPage(TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel)
     {
@@ -31,7 +32,13 @@ public class TagMappingPage : ContentPage
         Shell.SetNavBarIsVisible(this, false);
 
         _searchBar = new SearchBar { Placeholder = "Search Japanese or English tags...", BackgroundColor = Colors.Transparent };
-        _searchBar.TextChanged += (s, e) => RefreshList();
+        // Debounced: rebuilding every row on each keystroke made typing in the filter crawl on a large
+        // mapping list (PERF-09).
+        _searchBar.TextChanged += (s, e) =>
+        {
+            _searchDebounce ??= new Timer(_ => MainThread.BeginInvokeOnMainThread(RefreshList), null, Timeout.Infinite, Timeout.Infinite);
+            _searchDebounce.Change(250, Timeout.Infinite);
+        };
         _searchBar
             .AppThemeBinding(SearchBar.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
             .AppThemeBinding(SearchBar.PlaceholderColorProperty, AppColors.TextTertiaryLight, AppColors.TextSecondaryDark);

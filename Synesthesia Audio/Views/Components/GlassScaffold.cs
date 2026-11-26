@@ -237,7 +237,17 @@ public sealed class GlassScaffold : Grid
         try
         {
             var navigation = Shell.Current?.Navigation;
-            if (navigation != null && navigation.NavigationStack.Count > 1)
+            if (navigation == null) return;
+
+            // A page presented modally (the edit sheet, the folder picker) lives on the modal stack. Popping the
+            // shell stack instead navigated the view *behind* the open sheet and left it open (UX-04).
+            if (navigation.ModalStack.Count > 0)
+            {
+                await navigation.PopModalAsync();
+                return;
+            }
+
+            if (navigation.NavigationStack.Count > 1)
             {
                 await navigation.PopAsync();
                 return;
