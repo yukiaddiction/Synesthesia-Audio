@@ -1,15 +1,18 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <?xaml-comp compile="true" ?>
 <ResourceDictionary 
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
 
-    <Color x:Key="Primary">#512BD4</Color>
-    <Color x:Key="PrimaryDark">#ac99ea</Color>
-    <Color x:Key="PrimaryDarkText">#242424</Color>
-    <Color x:Key="Secondary">#DFD8F7</Color>
-    <Color x:Key="SecondaryDarkText">#9880e5</Color>
-    <Color x:Key="Tertiary">#2B0B98</Color>
+    <!-- These keys are what the MAUI template's Styles.xaml still binds to. They now carry the app palette from
+         AppColors instead of the template purple (#512BD4), which is why stray purple controls kept appearing
+         next to the teal/blue theme (PAT-10). -->
+    <Color x:Key="Primary">#458CC8</Color>
+    <Color x:Key="PrimaryDark">#AADBE9</Color>
+    <Color x:Key="PrimaryDarkText">#112A3E</Color>
+    <Color x:Key="Secondary">#DFEBF7</Color>
+    <Color x:Key="SecondaryDarkText">#84C6DF</Color>
+    <Color x:Key="Tertiary">#2F6EA3</Color>
 
     <Color x:Key="White">White</Color>
     <Color x:Key="Black">Black</Color>

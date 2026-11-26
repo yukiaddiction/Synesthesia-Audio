@@ -36,9 +36,8 @@ public static class MauiProgram
             logging.AddProvider(new FileLoggerProvider());
         });
 
-#if DEBUG
-        builder.Logging.AddDebug();
-#endif
+        // The Debug provider was registered twice: inside AddLogging above and again through
+        // builder.Logging. One registration is enough, and the duplicate emitted every line twice (PAT-10).
 
         builder.Services.AddSingleton<LogService>();
         builder.Services.AddSingleton<ISecureStore, SecureStore>();

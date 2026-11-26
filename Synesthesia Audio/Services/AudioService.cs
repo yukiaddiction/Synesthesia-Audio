@@ -41,31 +41,6 @@ public partial class AudioService : ObservableObject, IDisposable
     private void ResetDurationObservation() =>
         _durationObserved = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-#if ANDROID
-    /// <summary>
-    /// The cover URI currently shared with the system UI, so the grant can be revoked when the track changes or
-    /// the window goes away instead of accumulating for the life of the process (SEC-m-06).
-    /// </summary>
-    private string? _grantedArtworkUri;
-
-    private void RevokeGrantedArtwork(global::Android.Content.Context context)
-    {
-        var previous = _grantedArtworkUri;
-        _grantedArtworkUri = null;
-        if (previous == null) return;
-
-        try
-        {
-            context.RevokeUriPermission(
-                global::Android.Net.Uri.Parse(previous),
-                global::Android.Content.ActivityFlags.GrantReadUriPermission);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Revoking a previous artwork grant failed");
-        }
-    }
-#endif
 
     public AudioService(SettingsService settingsService, Cloud.ICloudProvider cloudProvider, Cloud.LocalHttpProxy localHttpProxy, PlaybackSessionService sessionService, IAudioPlatformService platformService, ILogger<AudioService> logger)
     {
@@ -395,28 +370,15 @@ public partial class AudioService : ObservableObject, IDisposable
             _logger.LogWarning(ex, "Resetting platform playback state during detach failed");
         }
 
-#if ANDROID
-        // The Android process outlives the Activity, so the media-session statics have to be cleared here;
-        // otherwise the next window's session is never wrapped and its next/previous buttons are dead.
+        // Session reset and URI revocation are platform concerns; see AndroidAudioPlatformService (PAT-10).
         try
         {
-            Platforms.Android.MediaSessionHelper.ResetSession();
+            _platformService.OnMediaDetached();
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Resetting the Android media session during detach failed");
+            _logger.LogWarning(ex, "Releasing platform media state during detach failed");
         }
-
-        // Nothing should keep read access to a cover once this window is gone (SEC-m-06).
-        try
-        {
-            RevokeGrantedArtwork(global::Android.App.Application.Context);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Revoking the artwork grant during detach failed");
-        }
-#endif
 
         // Remember where we were so reopening the window can offer to resume.
         SaveSession();
@@ -566,25 +528,8 @@ PlayTrackInternalAsync(track).FireAndForget(ex => _logger.LogWarning(ex, "Backgr
             {
                 try
                 {
-#if ANDROID
-                    var context = global::Android.App.Application.Context;
-                    var file = new Java.IO.File(track.CoverImagePath);
-                    var uri = AndroidX.Core.Content.FileProvider.GetUriForFile(
-                        context,
-                        context.PackageName + ".fileprovider",
-                        file);
-
-                    // The previous track's grant is no longer needed. Without this the process accumulated a
-                    // read grant per cover it ever displayed (SEC-m-06).
-                    RevokeGrantedArtwork(context);
-
-                    context.GrantUriPermission(
-                        "com.android.systemui", uri, global::Android.Content.ActivityFlags.GrantReadUriPermission);
-                    _grantedArtworkUri = uri.ToString();
-                    me.MetadataArtworkUrl = _grantedArtworkUri;
-#else
-                    me.MetadataArtworkUrl = new Uri(System.IO.Path.GetFullPath(track.CoverImagePath)).AbsoluteUri;
-#endif
+                    // Which URI form is publishable, and any grant it needs, is a platform concern (PAT-10).
+                    me.MetadataArtworkUrl = _platformService.PublishArtwork(track.CoverImagePath);
                 }
                 catch (Exception ex)
                 {

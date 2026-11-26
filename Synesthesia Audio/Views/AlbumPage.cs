@@ -218,7 +218,7 @@ public class AlbumPage : ContentPage
 
                                 new Label { FontSize = AppFontSizes.PathLabel, VerticalOptions = LayoutOptions.Center }
                                     .Column(1)
-                                    .Bind(Label.TextProperty, nameof(SubAlbum.IsExpanded), converter: new BoolToArrowConverter())
+                                    .Bind(Label.TextProperty, nameof(SubAlbum.IsExpanded), converter: BoolToArrowConverter.Instance)
                                     .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
                             }
                         }
@@ -249,7 +249,7 @@ public class AlbumPage : ContentPage
                             }
                         };
                         headerGrid.GestureRecognizers.Add(headerTap);
-                        headerGrid.Bind(VisualElement.IsVisibleProperty, nameof(SubAlbum.Title), converter: new NotMainTitleConverter());
+                        headerGrid.Bind(VisualElement.IsVisibleProperty, nameof(SubAlbum.Title), converter: NotMainTitleConverter.Instance);
 
                         BindableLayout.SetItemTemplate(tracksLayout, new DataTemplate(() =>
                         {
@@ -371,39 +371,5 @@ public class AlbumPage : ContentPage
             Grid.SetRow(tracksPanel, 1);
             Grid.SetColumn(tracksPanel, 0);
         }
-    }
-}
-
-public class BoolToArrowConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
-    {
-        if (value is bool b) return b ? "▼" : "▶";
-        return "▶";
-    }
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
-    {
-        return Binding.DoNothing;
-    }
-}
-
-public class NotMainTitleConverter : IValueConverter
-{
-    private static readonly HashSet<string> _hiddenTitles = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Main", "flac", "mp3", "wav", "m4a", "mp4"
-    };
-
-    public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
-    {
-        var title = value as string;
-        if (string.IsNullOrEmpty(title)) return false;
-        return !_hiddenTitles.Contains(title);
-    }
-
-    public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
-    {
-        return Binding.DoNothing;
     }
 }

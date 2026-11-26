@@ -9,7 +9,7 @@ using Synesthesia_Audio.Models;
 
 namespace Synesthesia_Audio.Services;
 
-public class ScanFolderService : IDisposable
+public partial class ScanFolderService : IDisposable
 {
     private readonly DLsiteService _dlsiteService;
     private readonly LibraryCacheService _cacheService;
@@ -20,6 +20,15 @@ public class ScanFolderService : IDisposable
     private readonly CoverThumbnailer _thumbnailer;
     private readonly ILogger<ScanFolderService> _logger;
 
+    /// <summary>
+    /// Compiled once per app rather than rebuilt on every call, with a timeout so a pathological folder name
+    /// cannot hang a scan (PAT-10).
+    /// </summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"(RJ\d{6,8})",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 200)]
+    private static partial Regex RjCodePattern();
+
     public ScanFolderService(DLsiteService dlsiteService, LibraryCacheService cacheService, SettingsService settingsService, ScanStateService scanStateService, Services.Cloud.ICloudProvider cloudProvider, IHttpClientFactory httpClientFactory, CoverThumbnailer thumbnailer, ILogger<ScanFolderService> logger)
     {
         _dlsiteService = dlsiteService;
@@ -153,7 +162,7 @@ public class ScanFolderService : IDisposable
         var audioFiles = await ListAudioFilesRecursiveAsync(path, isCloud).ConfigureAwait(false);
         if (audioFiles.Count == 0) return null;
 
-        var match = Regex.Match(folderName, @"(RJ\d{6,8})", RegexOptions.IgnoreCase);
+        var match = RjCodePattern().Match(folderName);
         string? rjCode = match.Success ? match.Groups[1].Value.ToUpper() : null;
 
         var work = new WorkMetadata
@@ -366,7 +375,7 @@ public class ScanFolderService : IDisposable
                     folderName = new DirectoryInfo(workPath).Name;
             }
 
-            var match = Regex.Match(folderName, @"(RJ\d{6,8})", RegexOptions.IgnoreCase);
+            var match = RjCodePattern().Match(folderName);
 
             var work = new WorkMetadata
             {

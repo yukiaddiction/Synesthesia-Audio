@@ -10,11 +10,15 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Services;
 
-public class TagMappingService
+public partial class TagMappingService
 {
     private readonly ConcurrentDictionary<string, string> _tagMap = new(StringComparer.OrdinalIgnoreCase);
     private readonly JsonFileStore<Dictionary<string, string>> _store;
     private readonly ILogger<TagMappingService> _logger;
+
+    /// <summary>Strips trailing "[...]" and "(...)" annotations from a tag. Compiled once, with a timeout (PAT-10).</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"\[.*?\]|\(.*?\)", System.Text.RegularExpressions.RegexOptions.None, 200)]
+    private static partial System.Text.RegularExpressions.Regex BracketSuffixPattern();
 
     public TagMappingService(ILogger<TagMappingService> logger)
     {
@@ -96,7 +100,7 @@ public class TagMappingService
     public static string SanitizeTranslation(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
-        var clean = System.Text.RegularExpressions.Regex.Replace(raw, @"\[.*?\]|\(.*?\)", "").Trim();
+        var clean = BracketSuffixPattern().Replace(raw, string.Empty).Trim();
         if (clean.Contains(","))
         {
             var parts = clean.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);

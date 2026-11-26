@@ -1,5 +1,6 @@
 using CommunityToolkit.Maui.Views;
 
+using Microsoft.Extensions.Logging;
 namespace Synesthesia_Audio.Services;
 
 public class AndroidAudioPlatformService : IAudioPlatformService
@@ -47,6 +48,63 @@ public class AndroidAudioPlatformService : IAudioPlatformService
         Platforms.Android.MediaPlaybackForegroundService.StopPlaybackService();
     }
 
+    /// <summary>The cover URI currently shared with the system UI, so its grant can be revoked (SEC-m-06).</summary>
+    private string? _grantedArtworkUri;
+
+    public string PublishArtwork(string coverPath)
+    {
+        var context = global::Android.App.Application.Context;
+        var uri = AndroidX.Core.Content.FileProvider.GetUriForFile(
+            context,
+            context.PackageName + ".fileprovider",
+            new Java.IO.File(coverPath));
+
+        // The previous track's grant is no longer needed; without this the process accumulated one per cover.
+        RevokeGrantedArtwork(context);
+
+        context.GrantUriPermission(
+            "com.android.systemui", uri, global::Android.Content.ActivityFlags.GrantReadUriPermission);
+
+        _grantedArtworkUri = uri.ToString();
+        return _grantedArtworkUri;
+    }
+
+    public void OnMediaDetached()
+    {
+        // The process outlives the activity, so the session statics have to be cleared here; otherwise the next
+        // window's session is never wrapped and its next/previous buttons are dead.
+        try
+        {
+            Platforms.Android.MediaSessionHelper.ResetSession();
+        }
+        catch (System.Exception ex)
+        {
+            Synesthesia_Audio.Services.Logging.AppLog.Get<AndroidAudioPlatformService>()
+                .LogWarning(ex, "Resetting the Android media session during detach failed");
+        }
+
+        // Nothing should keep read access to a cover once this window is gone.
+        RevokeGrantedArtwork(global::Android.App.Application.Context);
+    }
+
+    private void RevokeGrantedArtwork(global::Android.Content.Context context)
+    {
+        var previous = _grantedArtworkUri;
+        _grantedArtworkUri = null;
+        if (previous == null) return;
+
+        try
+        {
+            context.RevokeUriPermission(
+                global::Android.Net.Uri.Parse(previous),
+                global::Android.Content.ActivityFlags.GrantReadUriPermission);
+        }
+        catch (System.Exception ex)
+        {
+            Synesthesia_Audio.Services.Logging.AppLog.Get<AndroidAudioPlatformService>()
+                .LogDebug(ex, "Revoking a previous artwork grant failed");
+        }
+    }
     public bool RequestAudioFocus() => Platforms.Android.AudioFocusHelper.Instance.RequestFocus();
 
     public void AbandonAudioFocus() => Platforms.Android.AudioFocusHelper.Instance.AbandonFocus();

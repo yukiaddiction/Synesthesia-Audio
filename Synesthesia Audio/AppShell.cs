@@ -101,9 +101,12 @@ public class AppShell : Shell
         }
     }
 
-    public void SetMediaElement(MediaElement mediaElement)
+    public void SetMediaElement(MediaElement? mediaElement)
     {
+        if (mediaElement is null) return;
+
         _mediaElement = mediaElement;
+
         if (FlyoutContent is ScrollView sv && sv.Content is VerticalStackLayout flyoutStack)
         {
             flyoutStack.Children.Insert(0, _mediaElement);
