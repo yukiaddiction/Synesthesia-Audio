@@ -13,6 +13,8 @@ namespace Synesthesia_Audio.Views;
 
 public class CloudFolderPickerPage : ContentPage
 {
+    private readonly ILogger<CloudFolderPickerPage> _logger;
+
     private readonly ICloudProvider _cloudProvider;
     private readonly WebDavConnection? _connection;
     private readonly Action<string> _onFolderSelected;
@@ -23,8 +25,9 @@ public class CloudFolderPickerPage : ContentPage
     private readonly ActivityIndicator _loader;
     private readonly Button _selectButton;
 
-    public CloudFolderPickerPage(ICloudProvider cloudProvider, WebDavConnection? connection, string startPath, Action<string> onFolderSelected)
-    {
+    public CloudFolderPickerPage(ICloudProvider cloudProvider, WebDavConnection? connection, string startPath, Action<string> onFolderSelected, ILogger<CloudFolderPickerPage> logger)
+{
+    _logger = logger;
         _cloudProvider = cloudProvider;
         _connection = connection;
         _onFolderSelected = onFolderSelected;
@@ -38,7 +41,7 @@ public class CloudFolderPickerPage : ContentPage
         cancelBtn.Clicked += async (_, _) =>
         {
             try { await Navigation.PopModalAsync(); }
-            catch (Exception ex) { Services.Logging.AppLog.Get<CloudFolderPickerPage>().LogDebug(ex, "Closing the folder picker failed"); }
+            catch (Exception ex) { _logger.LogDebug(ex, "Closing the folder picker failed"); }
         };
         ToolbarItems.Add(cancelBtn);
 
@@ -209,7 +212,7 @@ public class CloudFolderPickerPage : ContentPage
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<CloudFolderPickerPage>().LogError(ex, "Directory navigation failed");
+            _logger.LogError(ex, "Directory navigation failed");
         }
     }
 
@@ -225,7 +228,7 @@ public class CloudFolderPickerPage : ContentPage
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<CloudFolderPickerPage>().LogError(ex, "Up navigation failed");
+            _logger.LogError(ex, "Up navigation failed");
         }
     }
 
@@ -239,7 +242,7 @@ public class CloudFolderPickerPage : ContentPage
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<CloudFolderPickerPage>().LogError(ex, "Folder selection failed");
+            _logger.LogError(ex, "Folder selection failed");
         }
     }
 }

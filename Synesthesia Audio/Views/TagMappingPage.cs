@@ -24,8 +24,11 @@ public class TagMappingPage : ContentPage
     private Dictionary<string, string> _allMappings = new();
     private Timer? _searchDebounce;
 
-    public TagMappingPage(TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel)
+    private readonly ILogger<TagMappingPage> _logger;
+
+    public TagMappingPage(TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel, ILogger<TagMappingPage> logger)
     {
+        _logger = logger;
         _tagService = tagService;
         _cacheService = cacheService;
         _mainViewModel = mainViewModel;
@@ -77,7 +80,7 @@ public class TagMappingPage : ContentPage
             }
             catch (Exception ex)
             {
-                Services.Logging.AppLog.Get<TagMappingPage>().LogError(ex, "Tag clean failed");
+                _logger.LogError(ex, "Tag clean failed");
             }
         };
 
@@ -218,7 +221,7 @@ public class TagMappingPage : ContentPage
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<TagMappingPage>().LogError(ex, "Library refresh after tag update failed");
+            _logger.LogError(ex, "Library refresh after tag update failed");
         }
     }
 }

@@ -22,8 +22,13 @@ public class SettingsPage : ContentPage
 
     private int _activeGroupIndex;
 
-    public SettingsPage(SettingsViewModel viewModel, AudioService audioService, TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel)
+    private readonly ILogger<SettingsPage> _logger;
+    private readonly ILoggerFactory _loggerFactory;
+
+    public SettingsPage(SettingsViewModel viewModel, AudioService audioService, TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel, ILoggerFactory loggerFactory)
     {
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<SettingsPage>();
         BindingContext = _viewModel = viewModel;
 
         this.Bind(ContentPage.TitleProperty, nameof(SettingsViewModel.Title));
@@ -135,7 +140,7 @@ public class SettingsPage : ContentPage
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<SettingsPage>().LogWarning(ex, "SettingsPage OnAppearing error");
+            _logger.LogWarning(ex, "SettingsPage OnAppearing error");
         }
     }
 
@@ -445,11 +450,11 @@ public class SettingsPage : ContentPage
                                 {
                                     // Guarded: a double click used to push the page twice.
                                     await NavigationGuard.RunAsync(() =>
-                                        Shell.Current.Navigation.PushAsync(new TagMappingPage(tagService, cacheService, mainViewModel)));
+                                        Shell.Current.Navigation.PushAsync(new TagMappingPage(tagService, cacheService, mainViewModel, _loggerFactory.CreateLogger<TagMappingPage>())));
                                 }
                                 catch (Exception ex)
                                 {
-                                    Services.Logging.AppLog.Get<SettingsPage>().LogError(ex, "Failed to open tag mapping page");
+                                    _logger.LogError(ex, "Failed to open tag mapping page");
                                 }
                             }),
 
@@ -463,7 +468,7 @@ public class SettingsPage : ContentPage
                                 }
                                 catch (Exception ex)
                                 {
-                                    Services.Logging.AppLog.Get<SettingsPage>().LogError(ex, "Tag clean failed");
+                                    _logger.LogError(ex, "Tag clean failed");
                                 }
                             })
                     }
@@ -580,6 +585,8 @@ public class SettingsPage : ContentPage
         return true;
     }
 
+    // Static on purpose: it is called from a handler that runs after this page may already be gone, so there is
+    // no instance field to read. This is the one place PAT-01 accepts a resolved-at-call-site logger.
     private static async Task GoBackAsync()
     {
         try

@@ -15,6 +15,7 @@ public partial class SettingsViewModel : BaseViewModel
     private readonly MainViewModel _mainViewModel;
     private readonly LogService _logService;
     private readonly ILogger<SettingsViewModel> _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly IDialogService _dialog;
     private readonly INavigationService _navigation;
 
@@ -102,7 +103,7 @@ public partial class SettingsViewModel : BaseViewModel
 
     public string AppVersionText => $"Version {AppInfo.Current.VersionString}";
 
-    public SettingsViewModel(SettingsService settingsService, LibraryCacheService cacheService, MainViewModel mainViewModel, Synesthesia_Audio.Services.Cloud.ICloudProvider cloudProvider, LogService logService, ITranslationService translationService, Services.Translation.NameRomanizationService nameRomanization, IDialogService dialogService, INavigationService navigationService, ILogger<SettingsViewModel> logger)
+    public SettingsViewModel(SettingsService settingsService, LibraryCacheService cacheService, MainViewModel mainViewModel, Synesthesia_Audio.Services.Cloud.ICloudProvider cloudProvider, LogService logService, ITranslationService translationService, Services.Translation.NameRomanizationService nameRomanization, IDialogService dialogService, INavigationService navigationService, ILoggerFactory loggerFactory)
     {
         Title = "Settings";
         _settingsService = settingsService;
@@ -114,8 +115,8 @@ public partial class SettingsViewModel : BaseViewModel
         _nameRomanization = nameRomanization;
         _dialog = dialogService;
         _navigation = navigationService;
-        _logger = logger;
-
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<SettingsViewModel>();
         BaseAudioFolderPath = _settingsService.CurrentSettings.BaseAudioFolderPath;
         IsDarkMode = _settingsService.CurrentSettings.IsDarkMode;
         TranslateDlsiteTags = _settingsService.CurrentSettings.TranslateDlsiteTags;
@@ -389,7 +390,7 @@ public partial class SettingsViewModel : BaseViewModel
             {
                 BaseAudioFolderPath = selectedPath;
                 _logger.LogInformation("Cloud folder selected: {Path}", LogRedactor.FileName(selectedPath));
-            });
+            }, _loggerFactory.CreateLogger<Views.CloudFolderPickerPage>());
 
             await _navigation.PushModalAsync(new NavigationPage(modal));
         }
