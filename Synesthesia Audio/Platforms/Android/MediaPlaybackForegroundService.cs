@@ -56,17 +56,7 @@ public class MediaPlaybackForegroundService : Service
             Current = this;
 
             var context = global::Android.App.Application.Context;
-            var appIntent = new Intent(context, typeof(MainActivity));
-            appIntent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ClearTop);
-            if (!string.IsNullOrEmpty(_lastAlbumFolderPath))
-            {
-                appIntent.PutExtra("AlbumFolderPath", _lastAlbumFolderPath);
-            }
-            var pendingIntent = PendingIntent.GetActivity(
-                context,
-                0,
-                appIntent,
-                PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+            var pendingIntent = AndroidNotificationHelper.BuildContentIntent(context, _lastAlbumFolderPath);
 
             var builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .SetContentTitle(_lastTitle)
@@ -164,18 +154,9 @@ public class MediaPlaybackForegroundService : Service
             .SetOngoing(false)
             .Build();
 
-    private void CreateNotificationChannel()
-    {
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
-        {
-            var channel = new NotificationChannel(CHANNEL_ID, "Media Playback", NotificationImportance.Low)
-            {
-                Description = "Ongoing playback service to keep audio playing in background"
-            };
-            var notificationManager = (NotificationManager?)GetSystemService(NotificationService);
-            notificationManager?.CreateNotificationChannel(channel);
-        }
-    }
+    private void CreateNotificationChannel() =>
+        AndroidNotificationHelper.CreateChannel(
+            this, CHANNEL_ID, "Media Playback", "Ongoing playback service to keep audio playing in background");
 
     /// <summary>
     /// Drops the service out of the foreground while keeping its notification, which makes the notification
@@ -189,12 +170,7 @@ public class MediaPlaybackForegroundService : Service
     private void PromoteFromBackground()
     {
         var context = global::Android.App.Application.Context;
-        var appIntent = new Intent(context, typeof(MainActivity));
-        appIntent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ClearTop);
-        if (!string.IsNullOrEmpty(_lastAlbumFolderPath)) appIntent.PutExtra("AlbumFolderPath", _lastAlbumFolderPath);
-
-        var pendingIntent = PendingIntent.GetActivity(
-            context, 0, appIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+        var pendingIntent = AndroidNotificationHelper.BuildContentIntent(context, _lastAlbumFolderPath);
 
         var builder = new NotificationCompat.Builder(this, CHANNEL_ID)
             .SetContentTitle(_lastTitle)
@@ -318,7 +294,7 @@ public class MediaPlaybackForegroundService : Service
     /// </summary>
     internal static global::Android.Graphics.Bitmap? LoadArtworkBitmap(string? path, int maxPixels = 512)
     {
-        if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+        if (string.IsNullOrEmpty(path)) return null;
 
         lock (_artworkLock)
         {
@@ -327,51 +303,22 @@ public class MediaPlaybackForegroundService : Service
             {
                 return _cachedArtwork;
             }
-
-            try
-            {
-                // First pass reads the dimensions only, so the second pass can subsample instead of
-                // allocating a full-size bitmap just to throw it away.
-                var bounds = new global::Android.Graphics.BitmapFactory.Options { InJustDecodeBounds = true };
-                global::Android.Graphics.BitmapFactory.DecodeFile(path, bounds);
-
-                var options = new global::Android.Graphics.BitmapFactory.Options
-                {
-                    InSampleSize = CalculateArtworkSampleSize(bounds.OutWidth, bounds.OutHeight, maxPixels)
-                };
-
-                var bitmap = global::Android.Graphics.BitmapFactory.DecodeFile(path, options);
-                if (bitmap == null)
-                {
-                    Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
-                        .LogWarning("Artwork decode returned no bitmap for {Path}", path);
-                    return null;
-                }
-
-                _cachedArtwork = bitmap;
-                _cachedArtworkPath = path;
-                return bitmap;
-            }
-            catch (System.Exception ex)
-            {
-                Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
-                    .LogWarning(ex, "Artwork decode failed for {Path}", path);
-                return null;
-            }
         }
-    }
 
-    private static int CalculateArtworkSampleSize(int width, int height, int maxPixels)
-    {
-        if (width <= 0 || height <= 0 || maxPixels <= 0) return 1;
+        // Bounded decode lives in AndroidNotificationHelper so the media session cannot decode a full-size
+        // cover and blow the binder limit (DUP-05).
+        var bitmap = AndroidNotificationHelper.DecodeArtwork(path, maxPixels);
+        if (bitmap == null) return null;
 
-        var sample = 1;
-        while (width / sample > maxPixels || height / sample > maxPixels)
+        lock (_artworkLock)
         {
-            sample *= 2;
+            _cachedArtwork = bitmap;
+            _cachedArtworkPath = path;
         }
-        return sample;
+
+        return bitmap;
     }
+
 
     private static void SetArtworkOnMediaSession() => _ = SetArtworkOnMediaSessionAsync();
 

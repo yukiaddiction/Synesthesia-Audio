@@ -180,13 +180,7 @@ public class ScanForegroundService : Service
     private Notification BuildNotification(string title, string text, int progressPct)
     {
         var context = global::Android.App.Application.Context;
-        var appIntent = new Intent(context, typeof(MainActivity));
-        appIntent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ClearTop);
-        var pendingIntent = PendingIntent.GetActivity(
-            context,
-            1,
-            appIntent,
-            PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+        var pendingIntent = AndroidNotificationHelper.BuildContentIntent(context, null, requestCode: 1);
 
         var builder = new NotificationCompat.Builder(this, CHANNEL_ID)
             .SetContentTitle(title)
@@ -205,18 +199,9 @@ public class ScanForegroundService : Service
         return builder.Build();
     }
 
-    private void CreateNotificationChannel()
-    {
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
-        {
-            var channel = new NotificationChannel(CHANNEL_ID, "Library Scan", NotificationImportance.Low)
-            {
-                Description = "Keeps the library folder scan running while the app is closed"
-            };
-            var notificationManager = (NotificationManager?)GetSystemService(NotificationService);
-            notificationManager?.CreateNotificationChannel(channel);
-        }
-    }
+    private void CreateNotificationChannel() =>
+        AndroidNotificationHelper.CreateChannel(
+            this, CHANNEL_ID, "Library Scan", "Keeps the library folder scan running while the app is closed");
 
     public static void StartScanService()
     {

@@ -23,17 +23,7 @@ internal static class MediaSessionHelper
         if (session == null) return;
 
         var context = global::Android.App.Application.Context;
-        var appIntent = new global::Android.Content.Intent(context, typeof(MainActivity));
-        appIntent.AddFlags(global::Android.Content.ActivityFlags.NewTask | global::Android.Content.ActivityFlags.SingleTop | global::Android.Content.ActivityFlags.ClearTop);
-        if (!string.IsNullOrEmpty(albumFolderPath))
-        {
-            appIntent.PutExtra("AlbumFolderPath", albumFolderPath);
-        }
-        var pendingIntent = global::Android.App.PendingIntent.GetActivity(
-            context,
-            0,
-            appIntent,
-            global::Android.App.PendingIntentFlags.UpdateCurrent | global::Android.App.PendingIntentFlags.Immutable);
+        var pendingIntent = AndroidNotificationHelper.BuildContentIntent(context, albumFolderPath);
 
         session.SetSessionActivity(pendingIntent);
     }
@@ -92,17 +82,7 @@ internal static class MediaSessionHelper
             MediaPlaybackForegroundService.UpdateNotification();
 
             var context = global::Android.App.Application.Context;
-            var appIntent = new global::Android.Content.Intent(context, typeof(MainActivity));
-            appIntent.AddFlags(global::Android.Content.ActivityFlags.NewTask | global::Android.Content.ActivityFlags.SingleTop | global::Android.Content.ActivityFlags.ClearTop);
-            if (!string.IsNullOrEmpty(_lastAlbumFolderPath))
-            {
-                appIntent.PutExtra("AlbumFolderPath", _lastAlbumFolderPath);
-            }
-            var pendingIntent = global::Android.App.PendingIntent.GetActivity(
-                context,
-                0,
-                appIntent,
-                global::Android.App.PendingIntentFlags.UpdateCurrent | global::Android.App.PendingIntentFlags.Immutable);
+            var pendingIntent = AndroidNotificationHelper.BuildContentIntent(context, _lastAlbumFolderPath);
 
             mediaSession.SetSessionActivity(pendingIntent);
 
@@ -285,7 +265,9 @@ internal class ArtworkCallback : global::Android.Support.V4.Media.Session.MediaC
 
             if (coverPath != _lastCoverPath)
             {
-                _cachedBitmap = global::Android.Graphics.BitmapFactory.DecodeFile(coverPath);
+                // Bounded, unlike the full-size decode this used to do: an oversized bitmap in the session
+                // metadata throws TransactionTooLargeException and the artwork silently disappears (DUP-05).
+                _cachedBitmap = AndroidNotificationHelper.DecodeArtwork(coverPath);
                 _lastCoverPath = coverPath;
             }
 
