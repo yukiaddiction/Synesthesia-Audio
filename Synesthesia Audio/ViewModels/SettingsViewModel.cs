@@ -15,6 +15,7 @@ public partial class SettingsViewModel : BaseViewModel
     private readonly MainViewModel _mainViewModel;
     private readonly LogService _logService;
     private readonly ILogger<SettingsViewModel> _logger;
+    private readonly IDialogService _dialog;
 
     private readonly Synesthesia_Audio.Services.Cloud.ICloudProvider _cloudProvider;
     private readonly ITranslationService _translationService;
@@ -100,7 +101,7 @@ public partial class SettingsViewModel : BaseViewModel
 
     public string AppVersionText => $"Version {AppInfo.Current.VersionString}";
 
-    public SettingsViewModel(SettingsService settingsService, LibraryCacheService cacheService, MainViewModel mainViewModel, Synesthesia_Audio.Services.Cloud.ICloudProvider cloudProvider, LogService logService, ITranslationService translationService, Services.Translation.NameRomanizationService nameRomanization, ILogger<SettingsViewModel> logger)
+    public SettingsViewModel(SettingsService settingsService, LibraryCacheService cacheService, MainViewModel mainViewModel, Synesthesia_Audio.Services.Cloud.ICloudProvider cloudProvider, LogService logService, ITranslationService translationService, Services.Translation.NameRomanizationService nameRomanization, IDialogService dialogService, ILogger<SettingsViewModel> logger)
     {
         Title = "Settings";
         _settingsService = settingsService;
@@ -343,7 +344,7 @@ public partial class SettingsViewModel : BaseViewModel
 
         _logger.LogWarning("WebDAV server URL is not using HTTPS — asking the user to confirm");
 
-        var confirmed = await Shell.Current.DisplayAlert(
+        var confirmed = await _dialog.ConfirmAsync(
             "Unencrypted connection",
             "This WebDAV address uses http://, not https://.\n\n" +
             "Your username and password are sent as Basic authentication with no encryption, so anyone on " +
@@ -377,7 +378,7 @@ public partial class SettingsViewModel : BaseViewModel
             if (!result.Success)
             {
                 _logger.LogWarning("Cloud folder browse aborted — connection test failed: {Error}", result.ErrorMessage);
-                await Shell.Current.DisplayAlert("Connection Failed", $"Could not browse folders because the cloud connection test failed:\n\n{result.ErrorMessage}", "OK");
+                await _dialog.AlertAsync("Connection Failed", $"Could not browse folders because the cloud connection test failed:\n\n{result.ErrorMessage}", "OK");
                 return;
             }
 
@@ -392,7 +393,7 @@ public partial class SettingsViewModel : BaseViewModel
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to browse cloud folders");
-            await Shell.Current.DisplayAlert("Browse Error", $"Failed to browse cloud folders: {ex.Message}", "OK");
+            await _dialog.AlertAsync("Browse Error", $"Failed to browse cloud folders: {ex.Message}", "OK");
         }
     }
 
@@ -410,18 +411,18 @@ public partial class SettingsViewModel : BaseViewModel
             if (result.Success)
             {
                 _logger.LogInformation("WebDAV connection test succeeded — server: {ServerUrl}", LogRedactor.Url(CloudServerUrl));
-                await Shell.Current.DisplayAlert("Connection Success", "Successfully connected to WebDAV server!", "OK");
+                await _dialog.AlertAsync("Connection Success", "Successfully connected to WebDAV server!", "OK");
             }
             else
             {
                 _logger.LogWarning("WebDAV connection test failed — server: {ServerUrl}, error: {Error}", LogRedactor.Url(CloudServerUrl), result.ErrorMessage);
-                await Shell.Current.DisplayAlert("Connection Failed", $"Could not connect to WebDAV server.\n\nDetails:\n{result.ErrorMessage}", "OK");
+                await _dialog.AlertAsync("Connection Failed", $"Could not connect to WebDAV server.\n\nDetails:\n{result.ErrorMessage}", "OK");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "WebDAV connection test error — server: {ServerUrl}", CloudServerUrl);
-            await Shell.Current.DisplayAlert("Connection Error", $"An error occurred: {ex.Message}", "OK");
+            await _dialog.AlertAsync("Connection Error", $"An error occurred: {ex.Message}", "OK");
         }
     }
 
@@ -437,7 +438,7 @@ public partial class SettingsViewModel : BaseViewModel
 
         if (permission != PermissionStatus.Granted)
         {
-            await Shell.Current.DisplayAlert("Permission Denied",
+            await _dialog.AlertAsync("Permission Denied",
                 "Permission to read audio files was denied, so a folder cannot be scanned.", "OK");
             return;
         }
@@ -460,13 +461,13 @@ public partial class SettingsViewModel : BaseViewModel
     [RelayCommand]
     private async Task ResetRjCacheAsync()
     {
-        bool confirm = await Shell.Current.DisplayAlert("Reset Cache", "Are you sure you want to clear DLsite scraping cache? This will re-scrape info on next library scan.", "Yes", "No");
+        bool confirm = await _dialog.ConfirmAsync("Reset Cache", "Are you sure you want to clear DLsite scraping cache? This will re-scrape info on next library scan.", "Yes", "No");
         if (confirm)
         {
             _logger.LogInformation("Resetting DLsite RJ works cache");
             _cacheService.ResetRjCache();
             await _mainViewModel.InitializeAsync();
-            await Shell.Current.DisplayAlert("Cache Cleared", "DLsite cache has been reset.", "OK");
+            await _dialog.AlertAsync("Cache Cleared", "DLsite cache has been reset.", "OK");
             _logger.LogInformation("DLsite RJ works cache reset complete");
         }
         else
@@ -487,7 +488,7 @@ public partial class SettingsViewModel : BaseViewModel
     {
         await _logService.CopyLogsToClipboardAsync();
         _logger.LogInformation("Application logs copied to clipboard");
-        await Shell.Current.DisplayAlert("Copied", "Log content copied to clipboard.", "OK");
+        await _dialog.AlertAsync("Copied", "Log content copied to clipboard.", "OK");
     }
 
     public void CheckBatteryStatus()
@@ -526,7 +527,7 @@ public partial class SettingsViewModel : BaseViewModel
 
             if (!OperatingSystem.IsAndroidVersionAtLeast(23))
             {
-                await Shell.Current.DisplayAlert("Not Required", "Battery exemptions are not required on your version of Android.", "OK");
+                await _dialog.AlertAsync("Not Required", "Battery exemptions are not required on your version of Android.", "OK");
                 IsBatteryExempt = true;
                 return;
             }
@@ -538,7 +539,7 @@ public partial class SettingsViewModel : BaseViewModel
             if (alreadyExempt)
             {
                 _logger.LogInformation("Battery optimization already exempt");
-                await Shell.Current.DisplayAlert("Battery Optimization", "App is already set to Unrestricted (ignoring battery optimization). It will run stably in the background!", "OK");
+                await _dialog.AlertAsync("Battery Optimization", "App is already set to Unrestricted (ignoring battery optimization). It will run stably in the background!", "OK");
                 IsBatteryExempt = true;
                 return;
             }
@@ -556,10 +557,10 @@ public partial class SettingsViewModel : BaseViewModel
         catch (Exception ex)
         {
             _logger.LogError(ex, "Battery exemption request failed");
-            await Shell.Current.DisplayAlert("Request Failed", $"Could not open Battery settings directly. Please manually set Battery to 'Unrestricted' in App Info: {ex.Message}", "OK");
+            await _dialog.AlertAsync("Request Failed", $"Could not open Battery settings directly. Please manually set Battery to 'Unrestricted' in App Info: {ex.Message}", "OK");
         }
 #else
-        await Shell.Current.DisplayAlert("Battery Optimization", "Not required on this platform.", "OK");
+        await _dialog.AlertAsync("Battery Optimization", "Not required on this platform.", "OK");
 #endif
     }
 }

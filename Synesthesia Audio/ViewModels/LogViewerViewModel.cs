@@ -2,6 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Synesthesia_Audio.Services.Logging;
 
+using Synesthesia_Audio.Services;
+
 namespace Synesthesia_Audio.ViewModels;
 
 public partial class LogViewerViewModel : BaseViewModel
@@ -15,7 +17,9 @@ public partial class LogViewerViewModel : BaseViewModel
     [ObservableProperty]
     private string _modeLabel = "Last 500 lines (tap for all)";
 
-    public LogViewerViewModel(LogService logService)
+    private readonly IDialogService _dialog;
+
+    public LogViewerViewModel(LogService logService, IDialogService dialogService)
     {
         _logService = logService;
         Title = "Application Logs";
@@ -78,7 +82,7 @@ public partial class LogViewerViewModel : BaseViewModel
     private async Task CopyAsync()
     {
         await _logService.CopyLogsToClipboardAsync();
-        await Shell.Current.DisplayAlert("Copied", "Log content copied to clipboard.", "OK");
+        await _dialog.AlertAsync("Copied", "Log content copied to clipboard.", "OK");
     }
 
     [RelayCommand]

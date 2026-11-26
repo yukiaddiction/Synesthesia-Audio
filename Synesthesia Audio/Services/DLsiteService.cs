@@ -35,6 +35,7 @@ public class DLsiteService
     private readonly ITranslationService _translationService;
     private readonly NameRomanizationService _nameRomanization;
     private readonly SettingsService _settingsService;
+    private readonly IDialogService _dialog;
     private readonly ILogger<DLsiteService> _logger;
 
     /// <summary>
@@ -50,12 +51,13 @@ public class DLsiteService
     private static volatile bool _nonProductPageWarned;
     private static readonly ConcurrentDictionary<string, Task> _englishTagFetches = new();
 
-    public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, NameRomanizationService nameRomanization, SettingsService settingsService, IHttpClientFactory httpClientFactory, ILogger<DLsiteService> logger)
+    public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, NameRomanizationService nameRomanization, SettingsService settingsService, IHttpClientFactory httpClientFactory, IDialogService dialogService, ILogger<DLsiteService> logger)
     {
         _tagMappingService = tagMappingService;
         _translationService = translationService;
         _nameRomanization = nameRomanization;
         _settingsService = settingsService;
+        _dialog = dialogService;
         _logger = logger;
         // Headers, timeout and handler now come from the named client registration (DUP-02 / OVR-05).
         _httpClient = httpClientFactory.CreateClient(HttpClients.DLsite);
@@ -214,9 +216,7 @@ public class DLsiteService
                 _logger.LogWarning("DLsite unreachable — all API and HTML endpoints failed for {RjCode} (alert shown)", rjCode);
                 await MainThread.InvokeOnMainThreadAsync(async () =>
                 {
-                    var shell = Shell.Current;
-                    if (shell == null) return;
-                    await shell.DisplayAlert("DLsite Unreachable",
+                    await _dialog.AlertAsync("DLsite Unreachable",
                         "Could not reach dlsite.com to fetch work metadata.\n\n" +
                         "Possible causes:\n" +
                         "- DNS or VPN not configured to bypass region lock\n" +

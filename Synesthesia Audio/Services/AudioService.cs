@@ -22,6 +22,7 @@ public partial class AudioService : ObservableObject, IDisposable
     private readonly Cloud.LocalHttpProxy _localHttpProxy;
     private readonly PlaybackSessionService _sessionService;
     private readonly IAudioPlatformService _platformService;
+    private readonly IDialogService _dialog;
     private readonly ILogger<AudioService> _logger;
     private DateTime _lastSessionSave = DateTime.MinValue;
     private bool _isRestoringSession;
@@ -42,13 +43,14 @@ public partial class AudioService : ObservableObject, IDisposable
         _durationObserved = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
 
-    public AudioService(SettingsService settingsService, Cloud.ICloudProvider cloudProvider, Cloud.LocalHttpProxy localHttpProxy, PlaybackSessionService sessionService, IAudioPlatformService platformService, ILogger<AudioService> logger)
+    public AudioService(SettingsService settingsService, Cloud.ICloudProvider cloudProvider, Cloud.LocalHttpProxy localHttpProxy, PlaybackSessionService sessionService, IAudioPlatformService platformService, IDialogService dialogService, ILogger<AudioService> logger)
     {
         _settingsService = settingsService;
         _cloudProvider = cloudProvider;
         _localHttpProxy = localHttpProxy;
         _sessionService = sessionService;
         _platformService = platformService;
+        _dialog = dialogService;
         _logger = logger;
 
         // Set the backing field rather than the property so startup does not re-persist it.
@@ -630,9 +632,7 @@ ShowPlaybackAlertAsync(message).FireAndForget(ex => _logger.LogWarning(ex, "Back
         {
             await MainThread.InvokeOnMainThreadAsync(async () =>
             {
-                var shell = Shell.Current;
-                if (shell != null)
-                    await shell.DisplayAlert("Playback Error", message, "OK");
+                await _dialog.AlertAsync("Playback Error", message);
             });
         }
         catch (Exception ex)

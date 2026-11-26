@@ -15,6 +15,7 @@ public partial class AlbumViewModel : BaseViewModel
     private readonly DLsiteService _dlsiteService;
     private readonly ITranslationService _translationService;
     private readonly ILogger<AlbumViewModel> _logger;
+    private readonly IDialogService _dialog;
 
     private WorkMetadata? _album;
     public WorkMetadata? Album
@@ -35,7 +36,7 @@ public partial class AlbumViewModel : BaseViewModel
         .Where(t => !string.IsNullOrEmpty(t))
         .ToList() ?? new();
 
-    public AlbumViewModel(AudioService audioService, LibraryCacheService cacheService, DLsiteService dlsiteService, ITranslationService translationService, ILogger<AlbumViewModel> logger)
+    public AlbumViewModel(AudioService audioService, LibraryCacheService cacheService, DLsiteService dlsiteService, ITranslationService translationService, IDialogService dialogService, ILogger<AlbumViewModel> logger)
     {
         AudioService = audioService;
         _cacheService = cacheService;
@@ -51,7 +52,7 @@ public partial class AlbumViewModel : BaseViewModel
 
         if (_translationService.RateLimitRemaining is { } pending)
         {
-            await Shell.Current.DisplayAlert("Please wait",
+            await _dialog.AlertAsync("Please wait",
                 $"Translation services are busy. Try again in {(int)Math.Ceiling(pending.TotalSeconds)} seconds.", "OK");
             return;
         }
@@ -67,15 +68,15 @@ public partial class AlbumViewModel : BaseViewModel
             OnPropertyChanged(nameof(GenreTags));
 
             if (_translationService.RateLimitRemaining is { } cooldown)
-                await Shell.Current.DisplayAlert("Please wait",
+                await _dialog.AlertAsync("Please wait",
                     $"Too many translations at once. Try again in {(int)Math.Ceiling(cooldown.TotalSeconds)} seconds.", "OK");
             else if (_translationService.LastError != null)
-                await Shell.Current.DisplayAlert("Translation", _translationService.LastError, "OK");
+                await _dialog.AlertAsync("Translation", _translationService.LastError, "OK");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Translation error for work: {Title}", Album.Title);
-            await Shell.Current.DisplayAlert("Translation Error", $"Could not translate: {ex.Message}", "OK");
+            await _dialog.AlertAsync("Translation Error", $"Could not translate: {ex.Message}", "OK");
         }
         finally
         {

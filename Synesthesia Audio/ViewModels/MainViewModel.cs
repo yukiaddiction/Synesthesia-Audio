@@ -21,6 +21,7 @@ public partial class MainViewModel : BaseViewModel
 
     private readonly LibraryCacheService _cacheService;
     private readonly ILogger<MainViewModel> _logger;
+    private readonly IDialogService _dialog;
 
     public ObservableCollection<WorkMetadata> Albums { get; set; } = new();
 
@@ -83,7 +84,7 @@ public partial class MainViewModel : BaseViewModel
 
     public bool HasFolderSelected => !string.IsNullOrEmpty(_settingsService.CurrentSettings.BaseAudioFolderPath);
 
-    public MainViewModel(ScanFolderService scanService, SettingsService settingsService, LibraryCacheService cacheService, ScanStateService scanStateService, ILogger<MainViewModel> logger)
+    public MainViewModel(ScanFolderService scanService, SettingsService settingsService, LibraryCacheService cacheService, ScanStateService scanStateService, IDialogService dialogService, ILogger<MainViewModel> logger)
     {
         _logger = logger;
         var savedFilter = Preferences.Get("LastSelectedFilter", FilterAllAge);
@@ -232,7 +233,7 @@ public partial class MainViewModel : BaseViewModel
             if (!state.AlertShown)
             {
                 _scanStateService.MarkAlertShown();
-                await Shell.Current.DisplayAlert("Scan Failed",
+                await _dialog.AlertAsync("Scan Failed",
                     state.ErrorMessage ?? "The last library scan failed for an unknown reason.", "OK");
             }
             return;
@@ -243,7 +244,7 @@ public partial class MainViewModel : BaseViewModel
             if (!state.AlertShown)
             {
                 _scanStateService.MarkAlertShown();
-                await Shell.Current.DisplayAlert("Scan Complete",
+                await _dialog.AlertAsync("Scan Complete",
                     $"Found {state.WorksFound} works ({state.TotalFiles} audio files).", "OK");
             }
         }
@@ -253,7 +254,7 @@ public partial class MainViewModel : BaseViewModel
     {
         _scanStateService.MarkInterrupted("The previous scan was interrupted while the app was closed.");
 
-        var resume = await Shell.Current.DisplayAlert("Scan Interrupted",
+        var resume = await _dialog.ConfirmAsync("Scan Interrupted",
             $"The previous library scan was interrupted while the app was closed.\n\nIt had reached {Math.Round(state.Progress * 100)}% before stopping.\n\nResume the scan now?",
             "Resume Scan", "Later");
 
@@ -270,7 +271,7 @@ public partial class MainViewModel : BaseViewModel
         var basePath = _settingsService.CurrentSettings.BaseAudioFolderPath;
         if (string.IsNullOrEmpty(basePath))
         {
-            await Shell.Current.DisplayAlert("Not Configured", "Please pick a library folder in Settings first.", "OK");
+            await _dialog.AlertAsync("Not Configured", "Please pick a library folder in Settings first.", "OK");
             return;
         }
 
@@ -334,12 +335,12 @@ public partial class MainViewModel : BaseViewModel
 
         if (state.Status == ScanStatus.Failed)
         {
-            _ = Shell.Current.DisplayAlert("Scan Failed",
+            _ = _dialog.AlertAsync("Scan Failed",
                 state.ErrorMessage ?? "The library scan failed.", "OK");
         }
         else if (state.Status == ScanStatus.Completed)
         {
-            _ = Shell.Current.DisplayAlert("Scan Complete",
+            _ = _dialog.AlertAsync("Scan Complete",
                 $"Found {state.WorksFound} works ({state.TotalFiles} audio files).", "OK");
         }
     }
@@ -458,7 +459,7 @@ public partial class MainViewModel : BaseViewModel
     [RelayCommand]
     private async Task ShowSortOptionsAsync()
     {
-        var choice = await Shell.Current.DisplayActionSheet("Sort By", "Cancel", null, SortOptions);
+        var choice = await _dialog.ChooseAsync("Sort By", "Cancel", SortOptions);
         if (string.IsNullOrEmpty(choice) || choice == "Cancel") return;
         SortOption = choice;
     }
@@ -473,7 +474,7 @@ public partial class MainViewModel : BaseViewModel
         {
             if (string.IsNullOrEmpty(pathToScan))
             {
-                await Shell.Current.DisplayAlert("Not Configured", "Please configure your WebDAV cloud server URL and remote library folder in Settings first.", "OK");
+                await _dialog.AlertAsync("Not Configured", "Please configure your WebDAV cloud server URL and remote library folder in Settings first.", "OK");
                 return;
             }
         }
@@ -493,7 +494,7 @@ public partial class MainViewModel : BaseViewModel
 
                     if (status != PermissionStatus.Granted)
                     {
-                        await Shell.Current.DisplayAlert("Permission Denied", "Permission to read audio files was denied. The app cannot scan the library.", "OK");
+                        await _dialog.AlertAsync("Permission Denied", "Permission to read audio files was denied. The app cannot scan the library.", "OK");
                         return;
                     }
 #endif
@@ -511,7 +512,7 @@ public partial class MainViewModel : BaseViewModel
                 }
                 catch (Exception ex)
                 {
-                    await Shell.Current.DisplayAlert("Error", ex.Message, "OK");
+                    await _dialog.AlertAsync("Error", ex.Message, "OK");
                     return;
                 }
             }
@@ -520,7 +521,7 @@ public partial class MainViewModel : BaseViewModel
                 // Ask before clearing: a folder on an unmounted SD card or a temporarily unavailable network
                 // share is not necessarily gone, and wiping the setting silently made the user re-pick it and
                 // lose every cached work keyed to that path (BUG-m-18).
-                var repick = await Shell.Current.DisplayAlert(
+                var repick = await _dialog.ConfirmAsync(
                     "Folder Not Found",
                     $"The configured folder could not be opened:\n{pathToScan}\n\n" +
                     "It may be on a drive that is not connected right now. Pick another folder?",
@@ -567,7 +568,7 @@ public partial class MainViewModel : BaseViewModel
             _logger.LogError(ex, "Failed to start library scan — path: {Path}", pathToScan);
             IsScanning = false;
             _scanStateService.MarkFailed($"Scan could not be started: {ex.Message}");
-            await Shell.Current.DisplayAlert("Scan Error",
+            await _dialog.AlertAsync("Scan Error",
                 $"Scan failed to start. Check your connection and folder permissions.\n\nPath: {pathToScan}",
                 "OK");
         }

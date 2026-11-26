@@ -40,6 +40,7 @@ public static class MauiProgram
         // builder.Logging. One registration is enough, and the duplicate emitted every line twice (PAT-10).
 
         builder.Services.AddSingleton<LogService>();
+        builder.Services.AddSingleton<IDialogService, DialogService>();
         builder.Services.AddSingleton<ISecureStore, SecureStore>();
         builder.Services.AddSingleton<SettingsService>();
         builder.Services.AddSingleton<TagMappingService>();
