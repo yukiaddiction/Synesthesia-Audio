@@ -235,16 +235,25 @@ public class SettingsPage : ContentPage
                     {
                         CreateFormLabel("Base Audio Folder Path"),
 
-                        new HorizontalStackLayout
+                        // Star column for the field, auto for the button: the path field shrinks to fit a
+                        // phone instead of pushing the button off the edge (UX-09).
+                        new Grid
                         {
-                            Spacing = AppLayout.SpacingLarge,
+                            ColumnDefinitions =
+                            {
+                                new ColumnDefinition(GridLength.Star),
+                                new ColumnDefinition(GridLength.Auto)
+                            },
+                            ColumnSpacing = AppLayout.SpacingLarge,
                             Children =
                             {
                                 GlassTheme.FormEntry(placeholder: "e.g. D:\\Audio", isReadOnly: true, fillWidth: true)
-                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.BaseAudioFolderPath)),
+                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.BaseAudioFolderPath))
+                                    .Column(0),
 
                                 GlassTheme.PillButton("Browse", AppFontSizes.Body)
                                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.PickFolderCommand))
+                                    .Column(1)
                             }
                         }
                     }
@@ -270,16 +279,23 @@ public class SettingsPage : ContentPage
 
                         CreateFormLabel("Remote Library Folder Path"),
 
-                        new HorizontalStackLayout
+                        new Grid
                         {
-                            Spacing = AppLayout.SpacingLarge,
+                            ColumnDefinitions =
+                            {
+                                new ColumnDefinition(GridLength.Star),
+                                new ColumnDefinition(GridLength.Auto)
+                            },
+                            ColumnSpacing = AppLayout.SpacingLarge,
                             Children =
                             {
                                 GlassTheme.FormEntry(placeholder: "e.g. /Audio (leave blank for root)", fillWidth: true)
-                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.BaseAudioFolderPath)),
+                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.BaseAudioFolderPath))
+                                    .Column(0),
 
                                 GlassTheme.PillButton("Browse", AppFontSizes.Body)
                                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.BrowseCloudFolderCommand))
+                                    .Column(1)
                             }
                         },
 
@@ -538,11 +554,12 @@ public class SettingsPage : ContentPage
                     {
                         GlassTheme.PillButton("View Logs", AppFontSizes.ButtonMedium, accent: true, height: AppLayout.ButtonHeightCompact)
                             .Bind(Button.CommandProperty, nameof(SettingsViewModel.ViewLogsCommand))
-                            .Invoke(b => b.WidthRequest = 110),
+                            // No fixed width: the button fills its column so a narrow layout shrinks it (UX-09).
+                            .Invoke(b => b.HorizontalOptions = LayoutOptions.Fill),
 
                         GlassTheme.PillButton("Copy Logs", AppFontSizes.ButtonMedium, height: AppLayout.ButtonHeightCompact)
                             .Bind(Button.CommandProperty, nameof(SettingsViewModel.CopyLogsCommand))
-                            .Invoke(b => b.WidthRequest = 110)
+                            .Invoke(b => b.HorizontalOptions = LayoutOptions.Fill)
                     }
                 }
                 .Column(1)

@@ -36,16 +36,10 @@ public class TagMappingPage : ContentPage
             .AppThemeBinding(SearchBar.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
             .AppThemeBinding(SearchBar.PlaceholderColorProperty, AppColors.TextTertiaryLight, AppColors.TextSecondaryDark);
 
-        _jpEntry = new Entry { Placeholder = "Japanese Tag", WidthRequest = 150 };
-        _jpEntry
-            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
-
-        _engEntry = new Entry { Placeholder = "English Translation", WidthRequest = 150 };
-        _engEntry
-            .AppThemeBinding(Entry.TextColorProperty, AppColors.TextFormInputLight, AppColors.TextFormInputDark)
-            .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
-
+        // No fixed widths: the row is a Grid with star columns now, so it fits a phone instead of
+        // running off the edge (UX-09).
+        _jpEntry = GlassTheme.FormEntry(placeholder: "Japanese Tag", fillWidth: true);
+        _engEntry = GlassTheme.FormEntry(placeholder: "English Translation", fillWidth: true);
         var addBtn = GlassTheme.PillButton("Add", AppFontSizes.Body, accent: true, height: AppLayout.ButtonHeightCompact);
         addBtn.Clicked += (_, _) =>
         {
@@ -88,10 +82,18 @@ public class TagMappingPage : ContentPage
                     new Label { Text = "Add Custom Mapping", FontAttributes = AppFonts.Bold, FontSize = AppFontSizes.Body }
                         .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
 
-                    new HorizontalStackLayout
+                    // Star columns with a minimum width each: the fields share the available width and the
+                    // button keeps its natural size, so nothing overflows on a narrow phone (UX-09).
+                    new Grid
                     {
-                        Spacing = AppLayout.SpacingLarge,
-                        Children = { _jpEntry, _engEntry, addBtn }
+                        ColumnDefinitions =
+                        {
+                            new ColumnDefinition(GridLength.Star),
+                            new ColumnDefinition(GridLength.Star),
+                            new ColumnDefinition(GridLength.Auto)
+                        },
+                        ColumnSpacing = AppLayout.SpacingLarge,
+                        Children = { _jpEntry.Column(0), _engEntry.Column(1), addBtn.Column(2) }
                     },
 
                     cleanBtn
