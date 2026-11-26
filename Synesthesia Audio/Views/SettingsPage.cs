@@ -457,9 +457,8 @@ public class SettingsPage : ContentPage
                             {
                                 try
                                 {
-                                    cacheService.CleanAndReMapAllWorkGenres(tagService);
-                                    await mainViewModel.InitializeAsync();
-                                    await DisplayAlert("Tags Cleaned", "Successfully removed bad dictionary entries and re-mapped all library work tags to clean English!", "OK");
+                                    await Services.TagCleanup.RunAsync(cacheService, tagService, mainViewModel.InitializeAsync);
+                                    await DisplayAlert("Tags Cleaned", Services.TagCleanup.SuccessMessage, "OK");
                                 }
                                 catch (Exception ex)
                                 {

@@ -396,21 +396,14 @@ public partial class AudioService : ObservableObject, IDisposable
 
         // A remote path never exists on the local disk, so this check must only apply to local storage.
         // Running it first made WebDAV session restore dead code.
-        var isCloudSession = Synesthesia_Audio.Core.StorageTypes.IsWebDav(_settingsService.CurrentSettings.StorageType);
+        var isCloudSession = IsCloudLibrary();
         if (!isCloudSession && !File.Exists(sessionTrack.FilePath)) return;
 
         Track track;
         // rebuild playlist from session DTOs
         lock (_playlistLock)
         {
-            _playlist = session.Playlist.Select(s => new Track
-            {
-                Title = s.Title,
-                TranslatedTitle = s.TranslatedTitle,
-                FilePath = s.FilePath,
-                CoverImagePath = s.CoverImagePath,
-                VoiceActors = s.VoiceActors
-            }).ToList();
+            _playlist = session.Playlist.Select(ToTrack).ToList();
             _currentIndex = session.CurrentTrackIndex;
             track = _playlist[_currentIndex];
         }
@@ -482,7 +475,7 @@ PlayTrackInternalAsync(track).FireAndForget(ex => _logger.LogWarning(ex, "Backgr
     {
         if (track == null || _mediaElement == null) return;
 
-        var isCloud = Synesthesia_Audio.Core.StorageTypes.IsWebDav(_settingsService.CurrentSettings.StorageType);
+        var isCloud = IsCloudLibrary();
 
         // Validate before touching any state. A missing file used to become CurrentTrack, get written to
         // the saved session, and leave the buffering spinner turning forever.
@@ -827,6 +820,32 @@ _sessionService.ClearAsync().FireAndForget(ex => _logger.LogWarning(ex, "Backgro
         }
     }
 
+    /// <summary>
+    /// The two directions of the Track / PlaybackSessionTrack mapping, in one place: they have to stay in
+    /// step, and a field added to one but not the other silently dropped from the saved session (DUP-08).
+    /// </summary>
+    private static Track ToTrack(PlaybackSessionTrack saved) => new()
+    {
+        Title = saved.Title,
+        TranslatedTitle = saved.TranslatedTitle,
+        FilePath = saved.FilePath,
+        CoverImagePath = saved.CoverImagePath,
+        VoiceActors = saved.VoiceActors
+    };
+
+    private static PlaybackSessionTrack ToSessionTrack(Track track) => new()
+    {
+        Title = track.Title,
+        TranslatedTitle = track.TranslatedTitle,
+        FilePath = track.FilePath,
+        CoverImagePath = track.CoverImagePath,
+        VoiceActors = track.VoiceActors
+    };
+
+    /// <summary>True when the library is streamed from WebDAV rather than read from local disk.</summary>
+    private bool IsCloudLibrary() =>
+        Synesthesia_Audio.Core.StorageTypes.IsWebDav(_settingsService.CurrentSettings.StorageType);
+
     private PlaybackSessionState? _lastSavedSession;
     private readonly object _lastSessionLock = new();
 
@@ -873,14 +892,7 @@ _sessionService.ClearAsync().FireAndForget(ex => _logger.LogWarning(ex, "Backgro
         var dto = new PlaybackSessionState
         {
             AlbumFolderPath = _currentAlbumFolderPath,
-            Playlist = snapshot.Select(t => new PlaybackSessionTrack
-            {
-                Title = t.Title,
-                TranslatedTitle = t.TranslatedTitle,
-                FilePath = t.FilePath,
-                CoverImagePath = t.CoverImagePath,
-                VoiceActors = t.VoiceActors
-            }).ToList(),
+            Playlist = snapshot.Select(ToSessionTrack).ToList(),
             CurrentTrackIndex = index,
             PositionSeconds = Position.TotalSeconds,
             LoopMode = CurrentLoopMode

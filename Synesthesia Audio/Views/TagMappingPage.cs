@@ -59,10 +59,12 @@ public class TagMappingPage : ContentPage
         {
             try
             {
-                _cacheService.CleanAndReMapAllWorkGenres(_tagService);
-                await _mainViewModel.InitializeAsync();
-                LoadData();
-                await DisplayAlert("Tags Cleaned", "Successfully removed bad dictionary entries and re-mapped all library work tags to clean English!", "OK");
+                await Services.TagCleanup.RunAsync(_cacheService, _tagService, async () =>
+                {
+                    await _mainViewModel.InitializeAsync();
+                    LoadData();
+                });
+                await DisplayAlert("Tags Cleaned", Services.TagCleanup.SuccessMessage, "OK");
             }
             catch (Exception ex)
             {
@@ -166,8 +168,10 @@ public class TagMappingPage : ContentPage
                 (jp, eng) =>
                 {
                     _tagService.AddOrUpdateMapping(jp, eng);
-                    _cacheService.CleanAndReMapAllWorkGenres(_tagService);
-                    _ = RefreshLibraryAsync();
+                    // The remap walks every cached work, so it runs off the UI thread; it used to block the
+                    // page for the whole library on every row save (PERF-09).
+                    Task.Run(() => _cacheService.CleanAndReMapAllWorkGenres(_tagService))
+                        .ContinueWith(_ => RefreshLibraryAsync(), TaskScheduler.FromCurrentSynchronizationContext());
                 },
                 (jp) =>
                 {

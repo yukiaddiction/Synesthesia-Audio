@@ -17,34 +17,49 @@ public class LogService
         if (!Directory.Exists(logDir))
             return "No logs recorded yet.";
 
-        var files = GetSortedLogFiles(logDir);
-        var lines = new StringBuilder();
+        // Read the end of the newest logs only. This used to read every file in full and split the result, so
+        // opening the viewer read megabytes to show a few hundred lines (PERF-11).
+        var files = GetSortedLogFiles(logDir).Reverse().ToList();
+        var collected = new List<string>(lineCount);
 
         foreach (var file in files)
         {
+            if (collected.Count >= lineCount) break;
+
             try
             {
-                var content = await File.ReadAllTextAsync(file);
-                lines.Append(content);
+                var chunk = await ReadTailChunkAsync(file, lineCount - collected.Count).ConfigureAwait(false);
+                collected.InsertRange(0, chunk);
             }
             catch (IOException)
             {
+                // A log the writer still has open: skip it rather than failing the whole view.
             }
         }
 
-        var allText = lines.ToString();
-        var allSplit = allText.Split(new[] { Environment.NewLine, "\n" }, StringSplitOptions.None);
+        return string.Join(Environment.NewLine, collected).TrimEnd();
+    }
 
-        if (allSplit.Length <= lineCount)
-            return allText.TrimEnd();
+    /// <summary>How much of the end of a log file to read before trimming to whole lines.</summary>
+    private const int TailChunkBytes = 256 * 1024;
 
-        var tail = new StringBuilder();
-        for (int i = Math.Max(0, allSplit.Length - lineCount); i < allSplit.Length; i++)
-        {
-            tail.AppendLine(allSplit[i]);
-        }
+    private static async Task<IReadOnlyList<string>> ReadTailChunkAsync(string path, int maxLines)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
 
-        return tail.ToString().TrimEnd();
+        var length = stream.Length;
+        var bytesToRead = (int)Math.Min(length, TailChunkBytes);
+        var startedMidFile = bytesToRead < length;
+
+        if (bytesToRead <= 0) return Array.Empty<string>();
+
+        stream.Seek(length - bytesToRead, SeekOrigin.Begin);
+
+        var buffer = new byte[bytesToRead];
+        var read = await stream.ReadAsync(buffer).ConfigureAwait(false);
+
+        var text = System.Text.Encoding.UTF8.GetString(buffer, 0, read);
+        return Synesthesia_Audio.Core.LogTail.LastLines(text, maxLines, dropPartialFirstLine: startedMidFile);
     }
 
     public async Task<string> ReadAllLogsAsync()
