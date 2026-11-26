@@ -42,64 +42,7 @@ public class AlbumPage : ContentPage
             StrokeThickness = 0,
             HeightRequest = AppLayout.GlassHeroHeight,
             Padding = 0,
-            Content = new Grid
-            {
-                Children =
-                {
-                    new Grid
-                    {
-                        BackgroundColor = AppColors.CoverPlaceholder,
-                        Children =
-                        {
-                            new Label
-                            {
-                                Text = "\uD83C\uDFB5",
-                                FontSize = AppFontSizes.CoverPlaceholderIcon,
-                                HorizontalOptions = LayoutOptions.Center,
-                                VerticalOptions = LayoutOptions.Center
-                            }
-                        }
-                    }
-                    .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.CoverImagePath)}", converter: new EmptyStringToTrueConverter()),
-
-                    new Image { Aspect = Aspect.AspectFill }
-                        // Hero artwork was the one surface still decoding the full-size cover (PERF-08).
-                        .Bind(Image.SourceProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.CoverImagePath)}",
-                            converter: new CoverThumbnailConverter { Edge = Synesthesia_Audio.Core.CoverThumbnails.CardEdge })
-                        .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.CoverImagePath)}", converter: new EmptyStringToFalseConverter()),
-
-                    // Scrim so the overlapping sheet above the artwork reads as depth, not as a seam.
-                    new Border
-                    {
-                        StrokeThickness = 0,
-                        VerticalOptions = LayoutOptions.End,
-                        HeightRequest = 130,
-                        Background = new LinearGradientBrush
-                        {
-                            StartPoint = new Point(0, 0),
-                            EndPoint = new Point(0, 1),
-                            GradientStops =
-                            {
-                                new GradientStop(Color.FromArgb("#00000000"), 0f),
-                                new GradientStop(Color.FromArgb("#59000000"), 1f)
-                            }
-                        }
-                    },
-
-                    new Border
-                    {
-                        BackgroundColor = AppColors.RjBadge,
-                        Padding = new Thickness(8, 4),
-                        StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius },
-                        HorizontalOptions = LayoutOptions.Start,
-                        VerticalOptions = LayoutOptions.Start,
-                        Margin = new Thickness(12),
-                        Content = new Label { TextColor = Colors.White, FontSize = AppFontSizes.Caption, FontAttributes = AppFonts.Bold }
-                            .Bind(Label.TextProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.ProductId)}")
-                    }
-                    .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.IsDlsiteWork)}")
-                }
-            }
+            Content = BuildHeroCover()
         };
 
         var chips = new HorizontalStackLayout
@@ -348,6 +291,59 @@ public class AlbumPage : ContentPage
         scaffold.LayoutModeChanged += (_, wide) => ApplyAlbumLayout(contentGrid, metaColumn, tracksPanel, wide);
 
         Content = scaffold;
+    }
+
+    /// <summary>
+    /// The hero artwork: the shared cover component plus the two things only the hero has - the scrim that
+    /// makes the sheet above it read as depth, and the product-id badge.
+    /// </summary>
+    private static Grid BuildHeroCover()
+    {
+        var pathBinding = $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.CoverImagePath)}";
+
+        var cover = CoverImageView.Create(
+            pathBinding,
+            Synesthesia_Audio.Core.CoverThumbnails.CardEdge,
+            placeholderContent: new Label
+            {
+                Text = "\uD83C\uDFB5",
+                FontSize = AppFontSizes.CoverPlaceholderIcon,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center
+            });
+
+        // Scrim so the overlapping sheet above the artwork reads as depth, not as a seam.
+        cover.Children.Add(new Border
+        {
+            StrokeThickness = 0,
+            VerticalOptions = LayoutOptions.End,
+            HeightRequest = 130,
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new Point(0, 0),
+                EndPoint = new Point(0, 1),
+                GradientStops =
+                {
+                    new GradientStop(Color.FromArgb("#00000000"), 0f),
+                    new GradientStop(Color.FromArgb("#59000000"), 1f)
+                }
+            }
+        });
+
+        cover.Children.Add(new Border
+        {
+            BackgroundColor = AppColors.RjBadge,
+            Padding = new Thickness(8, 4),
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius },
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Start,
+            Margin = new Thickness(12),
+            Content = new Label { TextColor = Colors.White, FontSize = AppFontSizes.Caption, FontAttributes = AppFonts.Bold }
+                .Bind(Label.TextProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.ProductId)}")
+        }
+        .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.IsDlsiteWork)}"));
+
+        return cover;
     }
 
     private static void ApplyAlbumLayout(Grid grid, View metaColumn, View tracksPanel, bool wide)
