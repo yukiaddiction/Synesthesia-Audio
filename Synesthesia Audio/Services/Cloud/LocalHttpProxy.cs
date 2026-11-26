@@ -26,17 +26,13 @@ namespace Synesthesia_Audio.Services.Cloud;
 /// </summary>
 public class LocalHttpProxy : IDisposable
 {
-    private static readonly ConcurrentQueue<string> _appLog = new();
-    private const int MaxLogEntries = 500;
     private static ILogger? _staticLogger;
 
-    public static void Log(string msg)
-    {
-        var entry = $"[{DateTime.Now:HH:mm:ss.fff}] {msg}";
-        _appLog.Enqueue(entry);
-        while (_appLog.Count > MaxLogEntries) _appLog.TryDequeue(out _);
-        _staticLogger?.LogDebug("[LocalHttpProxy] {Message}", msg);
-    }
+    /// <summary>
+    /// Diagnostics go to the application log. This used to also push into a private ring buffer that nothing
+    /// ever read, so the same information existed twice and only one copy was reachable (OVR-07).
+    /// </summary>
+    public static void Log(string msg) => _staticLogger?.LogDebug("[LocalHttpProxy] {Message}", msg);
 
     private volatile TcpListener? _listener;
     private readonly ICloudProvider _cloudProvider;
@@ -66,18 +62,6 @@ public class LocalHttpProxy : IDisposable
 
     public bool IsRunning => _isRunning;
     public int Port => _port;
-
-    public IReadOnlyList<string> Entries
-    {
-        get
-        {
-            var entries = _appLog.ToList();
-            entries.Reverse();
-            return entries;
-        }
-    }
-
-    public string LogText => string.Join("\n", Entries);
 
     private void AddLog(string msg)
     {
@@ -337,24 +321,9 @@ public class LocalHttpProxy : IDisposable
     {
         var statusCode = (int)webDavResponse.StatusCode;
         var reason = webDavResponse.ReasonPhrase ?? string.Empty;
-        var statusText = statusCode switch
-        {
-            200 => "OK",
-            206 => "Partial Content",
-            301 => "Moved Permanently",
-            302 => "Found",
-            304 => "Not Modified",
-            400 => "Bad Request",
-            401 => "Unauthorized",
-            403 => "Forbidden",
-            404 => "Not Found",
-            405 => "Method Not Allowed",
-            416 => "Range Not Satisfiable",
-            500 => "Internal Server Error",
-            502 => "Bad Gateway",
-            503 => "Service Unavailable",
-            _ => reason.Length > 0 ? reason : "OK"
-        };
+        // The status line is built from the server's own reason phrase: the hand-written table said "OK" for
+        // every code it did not list, which is how a 429 once looked like success in the proxy log (OVR-07).
+        var statusText = reason.Length > 0 ? reason : "Unknown";
 
         var serverContentType = webDavResponse.Content.Headers.ContentType?.MediaType;
         var contentType = serverContentType ?? "audio/mpeg";

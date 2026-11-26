@@ -38,7 +38,6 @@ public class App : Application
         _logger = logger;
         UserAppTheme = settingsService.CurrentSettings.IsDarkMode ? AppTheme.Dark : AppTheme.Light;
 
-        Styles.AppFontSizes.Initialize();
         _logger.LogInformation("App started — theme: {Theme}", UserAppTheme);
     }
 
