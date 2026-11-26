@@ -11,6 +11,12 @@ using Synesthesia_Audio.Services;
 
 namespace Synesthesia_Audio.Platforms.Android;
 
+
+/// <summary>One resolved logger for this file (framework-created classes cannot take a dependency) — PAT-01.</summary>
+internal static class FileLog87377
+{
+    internal static readonly ILogger<ScanForegroundService> Logger = Services.Logging.AppLog.Get<ScanForegroundService>();
+}
 [Service(ForegroundServiceType = ForegroundService.TypeDataSync, Exported = false)]
 public class ScanForegroundService : Service
 {
@@ -33,7 +39,7 @@ public class ScanForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            Services.Logging.AppLog.Get<ScanForegroundService>().LogError(ex, "ScanForegroundService: OnCreate channel creation failed");
+            FileLog87377.Logger.LogError(ex, "ScanForegroundService: OnCreate channel creation failed");
         }
     }
 
@@ -45,7 +51,7 @@ public class ScanForegroundService : Service
             // same cache, and the first one's failure list clobbered by the second (BUG-m-02).
             if (_isRunning)
             {
-                Services.Logging.AppLog.Get<ScanForegroundService>()
+                FileLog87377.Logger
                     .LogInformation("ScanForegroundService: scan already running, ignoring duplicate start");
                 return StartCommandResult.NotSticky;
             }
@@ -54,11 +60,11 @@ public class ScanForegroundService : Service
             _isRunning = true;
             StartForeground(NOTIFICATION_ID, BuildNotification("Scanning library...", "Preparing...", 0));
             _cts = new CancellationTokenSource();
-            RunScanAsync(_cts.Token).FireAndForget(ex =>  Services.Logging.AppLog.Get<ScanForegroundService>().LogError(ex, "ScanForegroundService: background scan faulted"));
+            RunScanAsync(_cts.Token).FireAndForget(ex =>  FileLog87377.Logger.LogError(ex, "ScanForegroundService: background scan faulted"));
         }
         catch (System.Exception ex)
         {
-            Services.Logging.AppLog.Get<ScanForegroundService>().LogError(ex, "ScanForegroundService: OnStartCommand failed");
+            FileLog87377.Logger.LogError(ex, "ScanForegroundService: OnStartCommand failed");
             _isRunning = false;
             StopSelf();
         }
@@ -99,7 +105,7 @@ public class ScanForegroundService : Service
                 }
                 catch (System.Exception ex)
                 {
-                    Services.Logging.AppLog.Get<ScanForegroundService>().LogWarning(ex, "ScanForegroundService: notification update failed");
+                    FileLog87377.Logger.LogWarning(ex, "ScanForegroundService: notification update failed");
                 }
             });
 
@@ -107,14 +113,14 @@ public class ScanForegroundService : Service
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<ScanForegroundService>().LogError(ex, "Background scan failed");
+            FileLog87377.Logger.LogError(ex, "Background scan failed");
             try
             {
                 stateService?.MarkFailed($"Background scan failed: {ex.Message}");
             }
             catch (System.Exception stateEx)
             {
-                Services.Logging.AppLog.Get<ScanForegroundService>().LogError(stateEx, "ScanForegroundService: failed to record scan failure");
+                FileLog87377.Logger.LogError(stateEx, "ScanForegroundService: failed to record scan failure");
             }
         }
         finally
@@ -136,7 +142,7 @@ public class ScanForegroundService : Service
             }
             catch (System.Exception stopEx)
             {
-                Services.Logging.AppLog.Get<ScanForegroundService>().LogWarning(stopEx, "ScanForegroundService: stop failed");
+                FileLog87377.Logger.LogWarning(stopEx, "ScanForegroundService: stop failed");
             }
         }
     }
@@ -151,7 +157,7 @@ public class ScanForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            Services.Logging.AppLog.Get<ScanForegroundService>().LogWarning(ex, "ScanForegroundService: cleanup failed");
+            FileLog87377.Logger.LogWarning(ex, "ScanForegroundService: cleanup failed");
         }
         _isRunning = false;
         base.OnDestroy();
@@ -165,13 +171,13 @@ public class ScanForegroundService : Service
     {
         try
         {
-            Services.Logging.AppLog.Get<ScanForegroundService>()
+            FileLog87377.Logger
                 .LogWarning("ScanForegroundService: foreground timeout, cancelling the scan");
             _cts?.Cancel();
         }
         catch (System.Exception ex)
         {
-            Services.Logging.AppLog.Get<ScanForegroundService>().LogWarning(ex, "ScanForegroundService: timeout handling failed");
+            FileLog87377.Logger.LogWarning(ex, "ScanForegroundService: timeout handling failed");
         }
 
         StopSelf(startId);
@@ -220,7 +226,7 @@ public class ScanForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            Services.Logging.AppLog.Get<ScanForegroundService>().LogError(ex, "ScanForegroundService: Start failed");
+            FileLog87377.Logger.LogError(ex, "ScanForegroundService: Start failed");
         }
     }
 }

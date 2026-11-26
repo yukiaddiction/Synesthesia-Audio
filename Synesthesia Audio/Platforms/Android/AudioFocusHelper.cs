@@ -6,6 +6,12 @@ using Microsoft.Maui.ApplicationModel;
 
 namespace Synesthesia_Audio.Platforms.Android;
 
+
+/// <summary>One resolved logger for this file (framework-created classes cannot take a dependency) — PAT-01.</summary>
+internal static class FileLog79371
+{
+    internal static readonly ILogger<AudioFocusHelper> Logger = Synesthesia_Audio.Services.Logging.AppLog.Get<AudioFocusHelper>();
+}
 internal class AudioFocusHelper : Java.Lang.Object, AudioManager.IOnAudioFocusChangeListener
 {
     private static AudioFocusHelper? _instance;
@@ -68,12 +74,12 @@ internal class AudioFocusHelper : Java.Lang.Object, AudioManager.IOnAudioFocusCh
             }
 
             _hasFocus = result == AudioFocusRequest.Granted;
-            Synesthesia_Audio.Services.Logging.AppLog.Get<AudioFocusHelper>().LogInformation("AudioFocus request result: {Result}, hasFocus: {HasFocus}", result, _hasFocus);
+            FileLog79371.Logger.LogInformation("AudioFocus request result: {Result}, hasFocus: {HasFocus}", result, _hasFocus);
             return _hasFocus;
         }
         catch (Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<AudioFocusHelper>().LogWarning(ex, "Audio focus request failed");
+            FileLog79371.Logger.LogWarning(ex, "Audio focus request failed");
             return true;
         }
     }
@@ -103,7 +109,7 @@ internal class AudioFocusHelper : Java.Lang.Object, AudioManager.IOnAudioFocusCh
         }
         catch (Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<AudioFocusHelper>().LogWarning(ex, "Audio focus abandon failed");
+            FileLog79371.Logger.LogWarning(ex, "Audio focus abandon failed");
         }
     }
 
@@ -111,7 +117,7 @@ internal class AudioFocusHelper : Java.Lang.Object, AudioManager.IOnAudioFocusCh
     {
         try
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<AudioFocusHelper>().LogInformation("AudioFocus changed: {Focus}", focusChange);
+            FileLog79371.Logger.LogInformation("AudioFocus changed: {Focus}", focusChange);
             var audioService = IPlatformApplication.Current?.Services?.GetService<Services.AudioService>();
             if (audioService == null) return;
 
@@ -150,13 +156,13 @@ internal class AudioFocusHelper : Java.Lang.Object, AudioManager.IOnAudioFocusCh
                 }
                 catch (Exception ex)
                 {
-                    Synesthesia_Audio.Services.Logging.AppLog.Get<AudioFocusHelper>().LogWarning(ex, "Audio focus change handling failed");
+                    FileLog79371.Logger.LogWarning(ex, "Audio focus change handling failed");
                 }
             });
         }
         catch (Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<AudioFocusHelper>().LogWarning(ex, "OnAudioFocusChange failed");
+            FileLog79371.Logger.LogWarning(ex, "OnAudioFocusChange failed");
         }
     }
 }
@@ -185,7 +191,7 @@ internal static class WakeLockHelper
             }
             catch (Exception ex)
             {
-                Synesthesia_Audio.Services.Logging.AppLog.Get<AudioFocusHelper>().LogWarning(ex, "Wake lock acquire failed");
+                FileLog79371.Logger.LogWarning(ex, "Wake lock acquire failed");
             }
         }
     }
@@ -203,7 +209,7 @@ internal static class WakeLockHelper
             }
             catch (Exception ex)
             {
-                Synesthesia_Audio.Services.Logging.AppLog.Get<AudioFocusHelper>().LogWarning(ex, "Wake lock release failed");
+                FileLog79371.Logger.LogWarning(ex, "Wake lock release failed");
             }
         }
     }

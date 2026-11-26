@@ -6,8 +6,18 @@ using Microsoft.Maui.ApplicationModel;
 
 namespace Synesthesia_Audio.Platforms.Android;
 
+
+/// <summary>Resolved once for the callback class in this file, which the framework creates (PAT-01).</summary>
+internal static class MediaSessionCallbackLog
+{
+    internal static readonly Microsoft.Extensions.Logging.ILogger<ArtworkCallback> Artwork = Synesthesia_Audio.Services.Logging.AppLog.Get<ArtworkCallback>();
+}
 internal static class MediaSessionHelper
 {
+    // A static class cannot be a generic argument, so its own marker type stays the category; the field is
+    // resolved once rather than at every catch site (PAT-01).
+    private static readonly Microsoft.Extensions.Logging.ILogger<Log> SessionLog = Synesthesia_Audio.Services.Logging.AppLog.Get<Log>();
+
     private sealed class Log { }
 
     // These are static on purpose, and are the one exception left to PAT-07: an Android media session belongs to
@@ -55,7 +65,7 @@ internal static class MediaSessionHelper
             }
             catch (Exception ex)
             {
-                Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(ex, "MediaSession: delayed wrap failed");
+                SessionLog.LogWarning(ex, "MediaSession: delayed wrap failed");
             }
         });
     }
@@ -69,7 +79,7 @@ internal static class MediaSessionHelper
         if (_reflectionMismatchReported) return;
         _reflectionMismatchReported = true;
 
-        Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(
+        SessionLog.LogWarning(
             "MediaSession: CommunityToolkit MediaElement internals changed — the Android media session could not be attached ({Detail}). " +
             "Playback still works; lock-screen and headset buttons may not. The reflection was written against toolkit 5.0.0.",
             detail);
@@ -137,7 +147,7 @@ internal static class MediaSessionHelper
 
             if (currentPlayer is CustomForwardingPlayer)
             {
-                Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogInformation("MediaSession: Player already wrapped, skipping");
+                SessionLog.LogInformation("MediaSession: Player already wrapped, skipping");
                 return;
             }
 
@@ -155,7 +165,7 @@ internal static class MediaSessionHelper
                         {
                             f.SetValue(mediaManager, wrapped);
                         }
-                        catch (Exception ex) { Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(ex, "MediaSession: Field set failed"); }
+                        catch (Exception ex) { SessionLog.LogWarning(ex, "MediaSession: Field set failed"); }
                     }
                 }
             }
@@ -171,7 +181,7 @@ internal static class MediaSessionHelper
                         {
                             p.SetValue(mediaManager, wrapped);
                         }
-                        catch (Exception ex) { Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(ex, "MediaSession: Property set failed"); }
+                        catch (Exception ex) { SessionLog.LogWarning(ex, "MediaSession: Property set failed"); }
                     }
                 }
             }
@@ -181,7 +191,7 @@ internal static class MediaSessionHelper
             if (playerView != null)
             {
                 try { playerView.Player = wrapped; }
-                catch (Exception ex) { Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(ex, "MediaSession: PlayerView set failed"); }
+                catch (Exception ex) { SessionLog.LogWarning(ex, "MediaSession: PlayerView set failed"); }
             }
 
             const long actionPlay = 1 << 2;
@@ -209,11 +219,11 @@ internal static class MediaSessionHelper
 
             _wrapped = true;
             RegisterArtworkCallback(mediaSession);
-            Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogInformation("MediaSession: Successfully wrapped player and attached QueueNavigator on MediaSessionConnector");
+            SessionLog.LogInformation("MediaSession: Successfully wrapped player and attached QueueNavigator on MediaSessionConnector");
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogError(ex, "MediaSession: Exception wrapping session player");
+            SessionLog.LogError(ex, "MediaSession: Exception wrapping session player");
         }
     }
 
@@ -226,7 +236,7 @@ internal static class MediaSessionHelper
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(ex, "MediaSession: artwork callback registration failed");
+            SessionLog.LogWarning(ex, "MediaSession: artwork callback registration failed");
         }
     }
 
@@ -251,7 +261,7 @@ internal static class MediaSessionHelper
                 }
                 catch (System.Exception ex)
                 {
-                    Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(ex, "MediaSession: artwork callback unregistration failed");
+                    SessionLog.LogWarning(ex, "MediaSession: artwork callback unregistration failed");
                 }
             }
 
@@ -260,12 +270,12 @@ internal static class MediaSessionHelper
             _wrapped = false;
             _lastAlbumFolderPath = string.Empty;
 
-            Synesthesia_Audio.Services.Logging.AppLog.Get<Log>()
+            SessionLog
                 .LogInformation("MediaSession: session state reset for the next window");
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(ex, "MediaSession: reset failed");
+            SessionLog.LogWarning(ex, "MediaSession: reset failed");
         }
     }
 }
@@ -326,7 +336,7 @@ internal class ArtworkCallback : global::Android.Support.V4.Media.Session.MediaC
         catch (System.Exception ex)
         {
             // Was an empty catch: a failure here silently left the lock screen without artwork (PAT-05).
-            Synesthesia_Audio.Services.Logging.AppLog.Get<ArtworkCallback>()
+            MediaSessionCallbackLog.Artwork
                 .LogWarning(ex, "MediaSession: re-applying artwork failed");
         }
     }

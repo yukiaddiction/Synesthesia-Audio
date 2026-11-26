@@ -8,6 +8,12 @@ using Microsoft.Extensions.Logging;
 
 namespace Synesthesia_Audio.Platforms.Android;
 
+
+/// <summary>One resolved logger for this file (framework-created classes cannot take a dependency) — PAT-01.</summary>
+internal static class FileLog31288
+{
+    internal static readonly ILogger<MediaPlaybackForegroundService> Logger = Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>();
+}
 [Service(ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeMediaPlayback)]
 public class MediaPlaybackForegroundService : Service
 {
@@ -29,7 +35,7 @@ public class MediaPlaybackForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>().LogError(ex, "ForegroundService: OnCreate channel creation failed");
+            FileLog31288.Logger.LogError(ex, "ForegroundService: OnCreate channel creation failed");
         }
     }
 
@@ -78,7 +84,7 @@ public class MediaPlaybackForegroundService : Service
             }
             catch (System.Exception ex)
             {
-                Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>().LogWarning(ex, "Notification artwork load failed");
+                FileLog31288.Logger.LogWarning(ex, "Notification artwork load failed");
             }
 
             var session = MediaSessionHelper.CurrentSession;
@@ -92,7 +98,7 @@ public class MediaPlaybackForegroundService : Service
                 }
                 catch (System.Exception ex)
                 {
-                    Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>().LogWarning(ex, "ForegroundService: media session token unavailable, clearing stale session");
+                    FileLog31288.Logger.LogWarning(ex, "ForegroundService: media session token unavailable, clearing stale session");
                     MediaSessionHelper.CurrentSession = null;
                 }
             }
@@ -101,7 +107,7 @@ public class MediaPlaybackForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>().LogError(ex, "ForegroundService: OnStartCommand failed");
+            FileLog31288.Logger.LogError(ex, "ForegroundService: OnStartCommand failed");
             try
             {
                 // This service is started with startForegroundService, so Android requires a startForeground()
@@ -112,7 +118,7 @@ public class MediaPlaybackForegroundService : Service
             }
             catch (System.Exception stopEx)
             {
-                Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>().LogError(stopEx, "ForegroundService: StopSelf failed");
+                FileLog31288.Logger.LogError(stopEx, "ForegroundService: StopSelf failed");
             }
         }
 
@@ -136,7 +142,7 @@ public class MediaPlaybackForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>().LogWarning(ex, "ForegroundService: StopForeground failed in OnDestroy");
+            FileLog31288.Logger.LogWarning(ex, "ForegroundService: StopForeground failed in OnDestroy");
         }
         base.OnDestroy();
     }
@@ -193,7 +199,7 @@ public class MediaPlaybackForegroundService : Service
             }
             catch (System.Exception ex)
             {
-                Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
+                FileLog31288.Logger
                     .LogDebug(ex, "ForegroundService: media session unavailable while promoting");
             }
         }
@@ -217,7 +223,7 @@ public class MediaPlaybackForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
+            FileLog31288.Logger
                 .LogDebug(ex, "ForegroundService: demote to background failed");
         }
     }
@@ -231,7 +237,7 @@ public class MediaPlaybackForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
+            FileLog31288.Logger
                 .LogDebug(ex, "ForegroundService: promote to foreground failed");
         }
     }
@@ -255,7 +261,7 @@ public class MediaPlaybackForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>().LogError(ex, "ForegroundService: Start failed");
+            FileLog31288.Logger.LogError(ex, "ForegroundService: Start failed");
         }
     }
 
@@ -269,7 +275,7 @@ public class MediaPlaybackForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>().LogError(ex, "ForegroundService: Stop failed");
+            FileLog31288.Logger.LogError(ex, "ForegroundService: Stop failed");
         }
     }
 
@@ -346,7 +352,7 @@ public class MediaPlaybackForegroundService : Service
         catch (System.Exception ex)
         {
             // Previously an empty catch: a failure left the notification with no artwork and no trace.
-            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
+            FileLog31288.Logger
                 .LogWarning(ex, "Media session artwork update failed");
         }
     }

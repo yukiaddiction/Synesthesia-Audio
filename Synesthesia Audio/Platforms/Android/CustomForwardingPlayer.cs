@@ -4,6 +4,16 @@ using Microsoft.Maui.ApplicationModel;
 
 namespace Synesthesia_Audio.Platforms.Android;
 
+
+/// <summary>
+/// One resolved logger for this file. These classes are created by the framework, so they cannot take a
+/// constructor dependency; the audit asks for a single resolved field instead of a lookup per site (PAT-01).
+/// It lives at namespace scope because the file holds more than one class.
+/// </summary>
+internal static class FileLog45202
+{
+    internal static readonly ILogger<CustomForwardingPlayer> Logger = Synesthesia_Audio.Services.Logging.AppLog.Get<CustomForwardingPlayer>();
+}
 public class CustomForwardingPlayer : ForwardingPlayer
 {
     private const int CommandSeekToNext = 6;
@@ -58,7 +68,7 @@ public class CustomForwardingPlayer : ForwardingPlayer
             }
             catch (Exception ex)
             {
-                Synesthesia_Audio.Services.Logging.AppLog.Get<CustomForwardingPlayer>().LogError(ex, "SeekToNext failed");
+                FileLog45202.Logger.LogError(ex, "SeekToNext failed");
             }
         });
     }
@@ -75,7 +85,7 @@ public class CustomForwardingPlayer : ForwardingPlayer
             }
             catch (Exception ex)
             {
-                Synesthesia_Audio.Services.Logging.AppLog.Get<CustomForwardingPlayer>().LogError(ex, "SeekToPrevious failed");
+                FileLog45202.Logger.LogError(ex, "SeekToPrevious failed");
             }
         });
     }

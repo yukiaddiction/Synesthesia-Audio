@@ -3,6 +3,16 @@ using CommunityToolkit.Maui.Views;
 using Microsoft.Extensions.Logging;
 namespace Synesthesia_Audio.Services;
 
+
+/// <summary>
+/// One resolved logger for this file. These classes are created by the framework, so they cannot take a
+/// constructor dependency; the audit asks for a single resolved field instead of a lookup per site (PAT-01).
+/// It lives at namespace scope because the file holds more than one class.
+/// </summary>
+internal static class FileLog12933
+{
+    internal static readonly ILogger<AndroidAudioPlatformService> Logger = Synesthesia_Audio.Services.Logging.AppLog.Get<AndroidAudioPlatformService>();
+}
 public class AndroidAudioPlatformService : IAudioPlatformService
 {
     public void OnPlayStarted(MediaElement mediaElement)
@@ -79,7 +89,7 @@ public class AndroidAudioPlatformService : IAudioPlatformService
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<AndroidAudioPlatformService>()
+            FileLog12933.Logger
                 .LogWarning(ex, "Resetting the Android media session during detach failed");
         }
 
@@ -101,7 +111,7 @@ public class AndroidAudioPlatformService : IAudioPlatformService
         }
         catch (System.Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<AndroidAudioPlatformService>()
+            FileLog12933.Logger
                 .LogDebug(ex, "Revoking a previous artwork grant failed");
         }
     }
