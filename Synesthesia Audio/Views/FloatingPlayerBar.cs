@@ -45,7 +45,8 @@ public class FloatingPlayerBar : Border
                     VerticalOptions = LayoutOptions.Center,
                     Children =
                     {
-                        new ActivityIndicator { HeightRequest = 14, WidthRequest = 14, Color = AppColors.PrimaryLight }
+                        new ActivityIndicator { HeightRequest = 14, WidthRequest = 14 }
+                            .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
                             .Bind(ActivityIndicator.IsRunningProperty, nameof(AudioService.IsBuffering))
                             .Bind(VisualElement.IsVisibleProperty, nameof(AudioService.IsBuffering)),
 

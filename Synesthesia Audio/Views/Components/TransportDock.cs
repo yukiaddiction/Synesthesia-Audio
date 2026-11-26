@@ -83,9 +83,10 @@ public sealed class TransportDock : Border
             WidthRequest = 96,
             HeightRequest = 26,
             VerticalOptions = LayoutOptions.Center,
-            ThumbColor = AppColors.PrimaryLight,
             AutomationId = "DockVolumeSlider"
         }
+        // Theme-bound: the fixed light accent stayed pale against the dark panel (UX-01).
+        .AppThemeBinding(Slider.ThumbColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
         .Bind(Slider.ValueProperty, nameof(AudioService.Volume), BindingMode.TwoWay)
         .AppThemeBinding(Slider.MinimumTrackColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
         .AppThemeBinding(Slider.MaximumTrackColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark);

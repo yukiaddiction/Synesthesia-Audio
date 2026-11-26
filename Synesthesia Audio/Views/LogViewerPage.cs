@@ -36,7 +36,8 @@ public class LogViewerPage : ContentPage
             .Invoke(b => b.AutomationId = "CopyLogsButton")
             .Invoke(b => SemanticProperties.SetDescription(b, "Copy logs")));
 
-        var busy = new ActivityIndicator { HeightRequest = 22, WidthRequest = 22, Color = AppColors.PrimaryLight, VerticalOptions = LayoutOptions.Center }
+        var busy = new ActivityIndicator { HeightRequest = 22, WidthRequest = 22, VerticalOptions = LayoutOptions.Center }
+            .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
             .Bind(ActivityIndicator.IsRunningProperty, nameof(LogViewerViewModel.IsBusy))
             .Bind(VisualElement.IsVisibleProperty, nameof(LogViewerViewModel.IsBusy));
 

@@ -28,10 +28,12 @@ public class AlbumPage : ContentPage
             IsRunning = true,
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center,
-            Color = AppColors.SuccessLight,
             HeightRequest = 40,
             WidthRequest = 40
         }
+        // SuccessLight is 2.8:1 on white, below the 3:1 floor for a UI component, and never changed for the
+        // dark theme (UX-01).
+        .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
         .Bind(VisualElement.IsVisibleProperty, nameof(AlbumViewModel.Album), converter: new NotNullToFalseConverter());
 
         var hero = new Border
@@ -132,7 +134,8 @@ public class AlbumPage : ContentPage
             HorizontalOptions = LayoutOptions.Center,
             Children =
             {
-                new ActivityIndicator { HeightRequest = 20, WidthRequest = 20, IsVisible = false, Color = AppColors.PrimaryLight }
+                new ActivityIndicator { HeightRequest = 20, WidthRequest = 20, IsVisible = false }
+            .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
                     .Bind(ActivityIndicator.IsRunningProperty, nameof(AlbumViewModel.IsBusy))
                     .Bind(VisualElement.IsVisibleProperty, nameof(AlbumViewModel.IsBusy)),
                 editButton,

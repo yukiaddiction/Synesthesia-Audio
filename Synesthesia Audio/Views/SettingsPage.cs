@@ -381,7 +381,8 @@ public class SettingsPage : ContentPage
                     .Invoke(b => b.HorizontalOptions = LayoutOptions.Start),
 
                 // The result text said "Testing…" but nothing else moved, so a slow provider looked frozen (UX-05).
-                new ActivityIndicator { Color = AppColors.PrimaryLight, HeightRequest = 20, WidthRequest = 20 }
+                new ActivityIndicator { HeightRequest = 20, WidthRequest = 20 }
+                    .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
                     .Bind(ActivityIndicator.IsRunningProperty, nameof(SettingsViewModel.IsTestingTranslation))
                     .Bind(VisualElement.IsVisibleProperty, nameof(SettingsViewModel.IsTestingTranslation))
                     .Invoke(a => a.HorizontalOptions = LayoutOptions.Start),

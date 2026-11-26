@@ -58,10 +58,11 @@ public class CloudFolderPickerPage : ContentPage
         {
             IsRunning = false,
             IsVisible = false,
-            Color = AppColors.PrimaryLight,
             HeightRequest = 30,
             WidthRequest = 30
-        };
+        }
+        // Theme-bound rather than a fixed light-palette accent (UX-01).
+        .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark);
 
         var collectionView = new CollectionView
         {
