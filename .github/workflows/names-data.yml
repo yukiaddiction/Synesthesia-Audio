@@ -33,6 +33,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    # The secret is not held in job-level env: `secrets` is not one of the contexts available inside an `if:`
+    # expression, so the condition has to read the `env` context instead. Only the derived boolean is job-wide;
+    # the key itself is passed to the one step that signs, so no other step - including third-party actions -
+    # can see it.
+    env:
+      HAS_SIGNING_KEY: ${{ secrets.NAMES_SIGNING_KEY != '' }}
     steps:
       # Pinned by SHA so a compromised or retagged action cannot change what runs here.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -98,7 +104,7 @@ jobs:
       # The signature is a separate .sig asset rather than a field inside the manifest, so there is no
       # chicken-and-egg and no canonicalisation ambiguity about what exactly was signed.
       - name: Sign the name-data manifest
-        if: ${{ secrets.NAMES_SIGNING_KEY != '' }}
+        if: env.HAS_SIGNING_KEY == 'true'
         env:
           NAMES_SIGNING_KEY: ${{ secrets.NAMES_SIGNING_KEY }}
         run: |
@@ -112,7 +118,7 @@ jobs:
           echo "Manifest signed."
 
       - name: Warn when the manifest is unsigned
-        if: ${{ secrets.NAMES_SIGNING_KEY == '' }}
+        if: env.HAS_SIGNING_KEY != 'true'
         run: |
           echo "::warning::NAMES_SIGNING_KEY is not set, so the manifest is published unsigned. The app keeps \
           working but cannot prove the manifest came from this project - see AUDIT.md SEC-M-04."
