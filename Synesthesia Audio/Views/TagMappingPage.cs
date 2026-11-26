@@ -153,6 +153,9 @@ public class TagMappingPage : ContentPage
     private void RefreshList()
     {
         _listLayout.Children.Clear();
+
+        // A filter that matches nothing used to leave an empty column with no explanation (UX-05).
+        var rowsAdded = 0;
         var query = _searchBar.Text?.Trim();
 
         var filtered = _allMappings.AsEnumerable();
@@ -187,6 +190,18 @@ public class TagMappingPage : ContentPage
                 });
 
             _listLayout.Children.Add(rowBorder);
+            rowsAdded++;
+        }
+
+        if (rowsAdded == 0)
+        {
+            _listLayout.Children.Add(new Label
+            {
+                Text = "No tag mappings match your filter",
+                FontSize = AppFontSizes.Body,
+                Margin = new Thickness(0, 12, 0, 0)
+            }
+                .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark));
         }
     }
 

@@ -65,6 +65,17 @@ public class CloudFolderPickerPage : ContentPage
 
         var collectionView = new CollectionView
         {
+            // Without an EmptyView a folder with no subfolders showed a blank pane, which reads as a failed
+            // load rather than an empty folder (UX-05).
+            EmptyView = new Label
+            {
+                Text = "This folder has no subfolders",
+                FontSize = AppFontSizes.Body,
+                HorizontalTextAlignment = TextAlignment.Center,
+                HorizontalOptions = LayoutOptions.Center,
+                Margin = new Thickness(0, 24, 0, 0)
+            }
+                .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark),
             ItemsLayout = new LinearItemsLayout(ItemsLayoutOrientation.Vertical),
             SelectionMode = SelectionMode.Single,
             ItemTemplate = new DataTemplate(() =>
