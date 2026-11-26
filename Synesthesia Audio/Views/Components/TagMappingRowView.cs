@@ -6,10 +6,31 @@ using Microsoft.Maui.Controls.Shapes;
 using Synesthesia_Audio.Styles;
 using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 
+using Microsoft.Extensions.Logging;
+
 namespace Synesthesia_Audio.Views.Components;
 
 public class TagMappingRowView : Border
 {
+    /// <summary>
+    /// Asks before deleting a mapping. Deleting used to be a single tap with no undo (UX-05).
+    /// </summary>
+    private static async Task<bool> ConfirmDeleteAsync(string jpKey)
+    {
+        var page = Shell.Current;
+        if (page == null) return false;
+
+        try
+        {
+            return await page.DisplayAlert("Delete mapping", $"Remove the mapping for “{jpKey}”?", "Delete", "Cancel");
+        }
+        catch (Exception ex)
+        {
+            Services.Logging.AppLog.Get<TagMappingRowView>().LogDebug(ex, "Delete confirmation failed");
+            return false;
+        }
+    }
+
     public TagMappingRowView(string jpKey, string engVal, Action<string, string> onSave, Action<string> onDelete)
     {
         var jpLabel = new Label
@@ -43,8 +64,14 @@ public class TagMappingRowView : Border
         };
 
         var delBtn = GlassTheme.IconButton("\u2715", AppFontSizes.ButtonMedium, AppLayout.ButtonHeightSmall);
-        delBtn.Clicked += (_, _) => onDelete(jpKey);
+        // One tap used to delete a mapping irreversibly (UX-05).
+        delBtn.Clicked += async (_, _) =>
+        {
+            var confirmed = await ConfirmDeleteAsync(jpKey);
+            if (confirmed) onDelete(jpKey);
+        };
         SemanticProperties.SetDescription(delBtn, "Delete mapping");
+        SemanticProperties.SetHint(delBtn, "Asks for confirmation first");
 
         StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius };
         StrokeThickness = 0;

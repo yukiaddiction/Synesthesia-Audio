@@ -634,7 +634,7 @@ public partial class ScanFolderService : IDisposable
         }
         else
         {
-            _scanStateService.MarkCompleted(finalWorks.Count, allAudioFiles.Count);
+            _scanStateService.MarkCompleted(finalWorks.Count, allAudioFiles.Count, failedFolders.Count);
         }
 
         return new ScanResult { Works = finalWorks, FailedFolders = failedFolders, TotalFiles = allAudioFiles.Count };

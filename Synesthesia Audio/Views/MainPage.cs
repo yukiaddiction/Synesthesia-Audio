@@ -24,10 +24,22 @@ public class MainPage : ContentPage
         _viewModel = viewModel;
         _collectionView = new CollectionView
         {
+            // Without this a search that matches nothing showed a blank area, which reads as a broken
+            // screen rather than an empty result (UX-05).
+            EmptyView = new Label
+            {
+                Text = "No albums match your search",
+                FontSize = AppFontSizes.Body,
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalOptions = LayoutOptions.Center,
+                HorizontalOptions = LayoutOptions.Center
+            }
+                .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark)
+                .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark),
+
             ItemsLayout = new GridItemsLayout(2, ItemsLayoutOrientation.Vertical),
             ItemTemplate = new DataTemplate(() => new AlbumCardView(viewModel, () => _scaffold?.IsWide ?? false))
         };
-        BindingContext = viewModel;
 
         this.Bind(ContentPage.TitleProperty, nameof(MainViewModel.Title));
         Shell.SetNavBarIsVisible(this, false);

@@ -62,7 +62,38 @@ internal sealed class AuroraDrawable : IDrawable
 
     private readonly GlassBackdrop _owner;
 
+    /// <summary>
+    /// Gradient paints are immutable and independent of the blob bounds (those are passed to
+    /// SetFillPaint separately), so five of them are built once per theme instead of on every
+    /// repaint - the backdrop repaints on every resize (PERF-10).
+    /// </summary>
+    private static readonly RadialGradientPaint[] LightPaints = BuildPaints(LightBlobs());
+    private static readonly RadialGradientPaint[] DarkPaints = BuildPaints(DarkBlobs());
+
     public AuroraDrawable(GlassBackdrop owner) => _owner = owner;
+
+    private static RadialGradientPaint[] BuildPaints(Color[] colours)
+    {
+        var paints = new RadialGradientPaint[colours.Length];
+
+        for (var i = 0; i < colours.Length; i++)
+        {
+            var colour = colours[i];
+            paints[i] = new RadialGradientPaint
+            {
+                Center = new Point(0.5, 0.5),
+                Radius = 0.5,
+                GradientStops =
+                [
+                    new PaintGradientStop(0f, colour),
+                    new PaintGradientStop(0.72f, colour.WithAlpha(colour.Alpha * 0.35f)),
+                    new PaintGradientStop(1f, colour.WithAlpha(0f))
+                ]
+            };
+        }
+
+        return paints;
+    }
 
     public void Draw(ICanvas canvas, RectF dirtyRect)
     {
@@ -73,7 +104,7 @@ internal sealed class AuroraDrawable : IDrawable
         canvas.FillColor = isDark ? AppColors.BackgroundDark : AppColors.BackgroundLight;
         canvas.FillRectangle(dirtyRect.X, dirtyRect.Y, dirtyRect.Width, dirtyRect.Height);
 
-        var blobs = isDark ? DarkBlobs() : LightBlobs();
+        var paints = isDark ? DarkPaints : LightPaints;
         var shortSide = MathF.Min(dirtyRect.Width, dirtyRect.Height);
         canvas.Antialias = true;
 
@@ -84,23 +115,9 @@ internal sealed class AuroraDrawable : IDrawable
             var centreX = dirtyRect.X + (dirtyRect.Width * (float)normalizedX);
             var centreY = dirtyRect.Y + (dirtyRect.Height * (float)normalizedY);
             var blob = new RectF(centreX - (size / 2f), centreY - (size / 2f), size, size);
-            var colour = blobs[i];
-
-            // The gradient is fitted to the blob's own bounds, so it stays smooth and
-            // correctly scaled whatever the platform does with gradient normalisation.
-            canvas.SetFillPaint(
-                new RadialGradientPaint
-                {
-                    Center = new Point(0.5, 0.5),
-                    Radius = 0.5,
-                    GradientStops = new[]
-                    {
-                        new PaintGradientStop(0f, colour),
-                        new PaintGradientStop(0.72f, colour.WithAlpha(colour.Alpha * 0.35f)),
-                        new PaintGradientStop(1f, colour.WithAlpha(0f))
-                    }
-                },
-                blob);
+            // The gradient is fitted to the blob's own bounds, so it stays smooth and correctly scaled
+            // whatever the platform does with gradient normalisation.
+            canvas.SetFillPaint(paints[i], blob);
 
             canvas.FillEllipse(blob.X, blob.Y, blob.Width, blob.Height);
         }

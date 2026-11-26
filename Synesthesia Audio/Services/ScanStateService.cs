@@ -117,11 +117,15 @@ public class ScanStateService : IDisposable
         s.ProgressText = text;
     });
 
-    public void MarkCompleted(int works, int files) => Update(s =>
+    public void MarkCompleted(int works, int files, int failedFolderCount = 0) => Update(s =>
     {
         s.Status = ScanStatus.Completed;
         s.Progress = 1.0;
-        s.ProgressText = string.Empty;
+        // A scan that skipped folders used to say only "Completed", so the gaps were invisible (UX-05).
+        s.ProgressText = failedFolderCount > 0
+            ? $"Completed with {failedFolderCount} warning{(failedFolderCount == 1 ? "" : "s")}"
+            : string.Empty;
+        s.FailedFolderCount = failedFolderCount;
         s.WorksFound = works;
         s.TotalFiles = files;
         s.FinishedAt = DateTimeOffset.Now;

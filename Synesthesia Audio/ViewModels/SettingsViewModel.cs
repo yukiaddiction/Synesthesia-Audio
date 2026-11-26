@@ -73,6 +73,10 @@ public partial class SettingsViewModel : BaseViewModel
     [ObservableProperty]
     private string _translationStatus = string.Empty;
 
+    /// <summary>True while the probe runs, so the button can show a spinner instead of just text (UX-05).</summary>
+    [ObservableProperty]
+    private bool _isTestingTranslation;
+
     public string[] TranslationProviderOptions => TranslationProviders.All;
 
     /// <summary>GTranslate needs no key, so the key and endpoint fields only appear for paid providers.</summary>
@@ -222,6 +226,7 @@ public partial class SettingsViewModel : BaseViewModel
             TranslationCustomAuthHeader, TranslationCustomAuthScheme);
 
         TranslationStatus = "Testing…";
+        IsTestingTranslation = true;
         try
         {
             _translationService.ClearError();
@@ -238,6 +243,10 @@ public partial class SettingsViewModel : BaseViewModel
         {
             _logger.LogWarning(ex, "Translation test failed");
             TranslationStatus = $"Failed: {ex.Message}";
+        }
+        finally
+        {
+            IsTestingTranslation = false;
         }
     }
 

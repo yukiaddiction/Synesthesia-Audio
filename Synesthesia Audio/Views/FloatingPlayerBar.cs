@@ -137,9 +137,9 @@ public class FloatingPlayerBar : Border
                 {
                     Minimum = 0,
                     Maximum = 1,
-                    HeightRequest = 30,
+                    HeightRequest = 44,
                     Margin = AppLayout.FloatingPlayerSliderMargin,
-                    ThumbColor = Colors.Transparent,
+    
                     AutomationId = "SeekSlider"
                 }
                 .Row(1)

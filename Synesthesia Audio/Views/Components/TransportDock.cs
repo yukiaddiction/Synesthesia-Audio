@@ -101,13 +101,15 @@ public sealed class TransportDock : Border
         {
             Minimum = 0,
             Maximum = 1,
-            HeightRequest = 26,
-            ThumbColor = Colors.Transparent,
+            // 44 px is the smallest comfortable touch target, and a transparent thumb left nothing to see
+            // or grab (UX-03).
+            HeightRequest = 44,
             AutomationId = "DockSeekSlider"
         }
         .Invoke(s => SemanticProperties.SetDescription(s, "Playback position"))
         .Invoke(s => SemanticProperties.SetHint(s, "Drag to seek within the track"))
         .Bind(Slider.ValueProperty, nameof(AudioService.PlaybackProgress), BindingMode.OneWay)
+        .AppThemeBinding(Slider.ThumbColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
         .AppThemeBinding(Slider.MinimumTrackColorProperty, AppColors.SuccessLight, AppColors.PrimaryDark)
         .AppThemeBinding(Slider.MaximumTrackColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark)
         .Invoke(s =>

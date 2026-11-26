@@ -377,7 +377,14 @@ public class SettingsPage : ContentPage
 
                 GlassTheme.PillButton("Test Translation", AppFontSizes.Body, accent: true)
                     .Bind(Button.CommandProperty, nameof(SettingsViewModel.TestTranslationCommand))
+                    .Bind(Button.IsEnabledProperty, nameof(SettingsViewModel.IsTestingTranslation), converter: new Converters.InvertedBoolConverter())
                     .Invoke(b => b.HorizontalOptions = LayoutOptions.Start),
+
+                // The result text said "Testing…" but nothing else moved, so a slow provider looked frozen (UX-05).
+                new ActivityIndicator { Color = AppColors.PrimaryLight, HeightRequest = 20, WidthRequest = 20 }
+                    .Bind(ActivityIndicator.IsRunningProperty, nameof(SettingsViewModel.IsTestingTranslation))
+                    .Bind(VisualElement.IsVisibleProperty, nameof(SettingsViewModel.IsTestingTranslation))
+                    .Invoke(a => a.HorizontalOptions = LayoutOptions.Start),
 
                 CreateCardCaption(string.Empty)
                     .Bind(Label.TextProperty, nameof(SettingsViewModel.TranslationStatus))
