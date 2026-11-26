@@ -23,8 +23,11 @@ public class EditWorkPage : ContentPage
     private readonly Switch _nsfwSwitch;
     private bool _isSaving;
 
-    public EditWorkPage(WorkMetadata work, LibraryCacheService cacheService, Action onSaved)
+    private readonly ILogger<EditWorkPage> _logger;
+
+    public EditWorkPage(WorkMetadata work, LibraryCacheService cacheService, Action onSaved, ILogger<EditWorkPage> logger)
     {
+        _logger = logger;
         _work = work;
         _cacheService = cacheService;
         _onSaved = onSaved;
@@ -168,7 +171,7 @@ public class EditWorkPage : ContentPage
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<EditWorkPage>().LogWarning(ex, "Cancel navigation failed");
+            _logger.LogWarning(ex, "Cancel navigation failed");
         }
     }
 
@@ -198,7 +201,7 @@ public class EditWorkPage : ContentPage
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<EditWorkPage>().LogError(ex, "Saving work edits failed");
+            _logger.LogError(ex, "Saving work edits failed");
             await DisplayAlert("Error", $"Could not save changes: {ex.Message}", "OK");
         }
         finally

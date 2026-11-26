@@ -209,7 +209,7 @@ public partial class SettingsViewModel : BaseViewModel
         try
         {
             var created = await _nameRomanization.GetBundledDataCreatedAsync();
-            await _navigation.PushModalAsync(new Views.AboutSourcesPage(AppInfo.Current.VersionString, created));
+            await _navigation.PushModalAsync(new Views.AboutSourcesPage(AppInfo.Current.VersionString, created, _loggerFactory.CreateLogger<Views.AboutSourcesPage>()));
         }
         catch (Exception ex)
         {

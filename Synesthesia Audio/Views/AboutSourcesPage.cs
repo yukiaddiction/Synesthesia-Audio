@@ -12,8 +12,11 @@ namespace Synesthesia_Audio.Views;
 /// </summary>
 public sealed class AboutSourcesPage : ContentPage
 {
-    public AboutSourcesPage(string version, string? nameDataCreated)
+    private readonly ILogger<AboutSourcesPage> _logger;
+
+    public AboutSourcesPage(string version, string? nameDataCreated, ILogger<AboutSourcesPage> logger)
     {
+        _logger = logger;
         Title = "About & Sources";
 
         var stack = new VerticalStackLayout
@@ -101,7 +104,7 @@ public sealed class AboutSourcesPage : ContentPage
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<AboutSourcesPage>().LogWarning(ex, "Closing the About page failed");
+            _logger.LogWarning(ex, "Closing the About page failed");
         }
     }
 

@@ -15,6 +15,7 @@ public partial class AlbumViewModel : BaseViewModel
     private readonly DLsiteService _dlsiteService;
     private readonly ITranslationService _translationService;
     private readonly ILogger<AlbumViewModel> _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly IDialogService _dialog;
     private readonly INavigationService _navigation;
 
@@ -37,7 +38,7 @@ public partial class AlbumViewModel : BaseViewModel
         .Where(t => !string.IsNullOrEmpty(t))
         .ToList() ?? new();
 
-    public AlbumViewModel(AudioService audioService, LibraryCacheService cacheService, DLsiteService dlsiteService, ITranslationService translationService, IDialogService dialogService, INavigationService navigationService, ILogger<AlbumViewModel> logger)
+    public AlbumViewModel(AudioService audioService, LibraryCacheService cacheService, DLsiteService dlsiteService, ITranslationService translationService, IDialogService dialogService, INavigationService navigationService, ILoggerFactory loggerFactory)
     {
         AudioService = audioService;
         _cacheService = cacheService;
@@ -45,7 +46,8 @@ public partial class AlbumViewModel : BaseViewModel
         _translationService = translationService;
         _dialog = dialogService;
         _navigation = navigationService;
-        _logger = logger;
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<AlbumViewModel>();
     }
 
     [RelayCommand]
@@ -96,7 +98,7 @@ public partial class AlbumViewModel : BaseViewModel
         {
             OnPropertyChanged(nameof(Album));
             OnPropertyChanged(nameof(GenreTags));
-        });
+        }, _loggerFactory.CreateLogger<EditWorkPage>());
 
         await _navigation.PushModalAsync(editPage);
     }

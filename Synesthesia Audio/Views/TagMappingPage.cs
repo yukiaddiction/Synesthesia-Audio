@@ -137,7 +137,7 @@ public class TagMappingPage : ContentPage
             ItemsSource = _rows,
             ItemTemplate = new DataTemplate(() =>
             {
-                var row = new TagMappingRowView
+                var row = new TagMappingRowView(_logger)
                 {
                     OnSave = (jp, eng) =>
                     {

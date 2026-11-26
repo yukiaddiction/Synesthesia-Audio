@@ -46,8 +46,11 @@ public class TagMappingRowView : Border
     private readonly Label _jpLabel;
     private readonly Entry _engEntry;
 
-    public TagMappingRowView()
+    private readonly ILogger _logger;
+
+    public TagMappingRowView(ILogger logger)
     {
+        _logger = logger;
         _jpLabel = new Label
         {
             FontAttributes = AppFonts.Bold,
@@ -76,7 +79,7 @@ public class TagMappingRowView : Border
         delBtn.Clicked += async (_, _) =>
         {
             // Deleting used to be a single tap with no undo (UX-05).
-            if (await ConfirmDeleteAsync(JpKey)) OnDelete?.Invoke(JpKey);
+            if (await ConfirmDeleteAsync(JpKey, _logger)) OnDelete?.Invoke(JpKey);
         };
         SemanticProperties.SetDescription(delBtn, "Delete mapping");
         SemanticProperties.SetHint(delBtn, "Asks for confirmation first");
@@ -116,7 +119,7 @@ public class TagMappingRowView : Border
     /// <summary>
     /// Asks before deleting a mapping. Deleting used to be a single tap with no undo (UX-05).
     /// </summary>
-    private static async Task<bool> ConfirmDeleteAsync(string jpKey)
+    private static async Task<bool> ConfirmDeleteAsync(string jpKey, ILogger logger)
     {
         var page = Shell.Current;
         if (page == null) return false;
@@ -127,7 +130,7 @@ public class TagMappingRowView : Border
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<TagMappingRowView>().LogDebug(ex, "Delete confirmation failed");
+            logger.LogDebug(ex, "Delete confirmation failed");
             return false;
         }
     }
