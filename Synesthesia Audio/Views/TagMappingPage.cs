@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Maui.Markup;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls.Shapes;
@@ -14,17 +15,14 @@ public class TagMappingPage : ContentPage
     private readonly TagMappingService _tagService;
     private readonly LibraryCacheService _cacheService;
     private readonly MainViewModel _mainViewModel;
-    private readonly VerticalStackLayout _listLayout;
+    private readonly ObservableCollection<TagMappingRow> _rows = new();
+    private readonly Label _emptyLabel;
     private readonly Entry _jpEntry;
     private readonly Entry _engEntry;
     private readonly SearchBar _searchBar;
 
-    /// <summary>How many rows to add per dispatcher turn while filling a long list.</summary>
-    private const int BatchSize = 40;
-
     private Dictionary<string, string> _allMappings = new();
     private Timer? _searchDebounce;
-    private int _renderGeneration;
 
     public TagMappingPage(TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel)
     {
@@ -121,7 +119,41 @@ public class TagMappingPage : ContentPage
             Content = _searchBar
         }.Glass();
 
-        _listLayout = new VerticalStackLayout { Spacing = AppLayout.SpacingLarge };
+        _emptyLabel = new Label
+        {
+            Text = "No tag mappings match your filter",
+            FontSize = AppFontSizes.Body,
+            IsVisible = false,
+            Margin = new Thickness(0, 12, 0, 0)
+        }
+            .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark);
+
+        // The row view is bindable now, so the list can be virtualised instead of rebuilt view by view (PERF-09).
+        var listView = new CollectionView
+        {
+            ItemsSource = _rows,
+            ItemTemplate = new DataTemplate(() =>
+            {
+                var row = new TagMappingRowView
+                {
+                    OnSave = (jp, eng) =>
+                    {
+                        _tagService.AddOrUpdateMapping(jp, eng);
+                        Task.Run(() => _cacheService.CleanAndReMapAllWorkGenres(_tagService))
+                            .ContinueWith(_ => RefreshLibraryAsync(), TaskScheduler.FromCurrentSynchronizationContext());
+                    },
+                    OnDelete = jp =>
+                    {
+                        _tagService.RemoveMapping(jp);
+                        LoadData();
+                    }
+                };
+
+                row.SetBinding(TagMappingRowView.JpKeyProperty, nameof(TagMappingRow.Key));
+                row.SetBinding(TagMappingRowView.EngValueProperty, nameof(TagMappingRow.Value));
+                return row;
+            })
+        };
 
         var body = new Grid
         {
@@ -136,7 +168,11 @@ public class TagMappingPage : ContentPage
                     Children = { composer, searchPill }
                 }.Row(0),
 
-                new ScrollView { Content = _listLayout }.Row(1)
+                new Grid
+                {
+                    RowDefinitions = Rows.Define(Star, Auto),
+                    Children = { listView.Row(0), _emptyLabel.Row(1) }
+                }.Row(1)
             }
         };
 
@@ -156,10 +192,6 @@ public class TagMappingPage : ContentPage
 
     private void RefreshList()
     {
-        _listLayout.Children.Clear();
-
-        // A filter that matches nothing used to leave an empty column with no explanation (UX-05).
-        var rowsAdded = 0;
         var query = _searchBar.Text?.Trim();
 
         var filtered = _allMappings.AsEnumerable();
@@ -167,74 +199,17 @@ public class TagMappingPage : ContentPage
         {
             filtered = filtered.Where(kvp =>
                 kvp.Key.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                kvp.Value.Contains(query, StringComparison.OrdinalIgnoreCase)
-            );
+                kvp.Value.Contains(query, StringComparison.OrdinalIgnoreCase));
         }
 
-        // Filled in batches on the dispatcher rather than in one pass: adding every row synchronously blocked the
-        // UI thread for the whole list, which on a large dictionary is a visible stall (PERF-09). Rows are still
-        // real views in a stack - virtualising them properly needs TagMappingRowView to become bindable.
-        var pending = filtered.OrderBy(k => k.Key).ToList();
-        var index = 0;
+        // Replaces the contents of a bound collection: the CollectionView virtualises and recycles its rows, so
+        // the page no longer builds a view per mapping (PERF-09).
+        _rows.Clear();
+        foreach (var kvp in filtered.OrderBy(k => k.Key))
+            _rows.Add(new TagMappingRow(kvp.Key, kvp.Value));
 
-        // A new filter starts a new chain; an older one that is still filling must stop, or it would append
-        // rows for the previous filter into the list that was just cleared.
-        var generation = ++_renderGeneration;
-
-        void AddBatch()
-        {
-            if (generation != _renderGeneration) return;
-
-            var addedThisBatch = 0;
-            while (index < pending.Count && addedThisBatch < BatchSize)
-            {
-                var kvp = pending[index++];
-                addedThisBatch++;
-
-                var jpKey = kvp.Key;
-                var engVal = kvp.Value;
-
-                var rowBorder = new TagMappingRowView(
-                    jpKey,
-                    engVal,
-                    (jp, eng) =>
-                    {
-                        _tagService.AddOrUpdateMapping(jp, eng);
-                        // The remap walks every cached work, so it runs off the UI thread; it used to block the
-                        // page for the whole library on every row save (PERF-09).
-                        Task.Run(() => _cacheService.CleanAndReMapAllWorkGenres(_tagService))
-                            .ContinueWith(_ => RefreshLibraryAsync(), TaskScheduler.FromCurrentSynchronizationContext());
-                    },
-                    (jp) =>
-                    {
-                        _tagService.RemoveMapping(jp);
-                        LoadData();
-                    });
-
-                _listLayout.Children.Add(rowBorder);
-                rowsAdded++;
-            }
-
-            if (index < pending.Count)
-            {
-                Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(1), AddBatch);
-            }
-        }
-
-        AddBatch();
-
-        if (rowsAdded == 0)
-        {
-            _listLayout.Children.Add(new Label
-            {
-                Text = "No tag mappings match your filter",
-                FontSize = AppFontSizes.Body,
-                Margin = new Thickness(0, 12, 0, 0)
-            }
-                .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark));
-        }
+        _emptyLabel.IsVisible = _rows.Count == 0;
     }
-
     private async Task RefreshLibraryAsync()
     {
         try
@@ -247,3 +222,6 @@ public class TagMappingPage : ContentPage
         }
     }
 }
+
+/// <summary>One key/value pair in the mapping list, so the CollectionView has an item type to bind to.</summary>
+public sealed record TagMappingRow(string Key, string Value);
