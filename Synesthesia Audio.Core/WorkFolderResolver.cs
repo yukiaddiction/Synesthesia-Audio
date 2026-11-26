@@ -77,9 +77,46 @@ public static class WorkFolderResolver
             return ToNative(parent, separator);
         }
 
+        // Anything deeper than one folder under the library root belongs to that first folder: the library is
+        // base/<work>/<sub-folder>/<file>, so a sub-folder with any other name (a bonus disc, "Scans", "おまけ",
+        // a per-track directory) is a part of the work, not a work of its own. Without this a work whose
+        // sub-folders are not named CD1/mp3/split into several albums, each showing one folder's tracks.
+        var firstLevel = FirstLevelUnder(directory, normalizedBase);
+        if (!string.IsNullOrEmpty(firstLevel)) return ToNative(firstLevel, separator);
+
         return ToNative(directory, separator);
     }
 
+    /// <summary>
+    /// The folder immediately below <paramref name="baseFolder"/> on the way to <paramref name="directory"/>, or null
+    /// when the directory is already at the first level (or not under the base at all).
+    /// </summary>
+    private static string? FirstLevelUnder(string directory, string baseFolder)
+    {
+        if (string.IsNullOrEmpty(baseFolder)) return null;
+
+        var candidate = directory;
+        string? result = null;
+
+        while (true)
+        {
+            var parent = GetDirectory(candidate);
+            if (string.IsNullOrEmpty(parent)) return result;
+
+            if (IsSame(parent, baseFolder))
+            {
+                // candidate is a direct child of the base: that child is the work only if we descended at least once.
+                return IsSame(candidate, directory) ? null : candidate;
+            }
+
+            if (!IsUnder(parent, baseFolder)) return result;
+
+            result = candidate;
+            candidate = parent;
+
+            if (IsSame(candidate, baseFolder)) return result;
+        }
+    }
     private static string Normalize(string? path)
     {
         if (string.IsNullOrEmpty(path)) return string.Empty;

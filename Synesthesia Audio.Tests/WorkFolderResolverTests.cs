@@ -135,4 +135,36 @@ public sealed class WorkFolderResolverTests
     {
         Assert.True(WorkFolderResolver.IsDiscFolder(name), $"'{name}' must still be treated as a part folder");
     }
+    /// <summary>
+    /// Real library layout, seen on a pCloud library: the work lives under .../RJ01510352/RJ01510352/mp3,
+    /// and inside it some tracks are loose files while others sit in per-track folders named "01_…", "04_…".
+    /// Those folder names match no disc or format pattern, so they used to resolve to works of their own -
+    /// which is why such a work appeared as several albums of one folder each.
+    /// </summary>
+    [Theory]
+    [InlineData("/lib/Voice Work/SFW/Other/RJ01510352/RJ01510352/mp3/01_1週間で好感度MAX/x.mp3")]
+    [InlineData("/lib/Voice Work/SFW/Other/RJ01510352/RJ01510352/mp3/04_お風呂屋さん/y.mp3")]
+    [InlineData("/lib/Voice Work/SFW/Other/RJ01510352/RJ01510352/mp3/deeper/still/z.mp3")]
+    public void Arbitrary_subfolders_of_a_work_belong_to_the_work(string file)
+    {
+        var basePath = "/lib/Voice Work/SFW/Other";
+        var resolved = WorkFolderResolver.Resolve(file, basePath, isCloud: true);
+
+        // The work is the first folder under the library root, whichever folder carries the product id.
+        Assert.Contains("RJ01510352", resolved);
+        Assert.DoesNotContain("01_1週間", resolved);
+        Assert.DoesNotContain("04_お風呂屋さん", resolved);
+        Assert.DoesNotContain("/deeper", resolved);
+    }
+
+    [Fact]
+    public void A_track_directly_in_the_work_folder_still_resolves_to_the_work()
+    {
+        var resolved = WorkFolderResolver.Resolve(
+            "/lib/Voice Work/RJ01510352/mp3/02_track.mp3",
+            "/lib/Voice Work",
+            isCloud: true);
+
+        Assert.Equal("/lib/Voice Work/RJ01510352", resolved);
+    }
 }
