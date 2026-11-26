@@ -147,11 +147,34 @@ public partial class AudioService : ObservableObject, IDisposable
     /// <summary>Glyph for the desktop dock's mute button.</summary>
     public string VolumeIcon => IsMuted || Volume <= 0.001 ? "\uD83D\uDD07" : "\uD83D\uDD0A";
 
+    private Timer? _volumeSaveTimer;
+    private readonly object _volumeSaveLock = new();
+
     partial void OnVolumeChanged(double value)
     {
         ApplyVolume();
-        Preferences.Set("PlayerVolume", value);
+
+        // A slider drag raises this per pixel. Writing the preference on each one hammered storage for no
+        // benefit, so the write is debounced and the last value wins (PERF-12).
+        lock (_volumeSaveLock)
+        {
+            _volumeSaveTimer ??= new Timer(_ => PersistVolume(), null, Timeout.Infinite, Timeout.Infinite);
+            _volumeSaveTimer.Change(500, Timeout.Infinite);
+        }
+
         OnPropertyChanged(nameof(VolumeIcon));
+    }
+
+    private void PersistVolume()
+    {
+        try
+        {
+            Preferences.Set("PlayerVolume", Volume);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Saving the volume preference failed");
+        }
     }
 
     partial void OnIsMutedChanged(bool value) => ApplyVolume();
@@ -850,6 +873,39 @@ _sessionService.ClearAsync().FireAndForget(ex => _logger.LogWarning(ex, "Backgro
         }
     }
 
+    private PlaybackSessionState? _lastSavedSession;
+    private readonly object _lastSessionLock = new();
+
+    /// <summary>
+    /// Saves only the playback position, reusing the playlist structure from the last full save.
+    ///
+    /// The periodic save used to re-serialise the whole playlist every few seconds just to move one number
+    /// (PERF-12). Falls back to a full save when there is no structure yet.
+    /// </summary>
+    private void SaveSessionPosition()
+    {
+        PlaybackSessionState copy;
+        lock (_lastSessionLock)
+        {
+            if (_lastSavedSession == null)
+            {
+                SaveSession();
+                return;
+            }
+
+            copy = new PlaybackSessionState
+            {
+                AlbumFolderPath = _lastSavedSession.AlbumFolderPath,
+                Playlist = _lastSavedSession.Playlist,
+                CurrentTrackIndex = _lastSavedSession.CurrentTrackIndex,
+                PositionSeconds = Position.TotalSeconds,
+                LoopMode = _lastSavedSession.LoopMode
+            };
+        }
+
+        _sessionService.SaveAsync(copy).FireAndForget(ex => _logger.LogWarning(ex, "Background task failed"));
+    }
+
     private void SaveSession()
     {
         List<Track> snapshot;
@@ -875,6 +931,7 @@ _sessionService.ClearAsync().FireAndForget(ex => _logger.LogWarning(ex, "Backgro
             PositionSeconds = Position.TotalSeconds,
             LoopMode = CurrentLoopMode
         };
+        lock (_lastSessionLock) _lastSavedSession = dto;
 _sessionService.SaveAsync(dto).FireAndForget(ex => _logger.LogWarning(ex, "Background task failed"));
     }
 
@@ -885,7 +942,7 @@ _sessionService.SaveAsync(dto).FireAndForget(ex => _logger.LogWarning(ex, "Backg
         if ((now - _lastSessionSave).TotalSeconds >= AppConstants.SessionSaveIntervalSeconds)
         {
             _lastSessionSave = now;
-            SaveSession();
+            SaveSessionPosition();
         }
     }
 

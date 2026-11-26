@@ -69,6 +69,66 @@ public class LibraryCacheService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Deletes cover files nothing references any more. Runs after a full replace, where the reference set is
+    /// known, and is deliberately conservative: unreadable timestamps, recent files and non-images are kept
+    /// (PERF-12).
+    /// </summary>
+    private void CleanupOrphanedCovers()
+    {
+        try
+        {
+            var directory = Path.Combine(FileSystem.AppDataDirectory, "covers");
+            if (!System.IO.Directory.Exists(directory)) return;
+
+            var candidates = System.IO.Directory.GetFiles(directory).Select(Path.GetFileName).Where(n => n != null).Select(n => n!).ToList();
+            if (candidates.Count == 0) return;
+
+            var referenced = _cache.Values
+                .Select(w => w.CoverImagePath)
+                .Where(path => !string.IsNullOrEmpty(path))
+                .Select(path => Path.GetFileName(path))
+                .Where(name => !string.IsNullOrEmpty(name))
+                .ToList();
+
+            var deletable = CoverCleanupPolicy.SelectDeletable(
+                candidates,
+                referenced,
+                name =>
+                {
+                    try
+                    {
+                        var info = new FileInfo(Path.Combine(directory, name));
+                        return info.Exists ? new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero) : null;
+                    }
+                    catch
+                    {
+                        return null;
+                    }
+                },
+                DateTimeOffset.UtcNow,
+                TimeSpan.FromHours(6));
+
+            foreach (var name in deletable)
+            {
+                try
+                {
+                    File.Delete(Path.Combine(directory, name));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Deleting an orphaned cover failed");
+                }
+            }
+
+            if (deletable.Count > 0)
+                _logger.LogInformation("Removed {Count} orphaned cover files", deletable.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Cover cleanup failed");
+        }
+    }
     /// <summary>A cover that no longer exists on disk is reported as missing so the scan can refetch it.</summary>
     private static void RepairMissingCover(WorkMetadata work)
     {
@@ -186,6 +246,7 @@ public class LibraryCacheService : IDisposable
         _pathByProductId.Clear();
         foreach (var work in newCache.Values) IndexProductId(work);
         _store.Replace(newCache.Values.ToList());
+        CleanupOrphanedCovers();
         SavePending();
     }
 
