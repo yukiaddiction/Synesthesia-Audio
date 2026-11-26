@@ -796,7 +796,7 @@ public static class DLsiteParser
             System.Text.Json.JsonElement element = default;
             bool elementFound = false;
 
-            string targetDigits = Regex.Replace(rjCode, @"\D", "");
+            // Compared through DlsiteWorkNumber so the three lookup paths cannot disagree (DUP-08).
             
             // the product.json endpoint can return either a single object or an array.
             // the workno field sometimes includes the RJ prefix and sometimes doesn't,
@@ -817,8 +817,7 @@ public static class DLsiteParser
 
                     if (!string.IsNullOrEmpty(workno))
                     {
-                        string itemDigits = Regex.Replace(workno, @"\D", "");
-                        if (string.Equals(targetDigits, itemDigits, StringComparison.OrdinalIgnoreCase))
+                        if (DlsiteWorkNumber.RefersToSameWork(workno, rjCode))
                         {
                             element = item;
                             elementFound = true;
@@ -841,8 +840,7 @@ public static class DLsiteParser
 
                 if (!string.IsNullOrEmpty(workno))
                 {
-                    string itemDigits = Regex.Replace(workno, @"\D", "");
-                    if (string.Equals(targetDigits, itemDigits, StringComparison.OrdinalIgnoreCase))
+                    if (DlsiteWorkNumber.RefersToSameWork(workno, rjCode))
                     {
                         element = root;
                         elementFound = true;

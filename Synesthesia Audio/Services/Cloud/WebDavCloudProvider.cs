@@ -102,7 +102,7 @@ public class WebDavCloudProvider : ICloudProvider
 
     private static string BuildFileUrl(string baseUrl, string path)
     {
-        var normalizedBase = baseUrl.TrimEnd('/') + "/";
+        var normalizedBase = Synesthesia_Audio.Core.WebDavUrl.NormalizeBase(baseUrl);
         var relative = BuildRelativeUrlPath(path);
         var url = normalizedBase + Uri.EscapeDataString(relative).Replace("%2F", "/");
 

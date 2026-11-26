@@ -19,7 +19,7 @@ public sealed record WebDavConnection(string ServerUrl, string Username, string 
 
     /// <summary>Server URL with exactly one trailing slash, ready for path concatenation.</summary>
     public string NormalizedServerUrl =>
-        string.IsNullOrWhiteSpace(ServerUrl) ? string.Empty : ServerUrl.TrimEnd('/') + "/";
+        Synesthesia_Audio.Core.WebDavUrl.NormalizeBase(ServerUrl);
 
     public static WebDavConnection FromSettings(GeneralSettings settings) =>
         new(settings.CloudServerUrl, settings.CloudUsername, settings.CloudPassword);
