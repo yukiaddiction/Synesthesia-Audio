@@ -27,6 +27,13 @@ public class MainPage : ContentPage
     {
         _logger = logger;
         _viewModel = viewModel;
+
+        // Without this the page has no BindingContext, and both consequences are silent: every bound
+        // control in this page (the scan command, the sort command, the search box, the album list,
+        // the progress bar) resolves against null, and OnAppearing's InitializeAsync never runs because
+        // it is gated on `BindingContext is MainViewModel`. The app then shows an empty library forever
+        // and Save & Rescan appears to do nothing, because the data it loads has nowhere to go.
+        BindingContext = viewModel;
         _collectionView = new CollectionView
         {
             // Without this a search that matches nothing showed a blank area, which reads as a broken

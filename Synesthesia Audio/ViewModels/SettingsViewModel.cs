@@ -327,8 +327,22 @@ public partial class SettingsViewModel : BaseViewModel
             Application.Current.UserAppTheme = IsDarkMode ? AppTheme.Dark : AppTheme.Light;
         }
 
-        await _mainViewModel.InitializeAsync();
-        _logger.LogInformation("Library settings saved and library re-initialized");
+        try
+        {
+            await _mainViewModel.InitializeAsync();
+            _logger.LogInformation("Library settings saved and library re-initialized");
+
+            // Saving used to be completely silent: the only sign it worked was the library changing behind the
+            // page, so a slow or empty rescan read as "the button does nothing". Say it happened.
+            await _dialog.AlertAsync("Saved", "Settings saved and the library rescanned.", "OK");
+        }
+        catch (Exception ex)
+        {
+            // A failure here used to vanish into an unobserved task, leaving the button looking dead.
+            _logger.LogError(ex, "Saving settings succeeded but the library rescan failed");
+            await _dialog.AlertAsync("Saved, but the rescan failed",
+                "Your settings were saved. Rescanning the library failed:\n\n" + ex.Message, "OK");
+        }
     }
 
     /// <summary>
