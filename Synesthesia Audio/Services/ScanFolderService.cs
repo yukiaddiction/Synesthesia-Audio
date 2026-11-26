@@ -69,7 +69,7 @@ public partial class ScanFolderService : IDisposable
         {
             try
             {
-                coverPath = ChooseBestLocalCover(folderPath);
+                coverPath = CoverResolver.ChooseBestLocal(folderPath);
             }
             catch (Exception ex) { _logger.LogDebug(ex, "Local cover fallback failed"); }
         }
@@ -668,7 +668,7 @@ public partial class ScanFolderService : IDisposable
         }
         else
         {
-            var best = ChooseBestLocalCover(workPath);
+            var best = CoverResolver.ChooseBestLocal(workPath);
             if (best != null) work.CoverImagePath = best;
         }
     }
@@ -756,27 +756,6 @@ public partial class ScanFolderService : IDisposable
     /// Which folder counts as "the work" for this track. Delegated to Core so the disc/format folder rules
     /// (CD1, Disc 2, Vol3, mp3, wav, …) are covered by tests instead of only by scanning real libraries.
     /// </summary>
-    /// <summary>Best cover image in a local album folder, ranked by <see cref="LocalCoverFinder"/>.</summary>
-    private static string? ChooseBestLocalCover(string folderPath)
-    {
-        try
-        {
-            var candidates = Directory.GetFiles(folderPath, "*.*", SearchOption.TopDirectoryOnly)
-                .Select(f =>
-                {
-                    long size = 0;
-                    try { size = new FileInfo(f).Length; } catch { /* size is only a tie-break */ }
-                    return (Path: f, Length: size);
-                });
-
-            return LocalCoverFinder.SelectBest(candidates);
-        }
-        catch
-        {
-            // An unreadable folder simply has no local cover.
-            return null;
-        }
-    }
 
     private static string DetermineWorkFolder(string filePath, string basePath, bool isCloud) =>
         WorkFolderResolver.Resolve(filePath, basePath, isCloud);
@@ -925,24 +904,8 @@ public partial class ScanFolderService : IDisposable
         }
     }
 
-    private string GetLocalCoverCachePath(string workPath, string? productId)
-    {
-        // Covers live under AppData, not Cache. The OS may clear the cache directory at any time, and a
-        // cleared cover used to leave the cached work with an empty path and no way to fetch it again.
-        var coversDirectory = Path.Combine(FileSystem.AppDataDirectory, "covers");
-        Directory.CreateDirectory(coversDirectory);
-
-        if (!string.IsNullOrEmpty(productId))
-        {
-            return Path.Combine(coversDirectory, $"{productId}_cover.jpg");
-        }
-        else
-        {
-            var cleanPath = string.Concat(workPath.Split(Path.GetInvalidFileNameChars()));
-            if (cleanPath.Length > 50) cleanPath = cleanPath.Substring(cleanPath.Length - 50);
-            return Path.Combine(coversDirectory, $"cover_{cleanPath}.jpg");
-        }
-    }
+    private static string GetLocalCoverCachePath(string workPath, string? productId) =>
+        CoverResolver.GetCachePath(workPath, productId);
 
     /// <summary>
     /// Re-downloads the cover of an already-cached work whose image file has gone. Only the cover is
