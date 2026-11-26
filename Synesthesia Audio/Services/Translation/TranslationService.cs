@@ -53,16 +53,16 @@ public sealed class TranslationService : ITranslationService
         }
     }
 
-    public async Task<string> TranslateJaToEnAsync(string japaneseText)
+    public async Task<string> TranslateJaToEnAsync(string japaneseText, TranslationConfig? config = null)
     {
         if (string.IsNullOrWhiteSpace(japaneseText)) return string.Empty;
         if (!ContainsJapanese(japaneseText)) return string.Empty;
 
-        var translated = await TranslateJaToEnBatchAsync(new[] { japaneseText }).ConfigureAwait(false);
+        var translated = await TranslateJaToEnBatchAsync(new[] { japaneseText }, config).ConfigureAwait(false);
         return translated.Count > 0 ? translated[0] : string.Empty;
     }
 
-    public async Task<IReadOnlyList<string>> TranslateJaToEnBatchAsync(IReadOnlyList<string> japaneseTexts)
+    public async Task<IReadOnlyList<string>> TranslateJaToEnBatchAsync(IReadOnlyList<string> japaneseTexts, TranslationConfig? config = null)
     {
         var results = new string[japaneseTexts.Count];
 
@@ -87,7 +87,7 @@ public sealed class TranslationService : ITranslationService
             return results;
         }
 
-        var provider = CreateProvider();
+        var provider = CreateProvider(config);
 
         IReadOnlyList<string>? translated;
         try
@@ -126,10 +126,10 @@ public sealed class TranslationService : ITranslationService
             limited.ProviderName, delay.TotalSeconds);
     }
 
-    private ITranslationProvider CreateProvider()
+    private ITranslationProvider CreateProvider(TranslationConfig? config = null)
     {
-        var settings = _settingsService.CurrentSettings;
-        var kind = ResolveProviderKind(settings.TranslationProvider);
+        var settings = config ?? TranslationConfig.FromSettings(_settingsService.CurrentSettings);
+        var kind = ResolveProviderKind(settings.Provider);
 
         switch (kind)
         {
@@ -138,7 +138,7 @@ public sealed class TranslationService : ITranslationService
                     _httpClient,
                     _logger,
                     TranslationProviders.DeepL,
-                    settings.TranslationApiKey,
+                    settings.ApiKey,
                     string.Empty,
                     "Authorization",
                     "DeepL-Auth-Key");
@@ -148,10 +148,10 @@ public sealed class TranslationService : ITranslationService
                     _httpClient,
                     _logger,
                     TranslationProviders.Custom,
-                    settings.TranslationApiKey,
-                    settings.TranslationCustomBaseUrl,
-                    settings.TranslationCustomAuthHeader,
-                    settings.TranslationCustomAuthScheme);
+                    settings.ApiKey,
+                    settings.CustomBaseUrl,
+                    settings.CustomAuthHeader,
+                    settings.CustomAuthScheme);
 
             default:
                 return _gTranslateProvider ??= new GTranslateProvider(_httpClient, _retryAfterHandler, _logger);

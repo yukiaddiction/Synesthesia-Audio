@@ -215,27 +215,17 @@ public partial class SettingsViewModel : BaseViewModel
     [RelayCommand]
     private async Task TestTranslationAsync()
     {
-        var originalProvider = _settingsService.CurrentSettings.TranslationProvider;
-        var originalBaseUrl = _settingsService.CurrentSettings.TranslationCustomBaseUrl;
-        var originalHeader = _settingsService.CurrentSettings.TranslationCustomAuthHeader;
-        var originalScheme = _settingsService.CurrentSettings.TranslationCustomAuthScheme;
-        var originalKey = _settingsService.CurrentSettings.TranslationApiKey;
-
-        // Applied inside the service's lock so a concurrent reader never sees a half-applied override (PAT-03).
-        _settingsService.UpdateSettingsInMemory(s =>
-        {
-            s.TranslationProvider = TranslationProvider;
-            s.TranslationCustomBaseUrl = TranslationCustomBaseUrl;
-            s.TranslationCustomAuthHeader = TranslationCustomAuthHeader;
-            s.TranslationCustomAuthScheme = TranslationCustomAuthScheme;
-            s.TranslationApiKey = TranslationApiKey;
-        });
+        // The typed values are passed to the probe explicitly. Nothing in the shared settings changes, so a
+        // concurrent reader cannot observe an unsaved configuration and there is nothing to restore (DUP-03).
+        var probeConfig = new TranslationConfig(
+            TranslationProvider, TranslationApiKey, TranslationCustomBaseUrl,
+            TranslationCustomAuthHeader, TranslationCustomAuthScheme);
 
         TranslationStatus = "Testing…";
         try
         {
             _translationService.ClearError();
-            var translated = await _translationService.TranslateJaToEnAsync("催眠音声");
+            var translated = await _translationService.TranslateJaToEnAsync("催眠音声", probeConfig);
 
             if (_translationService.RateLimitRemaining is { } wait)
                 TranslationStatus = $"Rate limited — try again in {(int)Math.Ceiling(wait.TotalSeconds)} seconds.";
@@ -248,17 +238,6 @@ public partial class SettingsViewModel : BaseViewModel
         {
             _logger.LogWarning(ex, "Translation test failed");
             TranslationStatus = $"Failed: {ex.Message}";
-        }
-        finally
-        {
-            _settingsService.UpdateSettingsInMemory(s =>
-            {
-                s.TranslationProvider = originalProvider;
-                s.TranslationCustomBaseUrl = originalBaseUrl;
-                s.TranslationCustomAuthHeader = originalHeader;
-                s.TranslationCustomAuthScheme = originalScheme;
-                s.TranslationApiKey = originalKey;
-            });
         }
     }
 
