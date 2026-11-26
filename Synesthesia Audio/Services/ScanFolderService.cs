@@ -719,29 +719,9 @@ public partial class ScanFolderService : IDisposable
         return snapshot;
     }
 
-    private string? GetCloudDirectoryName(string path)
-    {
-        if (string.IsNullOrEmpty(path)) return null;
-        var cleanPath = path.Replace('\\', '/').TrimEnd('/');
-        var lastSlash = cleanPath.LastIndexOf('/');
-        if (lastSlash >= 0)
-        {
-            return cleanPath.Substring(0, lastSlash);
-        }
-        return string.Empty;
-    }
+    private static string? GetCloudDirectoryName(string path) => WorkGrouper.GetRemoteDirectory(path);
 
-    private string GetCloudFileName(string path)
-    {
-        if (string.IsNullOrEmpty(path)) return string.Empty;
-        var cleanPath = path.Replace('\\', '/');
-        var lastSlash = cleanPath.LastIndexOf('/');
-        if (lastSlash >= 0)
-        {
-            return cleanPath.Substring(lastSlash + 1);
-        }
-        return cleanPath;
-    }
+    private static string GetCloudFileName(string path) => WorkGrouper.GetRemoteFileName(path);
 
     /// <summary>
     /// A cached work is stale when its last fetch failed, or when it still carries a title that
@@ -765,35 +745,10 @@ public partial class ScanFolderService : IDisposable
     /// the work folder. Returns null rather than throwing when the folder is not actually inside the work —
     /// an un-normalised base path used to make the old <c>Substring</c> overflow.
     /// </summary>
-    private static string? GetSubAlbumName(string? fileDirectory, string workPath)
-    {
-        if (string.IsNullOrEmpty(fileDirectory)) return null;
-        if (string.Equals(fileDirectory, workPath, StringComparison.OrdinalIgnoreCase)) return null;
+    private static string? GetSubAlbumName(string? fileDirectory, string workPath) =>
+        WorkGrouper.GetSubAlbumName(fileDirectory, workPath);
 
-        var normalizedFileDir = fileDirectory.Replace('\\', '/').TrimEnd('/');
-        var normalizedWork = workPath.Replace('\\', '/').TrimEnd('/');
-
-        if (!normalizedFileDir.StartsWith(normalizedWork, StringComparison.OrdinalIgnoreCase)) return null;
-
-        var relative = normalizedFileDir.Length > normalizedWork.Length
-            ? normalizedFileDir[(normalizedWork.Length + 1)..]
-            : string.Empty;
-
-        return string.IsNullOrEmpty(relative) ? null : relative;
-    }
-
-    private int GetExtensionPriority(string ext)
-    {
-        return ext.ToLower() switch
-        {
-            ".flac" => 1,
-            ".wav" => 2,
-            ".mp3" => 3,
-            ".m4a" => 4,
-            ".mp4" => 5,
-            _ => 99
-        };
-    }
+    private static int GetExtensionPriority(string ext) => WorkGrouper.GetExtensionPriority(ext);
 
     /// <summary>
     /// Downloads a cover subject to the SEC-m-05 rules: https from a DLsite image host, an image content type,
