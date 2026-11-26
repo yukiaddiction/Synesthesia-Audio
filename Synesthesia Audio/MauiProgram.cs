@@ -29,14 +29,6 @@ public static class MauiProgram
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
             });
 
-        // Load appsettings.json configuration
-        builder.Configuration.AddJsonFile("appsettings.json", optional: true, reloadOnChange: false);
-
-        // Register typed AppSettings
-        var appSettings = new AppSettings();
-        builder.Configuration.Bind(appSettings);
-        builder.Services.AddSingleton(appSettings);
-        AppConstants.Initialize(appSettings);
 
         builder.Services.AddLogging(logging =>
         {

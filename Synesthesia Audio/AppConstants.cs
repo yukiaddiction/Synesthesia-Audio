@@ -2,13 +2,6 @@ namespace Synesthesia_Audio;
 
 public static class AppConstants
 {
-    private static AppSettings _settings = new();
-
-    public static void Initialize(AppSettings settings)
-    {
-        _settings = settings;
-    }
-
     public static readonly HashSet<string> SupportedMediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp3", ".wav", ".flac", ".m4a", ".mp4"
@@ -44,27 +37,26 @@ public static class AppConstants
     public const double PreviousTrackRestartThresholdSeconds = 3.0;
     public const double SessionSaveIntervalSeconds = 5.0;
 
+    // These were bound from appsettings.json through an AppSettings POCO. Nobody can edit that file after the
+    // app is packaged, so the binding only made the values harder to find and a mis-typed key silently produced
+    // a default (OVR-06). They are constants in code now.
+    //
     // HTTP / DLsite scraping
-    public static int DlsiteClientTimeoutSeconds => _settings.Http.DlsiteClientTimeoutSeconds;
-    public static int DlsiteApiTimeoutSeconds => _settings.Http.DlsiteApiTimeoutSeconds;
-    public static int DlsiteHtmlTimeoutSeconds => _settings.Http.DlsiteHtmlTimeoutSeconds;
-    public static int DlsiteTagFetchTimeoutSeconds => _settings.Http.DlsiteTagFetchTimeoutSeconds;
+    public const int DlsiteClientTimeoutSeconds = 15;
+    public const int DlsiteApiTimeoutSeconds = 8;
+    public const int DlsiteHtmlTimeoutSeconds = 8;
+    public const int DlsiteTagFetchTimeoutSeconds = 5;
 
     // Translation
-    public static int TranslationRequestTimeoutSeconds => _settings.Translation.RequestTimeoutSeconds;
-    public static int TranslationRateLimitBaseCooldownSeconds => _settings.Translation.RateLimitBaseCooldownSeconds;
-    public static int TranslationRateLimitMaxCooldownSeconds => _settings.Translation.RateLimitMaxCooldownSeconds;
+    public const int TranslationRequestTimeoutSeconds = 6;
+    public const int TranslationRateLimitBaseCooldownSeconds = 30;
+    public const int TranslationRateLimitMaxCooldownSeconds = 300;
 
     // Local HTTP Proxy
-    public static int ProxyStreamTimeoutMs => _settings.Proxy.StreamTimeoutMs;
-    public static int ProxyMaxLogEntries => _settings.Proxy.MaxLogEntries;
+    public const int ProxyStreamTimeoutMs = 30000;
 
     // Library Scan
-    public static int MaxParallelDlsiteRequests => _settings.Scan.MaxParallelDlsiteRequests;
-    public static int ScanProgressYieldDelayMs => _settings.Scan.ProgressYieldDelayMs;
-
-    // App
-    public static string DefaultAppTheme => _settings.App.DefaultTheme;
+    public const int MaxParallelDlsiteRequests = 4;
 }
 
 public enum StorageType
