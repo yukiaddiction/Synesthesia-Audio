@@ -63,7 +63,9 @@ public class LogViewerPage : ContentPage
                         LineBreakMode = LineBreakMode.WordWrap
                     }
                     .Bind(Label.TextProperty, ".")
-                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark))
+                    // The panel behind this list is GlassDeep, which is dark in both themes, so the text has to
+                    // be light in both. It used the light-theme text colour in light mode: #112A3E on #112A3E.
+                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryDark, AppColors.TextPrimaryDark))
             }
             .Bind(ItemsView.ItemsSourceProperty, nameof(LogViewerViewModel.LogLines))
         }.GlassDeep();

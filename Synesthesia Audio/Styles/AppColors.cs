@@ -18,6 +18,12 @@ public static class AppColors
     public static readonly Color WarningLight = Color.FromArgb("#5AA1D8");
     public static readonly Color WarningDark = Color.FromArgb("#84C6DF");
 
+    /// <summary>
+    /// The DLsite product-id badge background. Plain <c>Colors.Red</c> gave white text only 4.0:1, below the
+    /// 4.5:1 floor for small text; this measures 6.2:1 (UX-01).
+    /// </summary>
+    public static readonly Color RjBadge = Color.FromArgb("#C1121F");
+
     // Danger / Delete colors
     public static readonly Color DangerLight = Color.FromArgb("#FF3B30");
     public static readonly Color DangerDark = Color.FromArgb("#FF453A");

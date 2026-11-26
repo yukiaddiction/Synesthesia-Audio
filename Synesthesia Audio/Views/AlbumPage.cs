@@ -86,7 +86,7 @@ public class AlbumPage : ContentPage
 
                     new Border
                     {
-                        BackgroundColor = Colors.Red,
+                        BackgroundColor = AppColors.RjBadge,
                         Padding = new Thickness(8, 4),
                         StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius },
                         HorizontalOptions = LayoutOptions.Start,
