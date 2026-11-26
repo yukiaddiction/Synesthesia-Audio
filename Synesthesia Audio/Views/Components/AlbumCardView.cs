@@ -21,35 +21,7 @@ public class AlbumCardView : Border
         Padding = 0;
         Margin = AppLayout.WorkCardMargin;
 
-        var cover = new Grid
-        {
-            HeightRequest = AppLayout.GlassCardCoverHeight,
-            Children =
-            {
-                new Grid
-                {
-                    BackgroundColor = AppColors.CoverPlaceholder,
-                    Children =
-                    {
-                        new Label
-                        {
-                            Text = "NO COVER",
-                            FontSize = AppFontSizes.SmallText,
-                            FontAttributes = AppFonts.Bold,
-                            TextColor = AppColors.CoverPlaceholderText,
-                            HorizontalOptions = LayoutOptions.Center,
-                            VerticalOptions = LayoutOptions.Center
-                        }
-                    }
-                }
-                .Bind(VisualElement.IsVisibleProperty, nameof(WorkMetadata.CoverImagePath), converter: new EmptyStringToTrueConverter()),
-
-                new Image { Aspect = Aspect.AspectFill, HeightRequest = AppLayout.GlassCardCoverHeight }
-                    .Bind(Image.SourceProperty, nameof(WorkMetadata.CoverImagePath),
-                        converter: new CoverThumbnailConverter { Edge = Synesthesia_Audio.Core.CoverThumbnails.CardEdge })
-                    .Bind(VisualElement.IsVisibleProperty, nameof(WorkMetadata.CoverImagePath), converter: new EmptyStringToFalseConverter())
-            }
-        };
+        var cover = CoverImageView.Card(nameof(WorkMetadata.CoverImagePath));
 
         // The footer rides up over the cover; the overlap is what makes the panel read as glass
         // sitting above the artwork rather than as a plain stacked card.

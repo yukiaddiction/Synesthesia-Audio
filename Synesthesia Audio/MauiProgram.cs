@@ -78,7 +78,10 @@ public static class MauiProgram
             client.DefaultRequestHeaders.Add("User-Agent", DLsiteService.DefaultUserAgent);
         });
 
-        builder.Services.AddSingleton<RetryAfterCaptureHandler>();
+        // Transient, not singleton: the HTTP factory builds one pipeline per handler lifetime and rejects a
+        // reused handler. The captured value lives in RetryAfterState, which is the singleton.
+        builder.Services.AddSingleton<RetryAfterState>();
+        builder.Services.AddTransient<RetryAfterCaptureHandler>();
         builder.Services.AddSingleton<ITranslationService, TranslationService>();
         builder.Services.AddSingleton<NameRomanizationService>();
         builder.Services.AddSingleton<KawazuKanjiRomanizer>();

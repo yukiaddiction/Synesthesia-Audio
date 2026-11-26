@@ -12,7 +12,7 @@ public sealed class TranslationService : ITranslationService
 {
     private readonly SettingsService _settingsService;
     private readonly ILogger<TranslationService> _logger;
-    private readonly RetryAfterCaptureHandler _retryAfterHandler = new();
+    private readonly RetryAfterState _retryAfterState;
     private readonly HttpClient _httpClient;
     // One object owns the cooldown clock and the backoff step, so they cannot drift apart (OVR-04).
     private readonly RateLimiter _limiter = new(
@@ -27,10 +27,11 @@ public sealed class TranslationService : ITranslationService
 
     public void ClearError() => Volatile.Write(ref _lastError, null);
 
-    public TranslationService(SettingsService settingsService, IHttpClientFactory httpClientFactory, ILogger<TranslationService> logger)
+    public TranslationService(SettingsService settingsService, IHttpClientFactory httpClientFactory, RetryAfterState retryAfterState, ILogger<TranslationService> logger)
     {
         _settingsService = settingsService;
         _logger = logger;
+        _retryAfterState = retryAfterState;
 
         // Timeout and the Retry-After handler come from the named registration (DUP-02 / OVR-05).
         _httpClient = httpClientFactory.CreateClient(HttpClients.Translation);
@@ -154,7 +155,7 @@ public sealed class TranslationService : ITranslationService
                     settings.CustomAuthScheme);
 
             default:
-                return _gTranslateProvider ??= new GTranslateProvider(_httpClient, _retryAfterHandler, _logger);
+                return _gTranslateProvider ??= new GTranslateProvider(_httpClient, _retryAfterState, _logger);
         }
     }
 

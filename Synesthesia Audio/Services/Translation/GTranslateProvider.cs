@@ -12,17 +12,17 @@ namespace Synesthesia_Audio.Services.Translation;
 public sealed class GTranslateProvider : ITranslationProvider
 {
     private readonly AggregateTranslator _translator;
-    private readonly RetryAfterCaptureHandler _retryAfterHandler;
+    private readonly RetryAfterState _retryAfterState;
     private readonly ILogger _logger;
 
     public string Name => "GTranslate";
 
     public GTranslateProvider(
         HttpClient httpClient,
-        RetryAfterCaptureHandler retryAfterHandler,
+        RetryAfterState retryAfterState,
         ILogger logger)
     {
-        _retryAfterHandler = retryAfterHandler;
+        _retryAfterState = retryAfterState;
         _logger = logger;
 
         _translator = new AggregateTranslator(new ITranslator[]
@@ -40,7 +40,7 @@ public sealed class GTranslateProvider : ITranslationProvider
 
         try
         {
-            _retryAfterHandler.Reset();
+            _retryAfterState.Reset();
 
             // Join on newlines so a list of tags costs one request instead of one per tag. Inputs are
             // flattened first: a string that itself contains a newline would otherwise fake an extra item.
@@ -75,7 +75,7 @@ public sealed class GTranslateProvider : ITranslationProvider
         }
         catch (Exception ex) when (RateLimitDetector.IsRateLimit(ex))
         {
-            throw new TranslationRateLimitedException(Name, _retryAfterHandler.LastRetryAfter);
+            throw new TranslationRateLimitedException(Name, _retryAfterState.Last);
         }
         catch (OperationCanceledException)
         {

@@ -1,35 +1,25 @@
 using System.Net;
 
 using Synesthesia_Audio.Core;
+
 namespace Synesthesia_Audio.Services.Translation;
 
 /// <summary>
-/// GTranslate calls EnsureSuccessStatusCode(), which throws the response away before our code can
-/// read it — so Retry-After is recovered from the HTTP pipeline instead of the exception.
+/// GTranslate calls EnsureSuccessStatusCode(), which throws the response away before our code can read it — so
+/// Retry-After is recovered from the HTTP pipeline instead of the exception.
+///
+/// This must be registered <c>transient</c>: the HTTP client factory builds one pipeline per handler lifetime and
+/// rejects a reused handler ("The 'InnerHandler' property must be null"). Registering it as a singleton made
+/// <c>CreateClient("translation")</c> throw, which took the whole app down at startup because the translation
+/// service is constructed there. Its captured value lives in <see cref="RetryAfterState"/> so the transient
+/// instances still share one answer.
 /// </summary>
 public sealed class RetryAfterCaptureHandler : DelegatingHandler
 {
-    public RetryAfterCaptureHandler() : base(new HttpClientHandler())
-    {
-    }
+    private readonly RetryAfterState _state;
 
-    private readonly object _lock = new();
-    private TimeSpan? _lastRetryAfter;
-
-    /// <summary>
-    /// Best-effort: the translator owns the request, so there is no per-call channel to carry this back.
-    /// Access is locked because translation calls run concurrently (BUG-m-22).
-    /// </summary>
-    public TimeSpan? LastRetryAfter
-    {
-        get { lock (_lock) return _lastRetryAfter; }
-        private set { lock (_lock) _lastRetryAfter = value; }
-    }
-
-    public void Reset()
-    {
-        lock (_lock) _lastRetryAfter = null;
-    }
+    // No base handler of our own: the factory supplies the primary handler and sets InnerHandler.
+    public RetryAfterCaptureHandler(RetryAfterState state) => _state = state;
 
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
@@ -38,12 +28,7 @@ public sealed class RetryAfterCaptureHandler : DelegatingHandler
 
         if (response.StatusCode is HttpStatusCode.TooManyRequests or (HttpStatusCode)529)
         {
-            var captured = ReadRetryAfter(response);
-            lock (_lock)
-            {
-                // Never let a response without Retry-After erase one that arrived with it.
-                _lastRetryAfter = captured ?? _lastRetryAfter;
-            }
+            _state.Record(ReadRetryAfter(response));
         }
 
         return response;
