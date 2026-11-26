@@ -1,9 +1,10 @@
 {
-  "created": "2026-11-25",
+  "created": "2026-11-26",
   "count": 238244,
-  "entries": 743691,
+  "entries": 743692,
   "candidates": 315702,
   "compressedBytes": 1442507,
   "rawBytes": 3935248,
-  "sha256": "1c1a6cb7a57542521794572174862eb52e59586459ce83d8e0bc68eca7eec956"
+  "sha256": "5cc585677930f5c511e26682b321d6e00d76878a852d75bd76fcc5a9b96a9463",
+  "ipadicSha256": "4cba5b4ed1a17815db4f58e27185f74cbf6e982927bd0c2baaabb4372568e43e"
 }
