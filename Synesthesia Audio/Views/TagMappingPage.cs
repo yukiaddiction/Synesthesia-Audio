@@ -19,8 +19,12 @@ public class TagMappingPage : ContentPage
     private readonly Entry _engEntry;
     private readonly SearchBar _searchBar;
 
+    /// <summary>How many rows to add per dispatcher turn while filling a long list.</summary>
+    private const int BatchSize = 40;
+
     private Dictionary<string, string> _allMappings = new();
     private Timer? _searchDebounce;
+    private int _renderGeneration;
 
     public TagMappingPage(TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel)
     {
@@ -167,31 +171,57 @@ public class TagMappingPage : ContentPage
             );
         }
 
-        foreach (var kvp in filtered.OrderBy(k => k.Key))
+        // Filled in batches on the dispatcher rather than in one pass: adding every row synchronously blocked the
+        // UI thread for the whole list, which on a large dictionary is a visible stall (PERF-09). Rows are still
+        // real views in a stack - virtualising them properly needs TagMappingRowView to become bindable.
+        var pending = filtered.OrderBy(k => k.Key).ToList();
+        var index = 0;
+
+        // A new filter starts a new chain; an older one that is still filling must stop, or it would append
+        // rows for the previous filter into the list that was just cleared.
+        var generation = ++_renderGeneration;
+
+        void AddBatch()
         {
-            var jpKey = kvp.Key;
-            var engVal = kvp.Value;
+            if (generation != _renderGeneration) return;
 
-            var rowBorder = new TagMappingRowView(
-                jpKey,
-                engVal,
-                (jp, eng) =>
-                {
-                    _tagService.AddOrUpdateMapping(jp, eng);
-                    // The remap walks every cached work, so it runs off the UI thread; it used to block the
-                    // page for the whole library on every row save (PERF-09).
-                    Task.Run(() => _cacheService.CleanAndReMapAllWorkGenres(_tagService))
-                        .ContinueWith(_ => RefreshLibraryAsync(), TaskScheduler.FromCurrentSynchronizationContext());
-                },
-                (jp) =>
-                {
-                    _tagService.RemoveMapping(jp);
-                    LoadData();
-                });
+            var addedThisBatch = 0;
+            while (index < pending.Count && addedThisBatch < BatchSize)
+            {
+                var kvp = pending[index++];
+                addedThisBatch++;
 
-            _listLayout.Children.Add(rowBorder);
-            rowsAdded++;
+                var jpKey = kvp.Key;
+                var engVal = kvp.Value;
+
+                var rowBorder = new TagMappingRowView(
+                    jpKey,
+                    engVal,
+                    (jp, eng) =>
+                    {
+                        _tagService.AddOrUpdateMapping(jp, eng);
+                        // The remap walks every cached work, so it runs off the UI thread; it used to block the
+                        // page for the whole library on every row save (PERF-09).
+                        Task.Run(() => _cacheService.CleanAndReMapAllWorkGenres(_tagService))
+                            .ContinueWith(_ => RefreshLibraryAsync(), TaskScheduler.FromCurrentSynchronizationContext());
+                    },
+                    (jp) =>
+                    {
+                        _tagService.RemoveMapping(jp);
+                        LoadData();
+                    });
+
+                _listLayout.Children.Add(rowBorder);
+                rowsAdded++;
+            }
+
+            if (index < pending.Count)
+            {
+                Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(1), AddBatch);
+            }
         }
+
+        AddBatch();
 
         if (rowsAdded == 0)
         {
