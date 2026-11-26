@@ -8,6 +8,8 @@ using Synesthesia_Audio.Services;
 using Synesthesia_Audio.Styles;
 using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 
+using Synesthesia_Audio.Views.Components;
+
 namespace Synesthesia_Audio.Views.Components;
 
 /// <summary>
@@ -62,70 +64,9 @@ public sealed class TransportDock : Border
             }
         };
 
-        var previous = GlassTheme.IconButton("\u23EE", AppFontSizes.ButtonLarge, 32)
-            .Bind(Button.CommandProperty, nameof(AudioService.PreviousTrackCommand))
-            .Invoke(b => b.AutomationId = "DockPreviousButton");
-        ToolTipProperties.SetText(previous, "Previous track");
-        SemanticProperties.SetDescription(previous, "Previous track");
+        var transport = TransportControls.BuildButtons("Dock", AppLayout.SpacingLarge, playButtonSize: 42);
 
-        var playPause = new Button
-        {
-            FontSize = AppFontSizes.Subtitle,
-            WidthRequest = 42,
-            HeightRequest = 42,
-            CornerRadius = 21,
-            Padding = 0
-        }
-        .Bind(Button.TextProperty, nameof(AudioService.IsPlaying), converter: new PlayPauseTextConverter())
-        .Bind(Button.CommandProperty, nameof(AudioService.TogglePlayCommand))
-        .GlassPill(accent: true);
-        playPause.AutomationId = "DockPlayPauseButton";
-        ToolTipProperties.SetText(playPause, "Play / Pause");
-        playPause.Bind(SemanticProperties.DescriptionProperty, nameof(AudioService.PlayPauseAccessibleName));
-
-        var next = GlassTheme.IconButton("\u23ED", AppFontSizes.ButtonLarge, 32)
-            .Bind(Button.CommandProperty, nameof(AudioService.NextTrackCommand))
-            .Invoke(b => b.AutomationId = "DockNextButton");
-        ToolTipProperties.SetText(next, "Next track");
-        SemanticProperties.SetDescription(next, "Next track");
-
-        var transport = new HorizontalStackLayout
-        {
-            Spacing = AppLayout.SpacingLarge,
-            HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center,
-            Children = { previous, playPause, next }
-        };
-
-        var seek = new Slider
-        {
-            Minimum = 0,
-            Maximum = 1,
-            // 44 px is the smallest comfortable touch target, and a transparent thumb left nothing to see
-            // or grab (UX-03).
-            HeightRequest = 44,
-            AutomationId = "DockSeekSlider"
-        }
-        .Invoke(s => SemanticProperties.SetDescription(s, "Playback position"))
-        .Invoke(s => SemanticProperties.SetHint(s, "Drag to seek within the track"))
-        .Bind(Slider.ValueProperty, nameof(AudioService.PlaybackProgress), BindingMode.OneWay)
-        .AppThemeBinding(Slider.ThumbColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
-        .AppThemeBinding(Slider.MinimumTrackColorProperty, AppColors.SuccessLight, AppColors.PrimaryDark)
-        .AppThemeBinding(Slider.MaximumTrackColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark)
-        .Invoke(s =>
-        {
-            s.DragStarted += (_, _) =>
-            {
-                if (audioService.BeginSeekCommand.CanExecute(null))
-                    audioService.BeginSeekCommand.Execute(null);
-            };
-            s.DragCompleted += (_, _) =>
-            {
-                audioService.SeekProgress = s.Value;
-                if (audioService.EndSeekCommand.CanExecute(null))
-                    audioService.EndSeekCommand.Execute(null);
-            };
-        });
+        var seek = TransportControls.BuildSeekBar(audioService, "DockSeekSlider");
 
         var mute = GlassTheme.IconButton(string.Empty, AppFontSizes.ButtonMedium, 32)
             .Bind(Button.TextProperty, nameof(AudioService.VolumeIcon))

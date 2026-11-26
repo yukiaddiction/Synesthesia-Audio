@@ -8,6 +8,8 @@ using Synesthesia_Audio.Styles;
 using Synesthesia_Audio.Converters;
 using System.Collections.Generic;
 
+using Synesthesia_Audio.Views.Components;
+
 namespace Synesthesia_Audio.Views;
 
 public class FloatingPlayerBar : Border
@@ -21,37 +23,7 @@ public class FloatingPlayerBar : Border
         Padding = AppLayout.FloatingPlayerPadding;
         BindingContext = audioService;
 
-        var transport = new HorizontalStackLayout
-        {
-            Spacing = AppLayout.SpacingMedium,
-            VerticalOptions = LayoutOptions.Center,
-            Children =
-            {
-                GlassTheme.IconButton("\u23EE", AppFontSizes.ButtonLarge, 32)
-                    .Bind(Button.CommandProperty, nameof(AudioService.PreviousTrackCommand))
-                    .Invoke(b => b.AutomationId = "PreviousTrackButton")
-                    .Invoke(b => SemanticProperties.SetDescription(b, "Previous Track")),
-
-                new Button
-                {
-                    FontSize = AppFontSizes.Subtitle,
-                    WidthRequest = 40,
-                    HeightRequest = 40,
-                    CornerRadius = 20,
-                    Padding = 0
-                }
-                .Bind(Button.TextProperty, nameof(AudioService.IsPlaying), converter: new PlayPauseTextConverter())
-                .Bind(Button.CommandProperty, nameof(AudioService.TogglePlayCommand))
-                .Invoke(b => b.AutomationId = "PlayPauseButton")
-                .Bind(SemanticProperties.DescriptionProperty, nameof(AudioService.PlayPauseAccessibleName))
-                .GlassPill(accent: true),
-
-                GlassTheme.IconButton("\u23ED", AppFontSizes.ButtonLarge, 32)
-                    .Bind(Button.CommandProperty, nameof(AudioService.NextTrackCommand))
-                    .Invoke(b => b.AutomationId = "NextTrackButton")
-                    .Invoke(b => SemanticProperties.SetDescription(b, "Next Track"))
-            }
-        };
+        var transport = TransportControls.BuildButtons("Floating", AppLayout.SpacingMedium, playButtonSize: 40);
 
         var metadata = new VerticalStackLayout
         {
@@ -133,33 +105,9 @@ public class FloatingPlayerBar : Border
                     }
                 }.Row(0),
 
-                new Slider
-                {
-                    Minimum = 0,
-                    Maximum = 1,
-                    HeightRequest = 44,
-                    Margin = AppLayout.FloatingPlayerSliderMargin,
-    
-                    AutomationId = "SeekSlider"
-                }
-                .Row(1)
-                .Bind(Slider.ValueProperty, nameof(AudioService.PlaybackProgress), BindingMode.OneWay)
-                .AppThemeBinding(Slider.MinimumTrackColorProperty, AppColors.SuccessLight, AppColors.PrimaryDark)
-                .AppThemeBinding(Slider.MaximumTrackColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark)
-                .Invoke(s =>
-                {
-                    s.DragStarted += (_, _) =>
-                    {
-                        if (audioService.BeginSeekCommand.CanExecute(null))
-                            audioService.BeginSeekCommand.Execute(null);
-                    };
-                    s.DragCompleted += (_, _) =>
-                    {
-                        audioService.SeekProgress = s.Value;
-                        if (audioService.EndSeekCommand.CanExecute(null))
-                            audioService.EndSeekCommand.Execute(null);
-                    };
-                })
+                TransportControls.BuildSeekBar(audioService, "SeekSlider")
+                    .Invoke(s => s.Margin = AppLayout.FloatingPlayerSliderMargin)
+                    .Row(1)
             }
         };
 
