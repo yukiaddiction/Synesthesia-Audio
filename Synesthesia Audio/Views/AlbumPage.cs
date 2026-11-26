@@ -61,7 +61,9 @@ public class AlbumPage : ContentPage
                     .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.CoverImagePath)}", converter: new EmptyStringToTrueConverter()),
 
                     new Image { Aspect = Aspect.AspectFill }
-                        .Bind(Image.SourceProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.CoverImagePath)}")
+                        // Hero artwork was the one surface still decoding the full-size cover (PERF-08).
+                        .Bind(Image.SourceProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.CoverImagePath)}",
+                            converter: new CoverThumbnailConverter { Edge = Synesthesia_Audio.Core.CoverThumbnails.CardEdge })
                         .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.CoverImagePath)}", converter: new EmptyStringToFalseConverter()),
 
                     // Scrim so the overlapping sheet above the artwork reads as depth, not as a seam.

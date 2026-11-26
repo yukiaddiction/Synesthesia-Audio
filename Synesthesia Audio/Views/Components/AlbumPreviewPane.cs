@@ -8,6 +8,8 @@ using Synesthesia_Audio.Models;
 using Synesthesia_Audio.Styles;
 using Synesthesia_Audio.ViewModels;
 
+using Synesthesia_Audio.Views.Components;
+
 namespace Synesthesia_Audio.Views.Components;
 
 /// <summary>
@@ -54,32 +56,16 @@ public sealed class AlbumPreviewPane : Border
             StrokeThickness = 0,
             HeightRequest = CoverHeight,
             Padding = 0,
-            Content = new Grid
-            {
-                Children =
+            Content = CoverImageView.Create(
+                $"{nameof(MainViewModel.SelectedWork)}.{nameof(WorkMetadata.CoverImagePath)}",
+                Synesthesia_Audio.Core.CoverThumbnails.CardEdge,
+                placeholderContent: new Label
                 {
-                    new Grid
-                    {
-                        BackgroundColor = AppColors.CoverPlaceholder,
-                        Children =
-                        {
-                            new Label
-                            {
-                                Text = "\uD83C\uDFB5",
-                                FontSize = AppFontSizes.CoverPlaceholderIcon,
-                                HorizontalOptions = LayoutOptions.Center,
-                                VerticalOptions = LayoutOptions.Center
-                            }
-                        }
-                    }
-                    .Bind(VisualElement.IsVisibleProperty, $"{nameof(MainViewModel.SelectedWork)}.{nameof(WorkMetadata.CoverImagePath)}", converter: new EmptyStringToTrueConverter()),
-
-                    new Image { Aspect = Aspect.AspectFill }
-                        .Bind(Image.SourceProperty, $"{nameof(MainViewModel.SelectedWork)}.{nameof(WorkMetadata.CoverImagePath)}",
-                            converter: new CoverThumbnailConverter { Edge = Synesthesia_Audio.Core.CoverThumbnails.CardEdge })
-                        .Bind(VisualElement.IsVisibleProperty, $"{nameof(MainViewModel.SelectedWork)}.{nameof(WorkMetadata.CoverImagePath)}", converter: new EmptyStringToFalseConverter())
-                }
-            }
+                    Text = "\uD83C\uDFB5",
+                    FontSize = AppFontSizes.CoverPlaceholderIcon,
+                    HorizontalOptions = LayoutOptions.Center,
+                    VerticalOptions = LayoutOptions.Center
+                })
         };
 
         var chips = new FlexLayout
