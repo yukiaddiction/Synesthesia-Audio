@@ -21,8 +21,11 @@ public class MainPage : ContentPage
     private bool _notificationPermissionChecked;
     private bool _initialized;
 
-    public MainPage(MainViewModel viewModel, Services.AudioService audioService)
+    private readonly ILogger<MainPage> _logger;
+
+    public MainPage(MainViewModel viewModel, Services.AudioService audioService, ILogger<MainPage> logger)
     {
+        _logger = logger;
         _viewModel = viewModel;
         _collectionView = new CollectionView
         {
@@ -287,7 +290,7 @@ public class MainPage : ContentPage
                 }
             }
         }
-        catch (Exception ex) { Synesthesia_Audio.Services.Logging.AppLog.Get<MainPage>().LogWarning(ex, "Notification permission request failed"); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Notification permission request failed"); }
 
         try
         {
@@ -311,7 +314,7 @@ public class MainPage : ContentPage
         }
         catch (Exception ex)
         {
-            Synesthesia_Audio.Services.Logging.AppLog.Get<MainPage>().LogError(ex, "MainPage initialization failed");
+            _logger.LogError(ex, "MainPage initialization failed");
         }
     }
 

@@ -12,8 +12,11 @@ public class LogViewerPage : ContentPage
 {
     private readonly LogViewerViewModel _viewModel;
 
-    public LogViewerPage(LogViewerViewModel viewModel)
+    private readonly ILogger<LogViewerPage> _logger;
+
+    public LogViewerPage(LogViewerViewModel viewModel, ILogger<LogViewerPage> logger)
     {
+        _logger = logger;
         BindingContext = _viewModel = viewModel;
 
         this.Bind(ContentPage.TitleProperty, nameof(LogViewerViewModel.Title));
@@ -101,7 +104,7 @@ public class LogViewerPage : ContentPage
         }
         catch (Exception ex)
         {
-            Services.Logging.AppLog.Get<LogViewerPage>().LogWarning(ex, "LogViewerPage OnAppearing error");
+            _logger.LogWarning(ex, "LogViewerPage OnAppearing error");
         }
     }
 }
