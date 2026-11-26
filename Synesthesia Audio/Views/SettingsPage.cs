@@ -24,9 +24,11 @@ public class SettingsPage : ContentPage
 
     private readonly ILogger<SettingsPage> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly TagMappingViewModel _tagMappingViewModel;
 
-    public SettingsPage(SettingsViewModel viewModel, AudioService audioService, TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel, ILoggerFactory loggerFactory)
+    public SettingsPage(SettingsViewModel viewModel, AudioService audioService, TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel, TagMappingViewModel tagMappingViewModel, ILoggerFactory loggerFactory)
     {
+        _tagMappingViewModel = tagMappingViewModel;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<SettingsPage>();
         BindingContext = _viewModel = viewModel;
@@ -450,7 +452,7 @@ public class SettingsPage : ContentPage
                                 {
                                     // Guarded: a double click used to push the page twice.
                                     await NavigationGuard.RunAsync(() =>
-                                        Shell.Current.Navigation.PushAsync(new TagMappingPage(tagService, cacheService, mainViewModel, _loggerFactory.CreateLogger<TagMappingPage>())));
+                                        Shell.Current.Navigation.PushAsync(new TagMappingPage(_tagMappingViewModel, _loggerFactory.CreateLogger<TagMappingPage>())));
                                 }
                                 catch (Exception ex)
                                 {

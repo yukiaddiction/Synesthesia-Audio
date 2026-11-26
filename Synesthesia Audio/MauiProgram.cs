@@ -109,7 +109,8 @@ public static class MauiProgram
 
         builder.Services.AddTransient<MainPage>();
         builder.Services.AddTransient<AlbumPage>();
-        builder.Services.AddTransient<TagMappingPage>();
+        builder.Services.AddTransient<TagMappingViewModel>();
+builder.Services.AddTransient<TagMappingPage>();
         builder.Services.AddTransient<SettingsPage>();
         builder.Services.AddTransient<LogViewerPage>();
         // Per-window UI graph: a re-created activity gets its own unparented Shell. Keeping these

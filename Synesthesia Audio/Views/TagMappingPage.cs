@@ -12,26 +12,21 @@ namespace Synesthesia_Audio.Views;
 
 public class TagMappingPage : ContentPage
 {
-    private readonly TagMappingService _tagService;
-    private readonly LibraryCacheService _cacheService;
-    private readonly MainViewModel _mainViewModel;
-    private readonly ObservableCollection<TagMappingRow> _rows = new();
+    private readonly TagMappingViewModel _viewModel;
     private readonly Label _emptyLabel;
     private readonly Entry _jpEntry;
     private readonly Entry _engEntry;
     private readonly SearchBar _searchBar;
 
-    private Dictionary<string, string> _allMappings = new();
     private Timer? _searchDebounce;
 
     private readonly ILogger<TagMappingPage> _logger;
 
-    public TagMappingPage(TagMappingService tagService, LibraryCacheService cacheService, MainViewModel mainViewModel, ILogger<TagMappingPage> logger)
+    public TagMappingPage(TagMappingViewModel viewModel, ILogger<TagMappingPage> logger)
     {
         _logger = logger;
-        _tagService = tagService;
-        _cacheService = cacheService;
-        _mainViewModel = mainViewModel;
+        _viewModel = viewModel;
+                BindingContext = viewModel;
 
         Title = "Tag Mapping Manager";
         Shell.SetNavBarIsVisible(this, false);
@@ -41,7 +36,11 @@ public class TagMappingPage : ContentPage
         // mapping list (PERF-09).
         _searchBar.TextChanged += (s, e) =>
         {
-            _searchDebounce ??= new Timer(_ => MainThread.BeginInvokeOnMainThread(RefreshList), null, Timeout.Infinite, Timeout.Infinite);
+            _searchDebounce ??= new Timer(_ => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            _viewModel.SearchText = _searchBar.Text ?? string.Empty;
+            _emptyLabel.IsVisible = _viewModel.IsEmpty;
+        }), null, Timeout.Infinite, Timeout.Infinite);
             _searchDebounce.Change(250, Timeout.Infinite);
         };
         _searchBar
@@ -59,10 +58,10 @@ public class TagMappingPage : ContentPage
             var eng = _engEntry.Text?.Trim();
             if (!string.IsNullOrEmpty(jp) && !string.IsNullOrEmpty(eng))
             {
-                _tagService.AddOrUpdateMapping(jp, eng);
+                _viewModel.AddMapping(jp, eng);
                 _jpEntry.Text = "";
                 _engEntry.Text = "";
-                LoadData();
+                _emptyLabel.IsVisible = _viewModel.IsEmpty;
             }
         };
 
@@ -71,11 +70,8 @@ public class TagMappingPage : ContentPage
         {
             try
             {
-                await Services.TagCleanup.RunAsync(_cacheService, _tagService, async () =>
-                {
-                    await _mainViewModel.InitializeAsync();
-                    LoadData();
-                });
+                await _viewModel.CleanAndResetAsync();
+                _emptyLabel.IsVisible = _viewModel.IsEmpty;
                 await DisplayAlert("Tags Cleaned", Services.TagCleanup.SuccessMessage, "OK");
             }
             catch (Exception ex)
@@ -134,21 +130,16 @@ public class TagMappingPage : ContentPage
         // The row view is bindable now, so the list can be virtualised instead of rebuilt view by view (PERF-09).
         var listView = new CollectionView
         {
-            ItemsSource = _rows,
+            ItemsSource = _viewModel.Rows,
             ItemTemplate = new DataTemplate(() =>
             {
                 var row = new TagMappingRowView(_logger)
                 {
-                    OnSave = (jp, eng) =>
-                    {
-                        _tagService.AddOrUpdateMapping(jp, eng);
-                        Task.Run(() => _cacheService.CleanAndReMapAllWorkGenres(_tagService))
-                            .ContinueWith(_ => RefreshLibraryAsync(), TaskScheduler.FromCurrentSynchronizationContext());
-                    },
+                    OnSave = (jp, eng) => _viewModel.SaveMappingAsync(jp, eng),
                     OnDelete = jp =>
                     {
-                        _tagService.RemoveMapping(jp);
-                        LoadData();
+                        _viewModel.RemoveMapping(jp);
+                        _emptyLabel.IsVisible = _viewModel.IsEmpty;
                     }
                 };
 
@@ -189,41 +180,10 @@ public class TagMappingPage : ContentPage
 
     private void LoadData()
     {
-        _allMappings = _tagService.GetAllMappings();
-        RefreshList();
+        _viewModel.Load();
+        _emptyLabel.IsVisible = _viewModel.IsEmpty;
     }
 
-    private void RefreshList()
-    {
-        var query = _searchBar.Text?.Trim();
-
-        var filtered = _allMappings.AsEnumerable();
-        if (!string.IsNullOrWhiteSpace(query))
-        {
-            filtered = filtered.Where(kvp =>
-                kvp.Key.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                kvp.Value.Contains(query, StringComparison.OrdinalIgnoreCase));
-        }
-
-        // Replaces the contents of a bound collection: the CollectionView virtualises and recycles its rows, so
-        // the page no longer builds a view per mapping (PERF-09).
-        _rows.Clear();
-        foreach (var kvp in filtered.OrderBy(k => k.Key))
-            _rows.Add(new TagMappingRow(kvp.Key, kvp.Value));
-
-        _emptyLabel.IsVisible = _rows.Count == 0;
-    }
-    private async Task RefreshLibraryAsync()
-    {
-        try
-        {
-            await _mainViewModel.InitializeAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Library refresh after tag update failed");
-        }
-    }
 }
 
 /// <summary>One key/value pair in the mapping list, so the CollectionView has an item type to bind to.</summary>
