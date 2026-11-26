@@ -45,7 +45,8 @@ public class AlbumCardView : Border
                 .Bind(VisualElement.IsVisibleProperty, nameof(WorkMetadata.CoverImagePath), converter: new EmptyStringToTrueConverter()),
 
                 new Image { Aspect = Aspect.AspectFill, HeightRequest = AppLayout.GlassCardCoverHeight }
-                    .Bind(Image.SourceProperty, nameof(WorkMetadata.CoverImagePath))
+                    .Bind(Image.SourceProperty, nameof(WorkMetadata.CoverImagePath),
+                        converter: new CoverThumbnailConverter { Edge = Synesthesia_Audio.Core.CoverThumbnails.CardEdge })
                     .Bind(VisualElement.IsVisibleProperty, nameof(WorkMetadata.CoverImagePath), converter: new EmptyStringToFalseConverter())
             }
         };

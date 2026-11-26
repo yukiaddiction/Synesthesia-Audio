@@ -75,7 +75,8 @@ public sealed class AlbumPreviewPane : Border
                     .Bind(VisualElement.IsVisibleProperty, $"{nameof(MainViewModel.SelectedWork)}.{nameof(WorkMetadata.CoverImagePath)}", converter: new EmptyStringToTrueConverter()),
 
                     new Image { Aspect = Aspect.AspectFill }
-                        .Bind(Image.SourceProperty, $"{nameof(MainViewModel.SelectedWork)}.{nameof(WorkMetadata.CoverImagePath)}")
+                        .Bind(Image.SourceProperty, $"{nameof(MainViewModel.SelectedWork)}.{nameof(WorkMetadata.CoverImagePath)}",
+                            converter: new CoverThumbnailConverter { Edge = Synesthesia_Audio.Core.CoverThumbnails.CardEdge })
                         .Bind(VisualElement.IsVisibleProperty, $"{nameof(MainViewModel.SelectedWork)}.{nameof(WorkMetadata.CoverImagePath)}", converter: new EmptyStringToFalseConverter())
                 }
             }

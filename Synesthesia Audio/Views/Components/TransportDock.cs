@@ -40,7 +40,8 @@ public sealed class TransportDock : Border
                     Padding = 0,
                     BackgroundColor = AppColors.CoverPlaceholder,
                     Content = new Image { Aspect = Aspect.AspectFill }
-                        .Bind(Image.SourceProperty, $"{nameof(AudioService.CurrentTrack)}.{nameof(Track.CoverImagePath)}")
+                        .Bind(Image.SourceProperty, $"{nameof(AudioService.CurrentTrack)}.{nameof(Track.CoverImagePath)}",
+                            converter: new CoverThumbnailConverter { Edge = Synesthesia_Audio.Core.CoverThumbnails.SmallEdge })
                 },
 
                 new VerticalStackLayout

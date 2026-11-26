@@ -101,6 +101,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<AudioService>();
         builder.Services.AddSingleton<PlaybackSessionService>();
         builder.Services.AddSingleton<CoverImageCache>();
+        builder.Services.AddSingleton<CoverThumbnailer>();
 
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddTransient<AlbumViewModel>();

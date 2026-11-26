@@ -17,9 +17,10 @@ public class ScanFolderService : IDisposable
     private readonly ScanStateService _scanStateService;
     private readonly Services.Cloud.ICloudProvider _cloudProvider;
     private readonly HttpClient _httpClient;
+    private readonly CoverThumbnailer _thumbnailer;
     private readonly ILogger<ScanFolderService> _logger;
 
-    public ScanFolderService(DLsiteService dlsiteService, LibraryCacheService cacheService, SettingsService settingsService, ScanStateService scanStateService, Services.Cloud.ICloudProvider cloudProvider, IHttpClientFactory httpClientFactory, ILogger<ScanFolderService> logger)
+    public ScanFolderService(DLsiteService dlsiteService, LibraryCacheService cacheService, SettingsService settingsService, ScanStateService scanStateService, Services.Cloud.ICloudProvider cloudProvider, IHttpClientFactory httpClientFactory, CoverThumbnailer thumbnailer, ILogger<ScanFolderService> logger)
     {
         _dlsiteService = dlsiteService;
         _cacheService = cacheService;
@@ -28,6 +29,7 @@ public class ScanFolderService : IDisposable
         _cloudProvider = cloudProvider;
         _logger = logger;
         _httpClient = httpClientFactory.CreateClient(HttpClients.Cover);
+        _thumbnailer = thumbnailer;
     }
 
     /// <summary>
@@ -838,6 +840,9 @@ public class ScanFolderService : IDisposable
             }
 
             File.Move(temporaryPath, localCoverPath, overwrite: true);
+
+            // Downscaled copies are written now, once, rather than every time a view asks for the cover (PERF-08).
+            _thumbnailer.EnsureThumbnails(localCoverPath);
             return true;
         }
         catch (Exception ex)
