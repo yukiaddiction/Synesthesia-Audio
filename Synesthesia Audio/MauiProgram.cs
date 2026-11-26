@@ -126,6 +126,11 @@ public static class MauiProgram
         return app;
     }
 
+    /// <summary>
+    /// The last two AppLog.Get calls in the app, and the only place where resolving a logger at the call site is
+    /// right: these handlers are registered before the container exists and may run during shutdown, so there is
+    /// no injected logger to hold. AppLog returns a NullLogger until the factory is initialised (PAT-01).
+    /// </summary>
     private static void RegisterGlobalExceptionHandlers()
     {
         AppDomain.CurrentDomain.UnhandledException += (sender, e) =>

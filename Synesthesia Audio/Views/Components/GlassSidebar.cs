@@ -25,8 +25,11 @@ public sealed class GlassSidebar : Border
     private Shell? _shell;
     private bool _hooked;
 
-    public GlassSidebar(MainViewModel? viewModel = null)
+    private readonly ILogger _logger;
+
+    public GlassSidebar(MainViewModel? viewModel = null, ILogger? logger = null)
     {
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
         // The rail drives the library filter, so it must talk to the singleton view model rather than to
         // whatever page happens to be showing. Reading BindingContext meant the filters did nothing on
         // Settings, Album and every other page whose BindingContext is not a MainViewModel.
@@ -173,7 +176,7 @@ public sealed class GlassSidebar : Border
         }
         catch (Exception ex)
         {
-            AppLog.Get<GlassSidebar>().LogWarning(ex, "Sidebar navigation failed");
+            _logger.LogWarning(ex, "Sidebar navigation failed");
         }
     }
 }

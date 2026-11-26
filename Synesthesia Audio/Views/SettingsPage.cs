@@ -581,13 +581,13 @@ public class SettingsPage : ContentPage
 
     protected override bool OnBackButtonPressed()
     {
-        _ = GoBackAsync();
+        _ = GoBackAsync(_logger);
         return true;
     }
 
-    // Static on purpose: it is called from a handler that runs after this page may already be gone, so there is
-    // no instance field to read. This is the one place PAT-01 accepts a resolved-at-call-site logger.
-    private static async Task GoBackAsync()
+    // Static on purpose: the handler that calls this must not depend on the page still being alive, so the
+    // logger is passed in rather than read from a field (PAT-01).
+    private static async Task GoBackAsync(ILogger logger)
     {
         try
         {
@@ -599,8 +599,8 @@ public class SettingsPage : ContentPage
         catch (Exception ex)
         {
             try { await Shell.Current.GoToAsync("//Library"); }
-            catch (Exception fallbackEx) { Services.Logging.AppLog.Get<SettingsPage>().LogDebug(fallbackEx, "Fallback navigation to the library failed"); }
-            Services.Logging.AppLog.Get<SettingsPage>().LogWarning(ex, "Back navigation failed");
+            catch (Exception fallbackEx) { logger.LogDebug(fallbackEx, "Fallback navigation to the library failed"); }
+            logger.LogWarning(ex, "Back navigation failed");
         }
     }
 }

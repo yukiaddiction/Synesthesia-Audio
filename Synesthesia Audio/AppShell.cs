@@ -19,8 +19,11 @@ public class AppShell : Shell
     private NavItem _r18Nav = null!;
     private NavItem _settingsNav = null!;
 
-    public AppShell(AudioService audioService, MainViewModel mainViewModel)
+    private readonly ILogger<AppShell> _logger;
+
+    public AppShell(AudioService audioService, MainViewModel mainViewModel, ILogger<AppShell> logger)
     {
+        _logger = logger;
         _mainViewModel = mainViewModel;
         FlyoutBehavior = FlyoutBehavior.Flyout;
 
@@ -131,7 +134,7 @@ public class AppShell : Shell
                 }
                 catch (Exception ex)
                 {
-                    Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (All)");
+                    _logger.LogWarning(ex, "Flyout navigation failed (All)");
                 }
             })
         });
@@ -150,7 +153,7 @@ public class AppShell : Shell
                 }
                 catch (Exception ex)
                 {
-                    Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (All Age)");
+                    _logger.LogWarning(ex, "Flyout navigation failed (All Age)");
                 }
             })
         });
@@ -169,7 +172,7 @@ public class AppShell : Shell
                 }
                 catch (Exception ex)
                 {
-                    Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (R-18)");
+                    _logger.LogWarning(ex, "Flyout navigation failed (R-18)");
                 }
             })
         });
@@ -187,7 +190,7 @@ public class AppShell : Shell
                 }
                 catch (Exception ex)
                 {
-                    Services.Logging.AppLog.Get<AppShell>().LogWarning(ex, "Flyout navigation failed (Settings)");
+                    _logger.LogWarning(ex, "Flyout navigation failed (Settings)");
                 }
             })
         });

@@ -33,8 +33,11 @@ public sealed class GlassScaffold : Grid
     /// <summary>Raised when the window crosses the wide breakpoint.</summary>
     public event EventHandler<bool>? LayoutModeChanged;
 
-    public GlassScaffold(string title, string? subtitle = null, bool back = false, bool menu = true)
+    private readonly ILogger _logger;
+
+    public GlassScaffold(string title, string? subtitle = null, bool back = false, bool menu = true, ILogger? logger = null)
     {
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
         RowDefinitions = Rows.Define(Star);
         ColumnDefinitions = Columns.Define(Star);
         BackgroundColor = Colors.Transparent;
@@ -78,7 +81,7 @@ public sealed class GlassScaffold : Grid
         main.Children.Add(_overlayHost);
         _overlayHost.Row(1);
 
-        _sidebar = new GlassSidebar { IsVisible = false };        _sidebarColumn = new ColumnDefinition(new GridLength(0));
+        _sidebar = new GlassSidebar(logger: _logger) { IsVisible = false };        _sidebarColumn = new ColumnDefinition(new GridLength(0));
 
         var shell = new Grid
         {
@@ -142,7 +145,7 @@ public sealed class GlassScaffold : Grid
         if (_menuButton != null)
             _menuButton.IsVisible = !wide;
 
-        SyncFlyoutBehavior(wide);
+        SyncFlyoutBehavior(wide, _logger);
         LayoutModeChanged?.Invoke(this, wide);
     }
 
@@ -150,7 +153,7 @@ public sealed class GlassScaffold : Grid
     /// Shell's own flyout is redundant once the sidebar is visible, and disabling it also removes
     /// the stray pane toggle Shell draws into the Windows title bar.
     /// </summary>
-    private static void SyncFlyoutBehavior(bool wide)
+    private static void SyncFlyoutBehavior(bool wide, ILogger logger)
     {
         try
         {
@@ -159,7 +162,7 @@ public sealed class GlassScaffold : Grid
         }
         catch (Exception ex)
         {
-            AppLog.Get<GlassScaffold>().LogWarning(ex, "Could not switch the shell flyout behaviour");
+            logger.LogWarning(ex, "Could not switch the shell flyout behaviour");
         }
     }
 
@@ -201,17 +204,17 @@ public sealed class GlassScaffold : Grid
         }.Glass(strong: true, elevated: true);
     }
 
-    private static Button CreateBackButton()
+    private Button CreateBackButton()
     {
         var button = GlassTheme.IconButton("\u2190");
         button.AutomationId = "GlassBackButton";
         ToolTipProperties.SetText(button, "Back");
         SemanticProperties.SetDescription(button, "Back");
-        button.Clicked += async (_, _) => await GoBackAsync();
+        button.Clicked += async (_, _) => await GoBackAsync(_logger);
         return button;
     }
 
-    private static Button CreateMenuButton()
+    private Button CreateMenuButton()
     {
         var button = GlassTheme.IconButton("\u2630");
         button.AutomationId = "GlassMenuButton";
@@ -226,13 +229,13 @@ public sealed class GlassScaffold : Grid
             }
             catch (Exception ex)
             {
-                AppLog.Get<GlassScaffold>().LogWarning(ex, "Opening the flyout failed");
+                _logger.LogWarning(ex, "Opening the flyout failed");
             }
         };
         return button;
     }
 
-    private static async Task GoBackAsync()
+    private static async Task GoBackAsync(ILogger logger)
     {
         try
         {
@@ -258,7 +261,7 @@ public sealed class GlassScaffold : Grid
         }
         catch (Exception ex)
         {
-            AppLog.Get<GlassScaffold>().LogWarning(ex, "Glass back navigation failed");
+            logger.LogWarning(ex, "Glass back navigation failed");
         }
     }
 }
