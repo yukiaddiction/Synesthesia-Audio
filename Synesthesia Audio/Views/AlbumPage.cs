@@ -15,8 +15,11 @@ namespace Synesthesia_Audio.Views;
 
 public class AlbumPage : ContentPage
 {
-    public AlbumPage(AlbumViewModel viewModel, AudioService audioService)
+    private readonly LibraryCacheService _cacheService;
+
+    public AlbumPage(AlbumViewModel viewModel, AudioService audioService, LibraryCacheService cacheService)
     {
+        _cacheService = cacheService;
         BindingContext = viewModel;
         Shell.SetNavBarIsVisible(this, false);
 
@@ -335,7 +338,7 @@ public class AlbumPage : ContentPage
 
         var scaffold = new GlassScaffold("Album", back: true);
         scaffold.SetBody(new Grid { Children = { scroll, loading } });
-        scaffold.AddOverlay(new FloatingPlayerBar(audioService));
+        scaffold.AddOverlay(new FloatingPlayerBar(audioService, cacheService));
 
         scaffold.LayoutModeChanged += (_, wide) => ApplyAlbumLayout(contentGrid, metaColumn, tracksPanel, wide);
 

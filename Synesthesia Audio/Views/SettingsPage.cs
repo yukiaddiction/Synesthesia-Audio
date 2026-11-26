@@ -98,7 +98,7 @@ public class SettingsPage : ContentPage
         };
 
         _scaffold.SetBody(body);
-        _scaffold.AddOverlay(new FloatingPlayerBar(audioService));
+        _scaffold.AddOverlay(new FloatingPlayerBar(audioService, cacheService));
 
         Content = _scaffold;
 

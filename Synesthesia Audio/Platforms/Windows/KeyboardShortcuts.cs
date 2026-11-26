@@ -25,10 +25,17 @@ namespace Synesthesia_Audio.Desktop;
 /// </summary>
 internal static class KeyboardShortcuts
 {
-    public static void Attach(Microsoft.UI.Xaml.Window? window)
+    // Supplied by App from the DI container, instead of being pulled out of a service locator (PAT-01).
+    private static AudioService? _audio;
+    private static MainViewModel? _main;
+
+    public static void Attach(Microsoft.UI.Xaml.Window? window, AudioService? audio, MainViewModel? main)
     {
         if (window?.Content is not UIElement root)
             return;
+
+        _audio = audio;
+        _main = main;
 
         // Not handledEventsToo: a key the focused control already acted on is not ours to act on again.
         root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnKeyDown), handledEventsToo: false);
@@ -85,7 +92,9 @@ internal static class KeyboardShortcuts
             if (HandlesItsOwnKeys(focused))
                 return;
 
-            var audio = ServiceAccessor.GetService<AudioService>();
+            // Supplied by Attach from the DI container: this used to pull them out of a service locator.
+            var audio = _audio;
+            var main = _main;
 
             switch (e.Key)
             {
@@ -106,7 +115,7 @@ internal static class KeyboardShortcuts
                     break;
 
                 case VirtualKey.F5:
-                    var main = ServiceAccessor.GetService<MainViewModel>();
+
                     if (main?.ScanLibraryCommand.CanExecute(null) == true)
                         main.ScanLibraryCommand.Execute(null);
                     e.Handled = true;

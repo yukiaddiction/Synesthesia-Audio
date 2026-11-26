@@ -2,15 +2,23 @@ using Microsoft.Extensions.Logging;
 
 namespace Synesthesia_Audio.Services.Logging;
 
+/// <summary>
+/// A logger for the classes the framework constructs, which cannot take one by constructor injection: Android
+/// services, activity helpers, custom players.
+///
+/// It holds an explicitly initialised factory rather than reaching into a service locator (PAT-01). Until
+/// <see cref="Initialize"/> runs, every call returns a null logger, so logging before startup is silent rather
+/// than throwing.
+/// </summary>
 public static class AppLog
 {
-    public static ILogger<T> Get<T>() where T : class
-    {
-        var factory = ServiceAccessor.GetService<ILoggerFactory>();
-        if (factory != null)
-            return factory.CreateLogger<T>();
-        return NullLogger<T>.Instance;
-    }
+    private static ILoggerFactory? _factory;
+
+    /// <summary>Called once at startup with the app's logger factory.</summary>
+    public static void Initialize(ILoggerFactory factory) => _factory = factory;
+
+    public static ILogger<T> Get<T>() where T : class =>
+        _factory?.CreateLogger<T>() ?? NullLogger<T>.Instance;
 }
 
 public class NullLogger : ILogger

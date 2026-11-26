@@ -115,7 +115,8 @@ public static class MauiProgram
 
 
         var app = builder.Build();
-        ServiceAccessor.Initialize(app.Services);
+        // AppLog is the one logger that cannot be injected: the framework constructs its callers (PAT-01).
+        Synesthesia_Audio.Services.Logging.AppLog.Initialize(app.Services.GetRequiredService<ILoggerFactory>());
         RegisterGlobalExceptionHandlers();
         return app;
     }

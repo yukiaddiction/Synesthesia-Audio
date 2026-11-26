@@ -202,7 +202,7 @@ public class MainPage : ContentPage
         };
 
         // The two players are independent components; only one is ever visible, chosen by mode.
-        var compactPlayerHost = new Grid { Children = { new FloatingPlayerBar(audioService) } };
+        var compactPlayerHost = new Grid { Children = { new FloatingPlayerBar(audioService, IPlatformApplication.Current!.Services!.GetRequiredService<LibraryCacheService>()) } };
         var dockHost = new Grid { Children = { new TransportDock(audioService) }, IsVisible = false };
 
         scaffold.LayoutModeChanged += (_, wide) =>

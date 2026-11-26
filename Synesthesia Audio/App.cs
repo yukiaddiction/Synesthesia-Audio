@@ -90,7 +90,10 @@ public class App : Application
             {
                 desktopChromeApplied = true;
                 Desktop.WindowChrome.Apply(native, Application.Current?.RequestedTheme == AppTheme.Dark);
-                Desktop.KeyboardShortcuts.Attach(native);
+                Desktop.KeyboardShortcuts.Attach(
+                    native,
+                    _services.GetService<Services.AudioService>(),
+                    _services.GetService<ViewModels.MainViewModel>());
             }
         };
 

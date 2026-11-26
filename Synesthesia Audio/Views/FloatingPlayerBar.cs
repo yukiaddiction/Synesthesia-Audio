@@ -14,7 +14,7 @@ namespace Synesthesia_Audio.Views;
 
 public class FloatingPlayerBar : Border
 {
-    public FloatingPlayerBar(AudioService audioService)
+    public FloatingPlayerBar(AudioService audioService, LibraryCacheService cacheService)
     {
         AutomationId = "FloatingPlayerBar";
         VerticalOptions = LayoutOptions.End;
@@ -122,7 +122,7 @@ public class FloatingPlayerBar : Border
                 {
                     var folderPath = audioService.CurrentAlbumFolderPath;
                     if (string.IsNullOrEmpty(folderPath)) return;
-                    var cache = ServiceAccessor.GetService<LibraryCacheService>();
+                    var cache = cacheService;
                     var work = cache?.GetWork(folderPath);
                     if (work != null)
                     {
