@@ -37,6 +37,15 @@ public class DLsiteService
     private readonly SettingsService _settingsService;
     private readonly ILogger<DLsiteService> _logger;
 
+    /// <summary>
+    /// Shared backoff for "the server is telling us to slow down" answers (PERF-04). Scraping a large library
+    /// fans out several requests per work; without this a 429 was simply logged and the next work asked
+    /// again immediately.
+    /// </summary>
+    private readonly RateLimiter _rateLimiter = new(
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(120));
+
     private static volatile bool _dlsiteUnreachableAlerted;
     private static volatile bool _nonProductPageWarned;
     private static readonly ConcurrentDictionary<string, Task> _englishTagFetches = new();
@@ -59,6 +68,24 @@ public class DLsiteService
     /// once per scan instead of once per work.
     /// </summary>
     public static void ResetScanDiagnostics() => _nonProductPageWarned = false;
+
+    /// <summary>
+    /// Trips the shared backoff when DLsite answers "slow down". Only 429 and 503 mean that; a 403 is a
+    /// refusal and a 404 is a missing work, and neither gets better by waiting.
+    /// </summary>
+    private void NoteThrottling(HttpResponseMessage response)
+    {
+        var statusCode = (int)response.StatusCode;
+        if (statusCode is not (429 or 503)) return;
+
+        TimeSpan? retryAfter = response.Headers.RetryAfter is { } header
+            ? RetryAfterParser.TryParse(header.Delta, header.Date, DateTimeOffset.UtcNow)
+            : null;
+
+        var delay = _rateLimiter.RecordRateLimit(DateTimeOffset.UtcNow, retryAfter);
+        _logger.LogWarning(
+            "DLsite answered {StatusCode}; pausing requests for {Seconds:0}s", statusCode, delay.TotalSeconds);
+    }
 
     /// <summary>
     /// One compact line describing which fields a parsed page yielded, so a layout change on
@@ -87,6 +114,15 @@ public class DLsiteService
 
     public async Task<(string CoverUrl, string Title, string TranslatedTitle, string Circle, string VA, string AgeRating, string Genre)> GetWorkMetadataAsync(string rjCode)
     {
+        // Still backing off from a 429/503: spend no request at all rather than earning another one.
+        if (_rateLimiter.IsBlocked(DateTimeOffset.UtcNow))
+        {
+            _logger.LogDebug(
+                "DLsite metadata for {RjCode} skipped — cooling down for another {Seconds:0}s",
+                rjCode, _rateLimiter.Remaining(DateTimeOffset.UtcNow).TotalSeconds);
+            return (string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, AgeRatings.Unknown, string.Empty);
+        }
+
         _logger.LogDebug("Fetching DLsite metadata for {RjCode}", rjCode);
         string[] apiUrls = new[]
         {
@@ -102,6 +138,7 @@ public class DLsiteService
             {
                 using var reqCts = CancellationTokenSource.CreateLinkedTokenSource(apiCts.Token);
                 using var response = await _httpClient.GetAsync(url, reqCts.Token);
+                NoteThrottling(response);
                 if (response.IsSuccessStatusCode)
                 {
                     var json = await response.Content.ReadAsStringAsync();
@@ -135,6 +172,7 @@ public class DLsiteService
         {
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(AppConstants.DlsiteHtmlTimeoutSeconds));
             response = await _httpClient.GetAsync(url, cts.Token);
+            NoteThrottling(response);
         }
         catch (Exception ex) { _logger.LogDebug(ex, "DLsite HTML fetch failed (eng) for {RjCode}", rjCode); }
 
@@ -149,6 +187,7 @@ public class DLsiteService
             {
                 using var cts2 = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(AppConstants.DlsiteHtmlTimeoutSeconds));
                 response = await _httpClient.GetAsync(url, cts2.Token);
+                NoteThrottling(response);
             }
             catch (Exception ex) { _logger.LogDebug(ex, "DLsite HTML fetch failed (maniax) for {RjCode}", rjCode); }
         }
@@ -162,6 +201,7 @@ public class DLsiteService
             {
                 using var cts3 = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(AppConstants.DlsiteHtmlTimeoutSeconds));
                 response = await _httpClient.GetAsync(url, cts3.Token);
+                NoteThrottling(response);
             }
             catch (Exception ex) { _logger.LogDebug(ex, "DLsite HTML fetch failed (home) for {RjCode}", rjCode); }
         }
@@ -198,6 +238,7 @@ public class DLsiteService
         try
         {
             var statusCode = (int)response.StatusCode;
+            NoteThrottling(response);
             var html = await response.Content.ReadAsStringAsync();
 
             // The body is fully buffered now, so release the response instead of leaving it to the GC: the
@@ -275,6 +316,7 @@ public class DLsiteService
         {
             using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(AppConstants.DlsiteTagFetchTimeoutSeconds));
             using var response = await _httpClient.GetAsync(jsonUrl, cts.Token);
+            NoteThrottling(response);
             if (response.IsSuccessStatusCode)
             {
                 var json = await response.Content.ReadAsStringAsync();
