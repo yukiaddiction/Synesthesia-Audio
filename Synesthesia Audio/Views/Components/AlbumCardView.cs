@@ -57,12 +57,34 @@ public class AlbumCardView : Border
             }
         }.Glass(strong: true);
 
+        // A work whose metadata could not be fetched looked exactly like a complete one, so the only clue was
+        // an empty circle/genre. It says so now (UX-05).
+        var pendingBadge = new Border
+        {
+            BackgroundColor = AppColors.WarningDark,
+            Padding = new Thickness(6, 2),
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius },
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Start,
+            Margin = new Thickness(6),
+            Content = new Label
+            {
+                Text = "METADATA PENDING",
+                FontSize = AppFontSizes.ButtonSmall,
+                FontAttributes = AppFonts.Bold,
+                TextColor = AppColors.BackgroundDark
+            }
+        }
+        .Bind(VisualElement.IsVisibleProperty, nameof(WorkMetadata.NeedsMetadataRefresh));
+
         Content = new Grid
         {
             RowDefinitions = Rows.Define(AppLayout.GlassCardCoverHeight, Auto),
             Children =
             {
                 cover.Row(0),
+                pendingBadge.Row(0),
                 footer.Row(1)
             }
         };
