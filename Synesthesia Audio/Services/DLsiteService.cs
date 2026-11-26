@@ -36,6 +36,7 @@ public class DLsiteService
     private readonly NameRomanizationService _nameRomanization;
     private readonly SettingsService _settingsService;
     private readonly IDialogService _dialog;
+    private readonly ScanStateService _scanStateService;
     private readonly ILogger<DLsiteService> _logger;
 
     /// <summary>
@@ -51,13 +52,14 @@ public class DLsiteService
     private static volatile bool _nonProductPageWarned;
     private static readonly ConcurrentDictionary<string, Task> _englishTagFetches = new();
 
-    public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, NameRomanizationService nameRomanization, SettingsService settingsService, IHttpClientFactory httpClientFactory, IDialogService dialogService, ILogger<DLsiteService> logger)
+    public DLsiteService(TagMappingService tagMappingService, ITranslationService translationService, NameRomanizationService nameRomanization, SettingsService settingsService, IHttpClientFactory httpClientFactory, IDialogService dialogService, ScanStateService scanStateService, ILogger<DLsiteService> logger)
     {
         _tagMappingService = tagMappingService;
         _translationService = translationService;
         _nameRomanization = nameRomanization;
         _settingsService = settingsService;
         _dialog = dialogService;
+        _scanStateService = scanStateService;
         _logger = logger;
         // Headers, timeout and handler now come from the named client registration (DUP-02 / OVR-05).
         _httpClient = httpClientFactory.CreateClient(HttpClients.DLsite);
@@ -213,18 +215,28 @@ public class DLsiteService
             if (!_dlsiteUnreachableAlerted)
             {
                 _dlsiteUnreachableAlerted = true;
-                _logger.LogWarning("DLsite unreachable — all API and HTML endpoints failed for {RjCode} (alert shown)", rjCode);
-                await MainThread.InvokeOnMainThreadAsync(async () =>
+                // A modal window in the middle of a scan is the wrong place to report an outage: the scan is
+                // already running and its summary lists what could not be fetched, so during a scan this is a
+                // log line rather than a dialog (UX-05).
+                var scanRunning = _scanStateService.Snapshot().Status == Synesthesia_Audio.Core.ScanStatus.Running;
+                _logger.LogWarning(
+                    "DLsite unreachable — all API and HTML endpoints failed for {RjCode} ({Mode})",
+                    rjCode, scanRunning ? "logged, scan in progress" : "alert shown");
+
+                if (!scanRunning)
                 {
-                    await _dialog.AlertAsync("DLsite Unreachable",
-                        "Could not reach dlsite.com to fetch work metadata.\n\n" +
-                        "Possible causes:\n" +
-                        "- DNS or VPN not configured to bypass region lock\n" +
-                        "- No internet connection\n" +
-                        "- DLsite server is down\n\n" +
-                        "Works will appear with folder names only. Previously cached metadata will still be shown.",
-                        "OK");
-                });
+                    await MainThread.InvokeOnMainThreadAsync(async () =>
+                    {
+                        await _dialog.AlertAsync("DLsite Unreachable",
+                            "Could not reach dlsite.com to fetch work metadata.\n\n" +
+                            "Possible causes:\n" +
+                            "- DNS or VPN not configured to bypass region lock\n" +
+                            "- No internet connection\n" +
+                            "- DLsite server is down\n\n" +
+                            "Works will appear with folder names only. Previously cached metadata will still be shown.",
+                            "OK");
+                    });
+                }
             }
 
             // The final attempt's response is never read on this path, so release it here (BUG-m-23).

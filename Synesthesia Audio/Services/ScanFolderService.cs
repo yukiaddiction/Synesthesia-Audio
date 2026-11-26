@@ -264,7 +264,9 @@ public partial class ScanFolderService : IDisposable
         var settings = _settingsService.CurrentSettings;
         bool isCloud = Synesthesia_Audio.Core.StorageTypes.IsWebDav(settings.StorageType);
         _logger.LogInformation("Library scan started — isCloud: {IsCloud}, path: {BasePath}", isCloud, basePath);
-        _scanStateService.MarkRunning("Scan Library Found 0 Work, 0 Audio Files");
+        // One phrasing for every stage: the status line used to mix "Scan Library Found 0 Work" with
+        // "scan: fetching metadata" and "scan: done" (UX-05).
+        _scanStateService.MarkRunning("Scanning — 0 works, 0 audio files");
 
         // One detailed scraper warning per scan instead of one per work.
         DLsiteService.ResetScanDiagnostics();
@@ -275,7 +277,7 @@ public partial class ScanFolderService : IDisposable
             _scanStateService.UpdateProgress(pct, msg);
         }
 
-        Report(0, "Scan Library Found 0 Work, 0 Audio Files");
+        Report(0, "Scanning — 0 works, 0 audio files");
 
         var workGroups = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         List<string> allAudioFiles = new();
@@ -307,7 +309,7 @@ public partial class ScanFolderService : IDisposable
                 AppConstants.IsMediaFile,
                 AppConstants.IsSystemFileOrDir,
                 filesFound => Report(0.15 * Math.Min(1.0, filesFound / 500.0),
-                    $"Scan Library Found {filesFound} Audio File{(filesFound == 1 ? "" : "s")}"),
+                    $"Scanning — {filesFound} audio file{(filesFound == 1 ? "" : "s")}"),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -343,7 +345,7 @@ public partial class ScanFolderService : IDisposable
 
         int totalFoundWorks = workGroups.Count;
         int totalFoundFiles = allAudioFiles.Count;
-        Report(0.15, $"Scan Library Found {totalFoundWorks} Work{(totalFoundWorks == 1 ? "" : "s")}, {totalFoundFiles} Audio File{(totalFoundFiles == 1 ? "" : "s")}");
+        Report(0.15, $"Scanning — {totalFoundWorks} work{(totalFoundWorks == 1 ? "" : "s")}, {totalFoundFiles} audio file{(totalFoundFiles == 1 ? "" : "s")}");
         _logger.LogInformation("Scan discovery complete — {Folders} folders, {Files} files", totalFoundWorks, totalFoundFiles);
 
         // Snapshot the translations the cache already holds. A metadata refresh rebuilds each work from
@@ -427,7 +429,7 @@ public partial class ScanFolderService : IDisposable
                 readyWorks.Add((work, files));
             }
         }
-        Report(0.15, $"scan: fetching metadata (0/{pendingWorks.Count})");
+        Report(0.15, $"Fetching metadata — 0/{pendingWorks.Count}");
         _logger.LogInformation("Fetching DLsite metadata for {Count} works", pendingWorks.Count);
 
         if (pendingWorks.Count > 0)
@@ -495,7 +497,7 @@ public partial class ScanFolderService : IDisposable
                         Interlocked.Increment(ref failedMetadata);
 
                     var done = Interlocked.Increment(ref completedMeta);
-                    Report(0.15 + 0.80 * done / totalMeta, $"scan: fetching metadata ({done}/{totalMeta})");
+                    Report(0.15 + 0.80 * done / totalMeta, $"Fetching metadata — {done}/{totalMeta}");
                 }
                 finally
                 {
@@ -624,7 +626,7 @@ public partial class ScanFolderService : IDisposable
             finalWorks = merged;
         }
 
-        Report(1.0, "scan: done");
+        Report(1.0, "Scan complete");
         _logger.LogInformation("Library scan complete — {Count} works, {AudioFiles} audio files, {Failures} failed folders", finalWorks.Count, allAudioFiles.Count, failedFolders.Count);
 
         if (failedFolders.Count > 0)
