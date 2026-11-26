@@ -22,10 +22,16 @@ public class AndroidAudioPlatformService : IAudioPlatformService
         {
             Platforms.Android.WakeLockHelper.Acquire();
             Platforms.Android.MediaPlaybackForegroundService.UpdateNotification();
+            // Resuming re-promotes a notification the pause had made dismissible (UX-06).
+            Platforms.Android.MediaPlaybackForegroundService.PromoteToForeground();
         }
         else
         {
             Platforms.Android.WakeLockHelper.Release();
+
+            // Keep the notification but let it be swiped away: a paused player has no business holding an
+            // unremovable entry in the shade (UX-06).
+            Platforms.Android.MediaPlaybackForegroundService.DemoteToBackground();
         }
     }
 

@@ -53,6 +53,8 @@ public class MediaPlaybackForegroundService : Service
                 }
             }
 
+            Current = this;
+
             var context = global::Android.App.Application.Context;
             var appIntent = new Intent(context, typeof(MainActivity));
             appIntent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ClearTop);
@@ -175,6 +177,88 @@ public class MediaPlaybackForegroundService : Service
         }
     }
 
+    /// <summary>
+    /// Drops the service out of the foreground while keeping its notification, which makes the notification
+    /// dismissible.
+    ///
+    /// Android marks a foreground notification as ongoing, so a paused player kept an unremovable entry in the
+    /// shade for as long as the window lived (UX-06). Detaching leaves it visible but swipeable; resuming
+    /// promotes it again.
+    /// </summary>
+    /// <summary>Puts a demoted notification back in the foreground, with its content intact.</summary>
+    private void PromoteFromBackground()
+    {
+        var context = global::Android.App.Application.Context;
+        var appIntent = new Intent(context, typeof(MainActivity));
+        appIntent.AddFlags(ActivityFlags.NewTask | ActivityFlags.SingleTop | ActivityFlags.ClearTop);
+        if (!string.IsNullOrEmpty(_lastAlbumFolderPath)) appIntent.PutExtra("AlbumFolderPath", _lastAlbumFolderPath);
+
+        var pendingIntent = PendingIntent.GetActivity(
+            context, 0, appIntent, PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+
+        var builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+            .SetContentTitle(_lastTitle)
+            .SetContentText(_lastArtist)
+            .SetSmallIcon(Resource.Mipmap.appicon)
+            .SetContentIntent(pendingIntent)
+            .SetOngoing(true)
+            .SetPriority(NotificationCompat.PriorityDefault);
+
+        var bitmap = LoadArtworkBitmap(_cachedArtworkPath);
+        if (bitmap != null) builder.SetLargeIcon(bitmap);
+
+        var session = MediaSessionHelper.CurrentSession;
+        if (session != null)
+        {
+            try
+            {
+                builder.SetStyle(new global::AndroidX.Media.App.NotificationCompat.MediaStyle()
+                    .SetMediaSession(session.SessionToken));
+            }
+            catch (System.Exception ex)
+            {
+                Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
+                    .LogDebug(ex, "ForegroundService: media session unavailable while promoting");
+            }
+        }
+
+        StartForeground(NOTIFICATION_ID, builder.Build());
+    }
+
+    public static void DemoteToBackground()
+    {
+        try
+        {
+            var service = Current;
+            if (service == null) return;
+
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.N)
+                service.StopForeground(StopForegroundFlags.Detach);
+            else
+#pragma warning disable CA1422 // Deprecated only on API 33+, where the flags overload above is used.
+                service.StopForeground(false);
+#pragma warning restore CA1422
+        }
+        catch (System.Exception ex)
+        {
+            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
+                .LogDebug(ex, "ForegroundService: demote to background failed");
+        }
+    }
+
+    /// <summary>Puts a demoted service back in the foreground when playback actually resumes.</summary>
+    public static void PromoteToForeground()
+    {
+        try
+        {
+            Current?.PromoteFromBackground();
+        }
+        catch (System.Exception ex)
+        {
+            Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>()
+                .LogDebug(ex, "ForegroundService: promote to foreground failed");
+        }
+    }
     public static void StartPlaybackService(string title, string artist, string albumFolderPath = "")
     {
         try
@@ -219,6 +303,9 @@ public class MediaPlaybackForegroundService : Service
         // immediately and again at 500 ms and 1200 ms.
         SetArtworkOnMediaSession();
     }
+
+    /// <summary>The running service, so the platform layer can demote or promote it (UX-06).</summary>
+    internal static MediaPlaybackForegroundService? Current { get; private set; }
 
     private static readonly object _artworkLock = new();
     private static string _cachedArtworkPath = string.Empty;

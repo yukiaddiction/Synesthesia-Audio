@@ -742,7 +742,16 @@ ShowPlaybackAlertAsync(message).FireAndForget(ex => _logger.LogWarning(ex, "Back
 
         if (stopPlayback)
         {
-            Stop();
+            // End of the album with repeat off. Pause on the last track and keep the queue: Stop() used to run
+            // here, which cleared the playlist AND deleted the saved session, so the album emptied itself out
+            // from under the UI just because it finished (UX-06).
+            var me = _mediaElement;
+            _pausedByFocusLoss = false;
+            _isRestoringSession = false;
+            me?.Pause();
+            IsPlaying = false;
+            _platformService.AbandonAudioFocus();
+            SaveSession();
             return;
         }
 
