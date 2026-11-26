@@ -1,29 +1,47 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Synesthesia_Audio.Services.Logging;
-
 using Synesthesia_Audio.Services;
+using Synesthesia_Audio.Services.Logging;
 
 namespace Synesthesia_Audio.ViewModels;
 
 public partial class LogViewerViewModel : BaseViewModel
 {
     private readonly LogService _logService;
+    private readonly IDialogService _dialog;
     private bool _showingAll;
-
-    [ObservableProperty]
     private string _logContent = string.Empty;
+
+    /// <summary>
+    /// The lines on screen. Bound to a CollectionView, which virtualises them: the page used to render the whole
+    /// log as one Label inside a ScrollView, so "show all" on a long-running install laid out every line in one
+    /// pass on the UI thread (PERF-11).
+    /// </summary>
+    public ObservableCollection<string> LogLines { get; } = new();
+
+    /// <summary>The whole text, which copy and open-file still need in string form.</summary>
+    public string LogContent => _logContent;
 
     [ObservableProperty]
     private string _modeLabel = "Last 500 lines (tap for all)";
-
-    private readonly IDialogService _dialog;
 
     public LogViewerViewModel(LogService logService, IDialogService dialogService)
     {
         _logService = logService;
         _dialog = dialogService;
         Title = "Application Logs";
+    }
+
+    /// <summary>Replaces the text and the virtualised line list together, so they cannot disagree.</summary>
+    private void SetLogContent(string content)
+    {
+        _logContent = content ?? string.Empty;
+        OnPropertyChanged(nameof(LogContent));
+
+        LogLines.Clear();
+        foreach (var line in _logContent.Split('\n'))
+            LogLines.Add(line.TrimEnd('\r'));
     }
 
     public async Task LoadTailAsync()
@@ -33,7 +51,7 @@ public partial class LogViewerViewModel : BaseViewModel
         {
             _showingAll = false;
             ModeLabel = "Last 500 lines (tap for all)";
-            LogContent = await _logService.ReadTailAsync(500);
+            SetLogContent(await _logService.ReadTailAsync(500));
         }
         finally
         {
@@ -55,7 +73,7 @@ public partial class LogViewerViewModel : BaseViewModel
             {
                 _showingAll = true;
                 ModeLabel = "Showing all logs (tap for recent)";
-                LogContent = await _logService.ReadAllLogsAsync();
+                SetLogContent(await _logService.ReadAllLogsAsync());
             }
         }
         finally
@@ -70,8 +88,14 @@ public partial class LogViewerViewModel : BaseViewModel
         if (_showingAll)
         {
             IsBusy = true;
-            LogContent = await _logService.ReadAllLogsAsync();
-            IsBusy = false;
+            try
+            {
+                SetLogContent(await _logService.ReadAllLogsAsync());
+            }
+            finally
+            {
+                IsBusy = false;
+            }
         }
         else
         {

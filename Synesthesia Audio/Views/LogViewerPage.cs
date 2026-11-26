@@ -51,17 +51,21 @@ public class LogViewerPage : ContentPage
             Padding = new Thickness(14),
             HorizontalOptions = LayoutOptions.Center,
             MaximumWidthRequest = AppBreakpoints.ReaderMaxWidth,
-            Content = new ScrollView
+            // A CollectionView virtualises its items, so "show all" no longer lays out every line at once
+            // (PERF-11). The old shape was one Label inside a ScrollView.
+            Content = new CollectionView
             {
-                Content = new Label
-                {
-                    FontFamily = AppFonts.Regular,
-                    FontSize = AppFontSizes.Caption,
-                    LineBreakMode = LineBreakMode.WordWrap
-                }
-                .Bind(Label.TextProperty, nameof(LogViewerViewModel.LogContent))
-                .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
+                ItemTemplate = new DataTemplate(() =>
+                    new Label
+                    {
+                        FontFamily = AppFonts.Regular,
+                        FontSize = AppFontSizes.Caption,
+                        LineBreakMode = LineBreakMode.WordWrap
+                    }
+                    .Bind(Label.TextProperty, ".")
+                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark))
             }
+            .Bind(ItemsView.ItemsSourceProperty, nameof(LogViewerViewModel.LogLines))
         }.GlassDeep();
 
         var body = new Grid
