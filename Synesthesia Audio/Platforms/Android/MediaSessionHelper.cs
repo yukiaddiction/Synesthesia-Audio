@@ -1,368 +1,52 @@
-using System.Reflection;
-using Com.Google.Android.Exoplayer2;
-using Com.Google.Android.Exoplayer2.Ext.Mediasession;
-using Microsoft.Extensions.Logging;
-using Microsoft.Maui.ApplicationModel;
+using Android.Support.V4.Media.Session;
+using CommunityToolkit.Maui.Views;
 
 namespace Synesthesia_Audio.Platforms.Android;
 
-
-/// <summary>Resolved once for the callback class in this file, which the framework creates (PAT-01).</summary>
-internal static class MediaSessionCallbackLog
-{
-    internal static readonly Microsoft.Extensions.Logging.ILogger<ArtworkCallback> Artwork = Synesthesia_Audio.Services.Logging.AppLog.Get<ArtworkCallback>();
-}
+/// <summary>
+/// Thin facade over <see cref="AndroidMediaSession"/>, kept so the call sites that already existed do not have to
+/// change at once.
+///
+/// Everything that used to live here - reflecting into CommunityToolkit's MediaElement handler to borrow its
+/// private media manager, wrapping its player with a ForwardingPlayer and installing a custom queue navigator -
+/// is gone (OVR-03). The session is the app's own now.
+/// </summary>
 internal static class MediaSessionHelper
 {
-    // A static class cannot be a generic argument, so its own marker type stays the category; the field is
-    // resolved once rather than at every catch site (PAT-01).
-    private static readonly Microsoft.Extensions.Logging.ILogger<Log> SessionLog = Synesthesia_Audio.Services.Logging.AppLog.Get<Log>();
-
-    private sealed class Log { }
-
-    // These are static on purpose, and are the one exception left to PAT-07: an Android media session belongs to
-    // the process, not to a window, and the system holds a reference to it. The rule that keeps them safe is that
-    // they are cleared through ResetSession() whenever the media element is detached - the process outlives the
-    // activity, so a session left behind is never re-wrapped and its transport buttons are dead.
-    internal static global::Android.Support.V4.Media.Session.MediaSessionCompat? CurrentSession { get; set; }
-    private static volatile bool _wrapped = false;
-    private static string _lastAlbumFolderPath = string.Empty;
-    private static ArtworkCallback? _artworkCallback;
-
-    internal static void UpdateSessionActivityIntent(string albumFolderPath)
+    /// <summary>
+    /// The app's media session, or null before the first attach. Assigning null releases it, which is what the
+    /// foreground service does on detach.
+    /// </summary>
+    internal static MediaSessionCompat? CurrentSession
     {
-        _lastAlbumFolderPath = albumFolderPath;
-
-        var session = CurrentSession;
-        if (session == null) return;
-
-        var context = global::Android.App.Application.Context;
-        var pendingIntent = AndroidNotificationHelper.BuildContentIntent(context, albumFolderPath);
-
-        session.SetSessionActivity(pendingIntent);
+        get => AndroidMediaSession.Current;
+        set
+        {
+            if (value == null) AndroidMediaSession.Reset();
+        }
     }
 
-    // community toolkit media element wraps exoplayer internally and doesn't expose the
-    // mediasessionconnector, so we reflect into it to swap in a custom forwarding player
-    // that forces the android notification to show next/previous buttons.
-    internal static void TryWrapSessionPlayer(CommunityToolkit.Maui.Views.MediaElement mediaElement)
+    internal static void UpdateSessionActivityIntent(string albumFolderPath) =>
+        AndroidMediaSession.UpdateActivityIntent(albumFolderPath);
+
+    /// <summary>
+    /// Starts or refreshes the session. The name is kept from the reflection version: callers attach it when a media
+    /// element appears, and there is nothing to wrap any more.
+    /// </summary>
+    internal static void TryWrapSessionPlayer(MediaElement mediaElement)
     {
         if (mediaElement == null) return;
 
-        if (_wrapped) return;
-
-        var handler = mediaElement.Handler;
-        if (handler == null) return;
-
-        MainThread.BeginInvokeOnMainThread(async () =>
-        {
-            try
-            {
-                await Task.Delay(600);
-                var liveHandler = mediaElement.Handler;
-                if (liveHandler == null || !ReferenceEquals(liveHandler, handler)) return;
-                TryWrap(handler);
-            }
-            catch (Exception ex)
-            {
-                SessionLog.LogWarning(ex, "MediaSession: delayed wrap failed");
-            }
-        });
+        AndroidMediaSession.EnsureSession();
     }
 
-    /// <summary>
-    /// Logs a toolkit-internals mismatch once per process. Without this the reflection failing was completely
-    /// silent, which is indistinguishable from the media session working but the buttons being unresponsive.
-    /// </summary>
-    private static void ReportReflectionMismatch(string detail)
-    {
-        if (_reflectionMismatchReported) return;
-        _reflectionMismatchReported = true;
+    /// <summary>Publishes the playing/paused state so the notification and headset buttons reflect it.</summary>
+    internal static void UpdatePlaybackState(bool playing, long positionMs) =>
+        AndroidMediaSession.UpdatePlaybackState(playing, positionMs);
 
-        SessionLog.LogWarning(
-            "MediaSession: CommunityToolkit MediaElement internals changed — the Android media session could not be attached ({Detail}). " +
-            "Playback still works; lock-screen and headset buttons may not. The reflection was written against toolkit 5.0.0.",
-            detail);
-    }
-    /// <summary>
-    /// True once we have reported that the toolkit internals no longer look the way this reflection expects.
-    /// </summary>
-    private static bool _reflectionMismatchReported;
+    /// <summary>Sets the lock-screen text and artwork for the current track.</summary>
+    internal static void UpdateMetadata(string? title, string? artist, long durationMs, global::Android.Graphics.Bitmap? artwork) =>
+        AndroidMediaSession.UpdateMetadata(title, artist, durationMs, artwork);
 
-    private static void TryWrap(Microsoft.Maui.IElementHandler handler)
-    {
-        try
-        {
-            // This reaches into CommunityToolkit.Maui.MediaElement internals, written against 5.0.0. The package
-            // exposes no public accessor for its media manager (verified against its source: the field is
-            // private), so a supported replacement means owning playback ourselves (OVR-03). Until then the
-            // failure has to be loud: a silent miss here is what "next/previous buttons do nothing" looks like.
-            var mediaManagerField = handler.GetType().GetField("mediaManager", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var mediaManager = mediaManagerField?.GetValue(handler);
-            if (mediaManager == null)
-            {
-                ReportReflectionMismatch("mediaManager field not found on " + handler.GetType().FullName);
-                return;
-            }
-
-            var connectorField = mediaManager.GetType().GetField("mediaSessionConnector", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var connectorObj = connectorField?.GetValue(mediaManager);
-            if (connectorObj == null)
-            {
-                ReportReflectionMismatch("mediaSessionConnector field not found");
-                return;
-            }
-
-            var connector = connectorObj as MediaSessionConnector;
-            if (connector == null) return;
-
-            var sessionField = mediaManager.GetType().GetField("mediaSession", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var sessionObj = sessionField?.GetValue(mediaManager);
-            if (sessionObj == null)
-            {
-                ReportReflectionMismatch("mediaSession field not found");
-                return;
-            }
-
-            var mediaSession = sessionObj as global::Android.Support.V4.Media.Session.MediaSessionCompat;
-            if (mediaSession == null) return;
-
-            CurrentSession = mediaSession;
-            MediaPlaybackForegroundService.UpdateNotification();
-
-            var context = global::Android.App.Application.Context;
-            var pendingIntent = AndroidNotificationHelper.BuildContentIntent(context, _lastAlbumFolderPath);
-
-            mediaSession.SetSessionActivity(pendingIntent);
-
-            var playerProp = mediaManager.GetType().GetProperty("Player", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var playerField = mediaManager.GetType().GetField("player", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var currentPlayer = (playerProp?.GetValue(mediaManager) ?? playerField?.GetValue(mediaManager)) as IPlayer;
-
-            if (currentPlayer == null)
-            {
-                ReportReflectionMismatch("player not found on the media manager");
-                return;
-            }
-
-            if (currentPlayer is CustomForwardingPlayer)
-            {
-                SessionLog.LogInformation("MediaSession: Player already wrapped, skipping");
-                return;
-            }
-
-            var wrapped = new CustomForwardingPlayer(currentPlayer);
-            
-            var wrappedType = wrapped.GetType();
-            var fields = mediaManager.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            foreach (var f in fields)
-            {
-                if (f.Name.Contains("player", System.StringComparison.OrdinalIgnoreCase) || f.Name.Contains("Player"))
-                {
-                    if (f.FieldType.IsAssignableFrom(wrappedType))
-                    {
-                        try
-                        {
-                            f.SetValue(mediaManager, wrapped);
-                        }
-                        catch (Exception ex) { SessionLog.LogWarning(ex, "MediaSession: Field set failed"); }
-                    }
-                }
-            }
-
-            var props = mediaManager.GetType().GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            foreach (var p in props)
-            {
-                if (p.Name.Equals("Player", System.StringComparison.OrdinalIgnoreCase) && p.CanWrite)
-                {
-                    if (p.PropertyType.IsAssignableFrom(wrappedType))
-                    {
-                        try
-                        {
-                            p.SetValue(mediaManager, wrapped);
-                        }
-                        catch (Exception ex) { SessionLog.LogWarning(ex, "MediaSession: Property set failed"); }
-                    }
-                }
-            }
-
-            var playerViewProp = mediaManager.GetType().GetProperty("PlayerView", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            var playerView = playerViewProp?.GetValue(mediaManager) as Com.Google.Android.Exoplayer2.UI.PlayerView;
-            if (playerView != null)
-            {
-                try { playerView.Player = wrapped; }
-                catch (Exception ex) { SessionLog.LogWarning(ex, "MediaSession: PlayerView set failed"); }
-            }
-
-            const long actionPlay = 1 << 2;
-            const long actionPause = 1 << 9;
-            const long actionStop = 1 << 0;
-            const long actionSeekTo = 1 << 8;
-            const long actionFastForward = 1 << 6;
-            const long actionRewind = 1 << 3;
-            const long actionSkipToNext = 1 << 5;
-            const long actionSkipToPrevious = 1 << 4;
-            const long actionSetPlaybackSpeed = 1 << 22;
-
-            long enabledActions = actionPlay | actionPause | actionStop | actionSeekTo | 
-                                  actionFastForward | actionRewind | actionSkipToNext | 
-                                  actionSkipToPrevious | actionSetPlaybackSpeed;
-            connector.SetEnabledPlaybackActions(enabledActions);
-
-            var customNavigator = new CustomQueueNavigator(mediaSession);
-            connector.SetQueueNavigator(customNavigator);
-
-            if (!_wrapped)
-            {
-                connector.SetPlayer(wrapped);
-            }
-
-            _wrapped = true;
-            RegisterArtworkCallback(mediaSession);
-            SessionLog.LogInformation("MediaSession: Successfully wrapped player and attached QueueNavigator on MediaSessionConnector");
-        }
-        catch (System.Exception ex)
-        {
-            SessionLog.LogError(ex, "MediaSession: Exception wrapping session player");
-        }
-    }
-
-    private static void RegisterArtworkCallback(global::Android.Support.V4.Media.Session.MediaSessionCompat session)
-    {
-        try
-        {
-            _artworkCallback = new ArtworkCallback();
-            session.Controller.RegisterCallback(_artworkCallback);
-        }
-        catch (System.Exception ex)
-        {
-            SessionLog.LogWarning(ex, "MediaSession: artwork callback registration failed");
-        }
-    }
-
-    /// <summary>
-    /// Forgets the wrapped player, the session and the artwork callback when the media element goes away.
-    ///
-    /// The Android process outlives the Activity, so these statics survived a re-creation. The stale
-    /// <see cref="_wrapped"/> flag then made <see cref="TryWrapSessionPlayer"/> return immediately, so the
-    /// re-created session was never wrapped, its next/previous buttons went dead, and the old released
-    /// session stayed referenced along with a callback still registered on it.
-    /// </summary>
-    internal static void ResetSession()
-    {
-        try
-        {
-            var session = CurrentSession;
-            if (session != null && _artworkCallback != null)
-            {
-                try
-                {
-                    session.Controller.UnregisterCallback(_artworkCallback);
-                }
-                catch (System.Exception ex)
-                {
-                    SessionLog.LogWarning(ex, "MediaSession: artwork callback unregistration failed");
-                }
-            }
-
-            _artworkCallback = null;
-            CurrentSession = null;
-            _wrapped = false;
-            _lastAlbumFolderPath = string.Empty;
-
-            SessionLog
-                .LogInformation("MediaSession: session state reset for the next window");
-        }
-        catch (System.Exception ex)
-        {
-            SessionLog.LogWarning(ex, "MediaSession: reset failed");
-        }
-    }
-}
-
-internal class ArtworkCallback : global::Android.Support.V4.Media.Session.MediaControllerCompat.Callback
-{
-    private static string? _lastCoverPath;
-    private static global::Android.Graphics.Bitmap? _cachedBitmap;
-    private static long _lastApplyTicks;
-
-    public override void OnMetadataChanged(global::Android.Support.V4.Media.MediaMetadataCompat? metadata)
-    {
-        base.OnMetadataChanged(metadata);
-        ReapplyIfNeeded();
-    }
-
-    public override void OnPlaybackStateChanged(global::Android.Support.V4.Media.Session.PlaybackStateCompat? state)
-    {
-        base.OnPlaybackStateChanged(state);
-        if (state?.State == global::Android.Support.V4.Media.Session.PlaybackStateCompat.StatePlaying)
-            ReapplyIfNeeded();
-    }
-
-    private static void ReapplyIfNeeded()
-    {
-        var now = DateTime.UtcNow.Ticks;
-        if (now - Interlocked.Read(ref _lastApplyTicks) < TimeSpan.TicksPerSecond)
-            return;
-        Interlocked.Exchange(ref _lastApplyTicks, now);
-        ReapplyArtwork();
-    }
-
-    private static void ReapplyArtwork()
-    {
-        try
-        {
-            var audioService = IPlatformApplication.Current?.Services?.GetService<Synesthesia_Audio.Services.AudioService>();
-            var coverPath = audioService?.CurrentTrack?.CoverImagePath;
-            if (string.IsNullOrEmpty(coverPath) || !System.IO.File.Exists(coverPath)) return;
-
-            if (coverPath != _lastCoverPath)
-            {
-                // Bounded, unlike the full-size decode this used to do: an oversized bitmap in the session
-                // metadata throws TransactionTooLargeException and the artwork silently disappears (DUP-05).
-                _cachedBitmap = AndroidNotificationHelper.DecodeArtwork(coverPath);
-                _lastCoverPath = coverPath;
-            }
-
-            if (_cachedBitmap == null) return;
-            var session = MediaSessionHelper.CurrentSession;
-            if (session?.Controller?.Metadata == null) return;
-            var metadata = new global::Android.Support.V4.Media.MediaMetadataCompat.Builder(session.Controller.Metadata)
-                .PutBitmap(global::Android.Support.V4.Media.MediaMetadataCompat.MetadataKeyArt, _cachedBitmap)
-                .PutBitmap(global::Android.Support.V4.Media.MediaMetadataCompat.MetadataKeyAlbumArt, _cachedBitmap)
-                .Build();
-            session.SetMetadata(metadata);
-        }
-        catch (System.Exception ex)
-        {
-            // Was an empty catch: a failure here silently left the lock screen without artwork (PAT-05).
-            MediaSessionCallbackLog.Artwork
-                .LogWarning(ex, "MediaSession: re-applying artwork failed");
-        }
-    }
-}
-
-public class CustomQueueNavigator : TimelineQueueNavigator
-{
-    public CustomQueueNavigator(global::Android.Support.V4.Media.Session.MediaSessionCompat window) : base(window)
-    {
-    }
-
-    public override global::Android.Support.V4.Media.MediaDescriptionCompat GetMediaDescription(IPlayer player, int windowIndex)
-    {
-        var title = player.CurrentMediaItem?.MediaMetadata?.Title?.ToString() ?? "Synesthesia Audio";
-        var artist = player.CurrentMediaItem?.MediaMetadata?.Artist?.ToString() ?? "";
-        
-        return new global::Android.Support.V4.Media.MediaDescriptionCompat.Builder()
-            .SetTitle(title)
-            .SetSubtitle(artist)
-            .Build();
-    }
-
-    public override long GetSupportedQueueNavigatorActions(IPlayer player)
-    {
-        const long actionSkipToNext = 1 << 5;
-        const long actionSkipToPrevious = 1 << 4;
-        return actionSkipToNext | actionSkipToPrevious;
-    }
+    internal static void ResetSession() => AndroidMediaSession.Reset();
 }

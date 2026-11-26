@@ -29,6 +29,11 @@ public class AndroidAudioPlatformService : IAudioPlatformService
 
     public void OnPlaybackStateChanged(bool isPlaying, string? trackTitle, string albumFolderPath)
     {
+        // Our own media session carries the transport state now: without this the notification would show
+        // play/pause incorrectly and the headset buttons would act on a session that thinks it is stopped
+        // (OVR-03).
+        Platforms.Android.MediaSessionHelper.UpdatePlaybackState(isPlaying, 0);
+
         if (isPlaying)
         {
             Platforms.Android.WakeLockHelper.Acquire();
