@@ -26,13 +26,8 @@ namespace Synesthesia_Audio.Services.Cloud;
 /// </summary>
 public class LocalHttpProxy : IDisposable
 {
-    private static ILogger? _staticLogger;
-
-    /// <summary>
-    /// Diagnostics go to the application log. This used to also push into a private ring buffer that nothing
-    /// ever read, so the same information existed twice and only one copy was reachable (OVR-07).
-    /// </summary>
-    public static void Log(string msg) => _staticLogger?.LogDebug("[LocalHttpProxy] {Message}", msg);
+    // Diagnostics used to go through a static Log method backed by a static logger field. Nothing outside this
+    // class called it, so it is instance state now and the proxy has no static mutable state left (PAT-07).
 
     private volatile TcpListener? _listener;
     private readonly ICloudProvider _cloudProvider;
@@ -54,7 +49,6 @@ public class LocalHttpProxy : IDisposable
     {
         _cloudProvider = cloudProvider;
         _logger = logger;
-        _staticLogger = logger;
 
         // Deliberately not started here: constructing the singleton at app start used to open a port for
         // every user, including the ones on a purely local library.
@@ -63,10 +57,7 @@ public class LocalHttpProxy : IDisposable
     public bool IsRunning => _isRunning;
     public int Port => _port;
 
-    private void AddLog(string msg)
-    {
-        Log(msg);
-    }
+    private void AddLog(string msg) => _logger.LogDebug("[LocalHttpProxy] {Message}", msg);
 
     public void Start()
     {

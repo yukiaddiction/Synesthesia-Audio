@@ -290,9 +290,13 @@ public class MainPage : ContentPage
 
             UpdateSubtitle();
 
-#if ANDROID
-            MainActivity.TryNavigateToAlbum();
-#endif
+            // The intent's album request is consumed here, once the library is loaded (PAT-07).
+            if (IPlatformApplication.Current?.Services?.GetService<StartupNavigation>() is { } startupNavigation)
+            {
+                var navigationService = IPlatformApplication.Current?.Services?.GetService<INavigationService>();
+                if (navigationService != null)
+                    await startupNavigation.TryNavigateAsync(cacheService: IPlatformApplication.Current!.Services!.GetRequiredService<LibraryCacheService>(), navigationService);
+            }
         }
         catch (Exception ex)
         {

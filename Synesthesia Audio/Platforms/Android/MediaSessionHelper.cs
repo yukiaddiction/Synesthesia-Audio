@@ -10,6 +10,10 @@ internal static class MediaSessionHelper
 {
     private sealed class Log { }
 
+    // These are static on purpose, and are the one exception left to PAT-07: an Android media session belongs to
+    // the process, not to a window, and the system holds a reference to it. The rule that keeps them safe is that
+    // they are cleared through ResetSession() whenever the media element is detached - the process outlives the
+    // activity, so a session left behind is never re-wrapped and its transport buttons are dead.
     internal static global::Android.Support.V4.Media.Session.MediaSessionCompat? CurrentSession { get; set; }
     private static volatile bool _wrapped = false;
     private static string _lastAlbumFolderPath = string.Empty;

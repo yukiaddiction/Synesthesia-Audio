@@ -10,8 +10,6 @@ namespace Synesthesia_Audio;
 [Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, LaunchMode = LaunchMode.SingleTop, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density | ConfigChanges.FontScale | ConfigChanges.Locale | ConfigChanges.LayoutDirection)]
 public class MainActivity : MauiAppCompatActivity
 {
-    private static string? _pendingAlbumFolderPath;
-
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
@@ -24,53 +22,16 @@ public class MainActivity : MauiAppCompatActivity
         HandleIntent(intent);
     }
 
-    private static void HandleIntent(Intent? intent)
+    /// <summary>
+    /// Records the album the intent asked for. The request is held by StartupNavigation, a singleton, because
+    /// static state on an Activity outlives the Activity and a stale path could survive a re-created one (PAT-07).
+    /// </summary>
+    private void HandleIntent(Intent? intent)
     {
         var albumPath = intent?.GetStringExtra("AlbumFolderPath");
-        if (!string.IsNullOrEmpty(albumPath))
-        {
-            _pendingAlbumFolderPath = albumPath;
-        }
-        TryNavigateToAlbum();
-    }
+        if (string.IsNullOrEmpty(albumPath)) return;
 
-    internal static void TryNavigateToAlbum()
-    {
-        try
-        {
-            if (string.IsNullOrEmpty(_pendingAlbumFolderPath)) return;
-            if (Shell.Current == null) return;
-
-            var services = IPlatformApplication.Current?.Services;
-            if (services == null) return;
-
-            var cacheService = services.GetService<Services.LibraryCacheService>();
-            if (cacheService == null) return;
-
-            var work = cacheService.GetWork(_pendingAlbumFolderPath);
-            _pendingAlbumFolderPath = null;
-
-            if (work != null)
-            {
-                MainThread.BeginInvokeOnMainThread(async () =>
-                {
-                    try
-                    {
-                        var shell = Shell.Current;
-                        if (shell == null) return;
-                        await shell.GoToAsync("//Library");
-                        await shell.GoToAsync(nameof(Views.AlbumPage), new Dictionary<string, object> { { "Album", work } });
-                    }
-                    catch (Exception ex)
-                    {
-                        Services.Logging.AppLog.Get<MainActivity>().LogWarning(ex, "Album navigation from intent failed");
-                    }
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            Services.Logging.AppLog.Get<MainActivity>().LogWarning(ex, "TryNavigateToAlbum failed");
-        }
+        var services = IPlatformApplication.Current?.Services;
+        services?.GetService<Services.StartupNavigation>()?.RequestAlbum(albumPath);
     }
 }
