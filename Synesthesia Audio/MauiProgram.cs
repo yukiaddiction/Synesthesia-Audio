@@ -9,6 +9,8 @@ using Synesthesia_Audio.Services.Translation;
 using Synesthesia_Audio.ViewModels;
 using Synesthesia_Audio.Views;
 
+using Synesthesia_Audio.Core;
+
 namespace Synesthesia_Audio;
 
 

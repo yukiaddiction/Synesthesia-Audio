@@ -1,19 +1,21 @@
-namespace Synesthesia_Audio.Services.Translation;
+namespace Synesthesia_Audio.Core;
 
 /// <summary>
 /// The Retry-After value captured from the last rate-limited response.
 ///
-/// This state used to live on <see cref="RetryAfterCaptureHandler"/>, which was wrong in both directions: the
-/// handler has to be transient for the HTTP factory to build its pipeline, so the instance holding the value was
-/// not the instance the provider read from - while the service kept a third copy of its own. Splitting the state
-/// out gives one shared object, and lets the handler stay transient as the factory requires.
+/// This is deliberately pure state with no HTTP types: the handler that writes it and the provider that reads it
+/// both have to agree on one instance, and keeping the storage testable is what proves they do.
+///
+/// It lives in Core because its rules are subtle enough to deserve tests: a response that arrives without
+/// Retry-After must never erase a value a previous response supplied, and a zero or negative value is not a
+/// cooldown.
 /// </summary>
 public sealed class RetryAfterState
 {
     private readonly object _lock = new();
     private TimeSpan? _last;
 
-    /// <summary>Best effort: the translator owns the request, so there is no per-call channel.</summary>
+    /// <summary>Best effort: the translator owns the request, so there is no per-call channel to carry this back.</summary>
     public TimeSpan? Last
     {
         get { lock (_lock) return _last; }
