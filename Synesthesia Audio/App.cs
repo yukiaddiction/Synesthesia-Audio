@@ -3,6 +3,7 @@ using CommunityToolkit.Maui.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Controls;
+using Synesthesia_Audio.Core;
 using Synesthesia_Audio.Services;
 using Synesthesia_Audio.Styles;
 using Synesthesia_Audio.ViewModels;
@@ -38,7 +39,6 @@ public class App : Application
         UserAppTheme = settingsService.CurrentSettings.IsDarkMode ? AppTheme.Dark : AppTheme.Light;
 
         Styles.AppFontSizes.Initialize();
-        Services.Logging.FileLogger.PurgeOldLogs();
         _logger.LogInformation("App started — theme: {Theme}", UserAppTheme);
     }
 
@@ -58,6 +58,11 @@ public class App : Application
         };
         _audioService.SetMediaElement(mediaElement);
         shell.SetMediaElement(mediaElement);
+
+        // Retention runs here rather than in the constructor: it walks the log directory and deletes files, which
+        // is I/O that has no business on the startup path. Fired off the UI thread once the window exists (PAT-02).
+        Task.Run(static () => Services.Logging.FileLogger.PurgeOldLogs()).FireAndForget(ex =>
+            _logger.LogDebug(ex, "Purging old log files failed"));
 
         var window = new Window(shell);
 
