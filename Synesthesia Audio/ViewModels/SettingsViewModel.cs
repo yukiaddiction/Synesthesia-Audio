@@ -62,6 +62,12 @@ public partial class SettingsViewModel : BaseViewModel
     private string _translationCustomBaseUrl = string.Empty;
 
     [ObservableProperty]
+    private string _translationCustomAuthHeader = "Authorization";
+
+    [ObservableProperty]
+    private string _translationCustomAuthScheme = "Bearer";
+
+    [ObservableProperty]
     private string _translationApiKey = string.Empty;
 
     [ObservableProperty]
@@ -111,6 +117,8 @@ public partial class SettingsViewModel : BaseViewModel
         CloudPassword = _settingsService.CurrentSettings.CloudPassword;
         TranslationProvider = _settingsService.CurrentSettings.TranslationProvider;
         TranslationCustomBaseUrl = _settingsService.CurrentSettings.TranslationCustomBaseUrl;
+        TranslationCustomAuthHeader = _settingsService.CurrentSettings.TranslationCustomAuthHeader;
+        TranslationCustomAuthScheme = _settingsService.CurrentSettings.TranslationCustomAuthScheme;
         TranslationApiKey = _settingsService.CurrentSettings.TranslationApiKey;
 
         UpdateSelectionStates();
@@ -210,6 +218,7 @@ public partial class SettingsViewModel : BaseViewModel
         var originalProvider = _settingsService.CurrentSettings.TranslationProvider;
         var originalBaseUrl = _settingsService.CurrentSettings.TranslationCustomBaseUrl;
         var originalHeader = _settingsService.CurrentSettings.TranslationCustomAuthHeader;
+        var originalScheme = _settingsService.CurrentSettings.TranslationCustomAuthScheme;
         var originalKey = _settingsService.CurrentSettings.TranslationApiKey;
 
         // Applied inside the service's lock so a concurrent reader never sees a half-applied override (PAT-03).
@@ -217,6 +226,8 @@ public partial class SettingsViewModel : BaseViewModel
         {
             s.TranslationProvider = TranslationProvider;
             s.TranslationCustomBaseUrl = TranslationCustomBaseUrl;
+            s.TranslationCustomAuthHeader = TranslationCustomAuthHeader;
+            s.TranslationCustomAuthScheme = TranslationCustomAuthScheme;
             s.TranslationApiKey = TranslationApiKey;
         });
 
@@ -245,6 +256,7 @@ public partial class SettingsViewModel : BaseViewModel
                 s.TranslationProvider = originalProvider;
                 s.TranslationCustomBaseUrl = originalBaseUrl;
                 s.TranslationCustomAuthHeader = originalHeader;
+                s.TranslationCustomAuthScheme = originalScheme;
                 s.TranslationApiKey = originalKey;
             });
         }
@@ -312,6 +324,8 @@ public partial class SettingsViewModel : BaseViewModel
             s.CloudPassword = CloudPassword;
             s.TranslationProvider = TranslationProvider;
             s.TranslationCustomBaseUrl = TranslationCustomBaseUrl;
+            s.TranslationCustomAuthHeader = TranslationCustomAuthHeader;
+            s.TranslationCustomAuthScheme = TranslationCustomAuthScheme;
             s.TranslationApiKey = TranslationApiKey;
         });
 

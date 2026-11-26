@@ -24,6 +24,9 @@ public class GeneralSettings
     public string TranslationCustomBaseUrl { get; set; } = string.Empty;
     public string TranslationCustomAuthHeader { get; set; } = "Authorization";
 
+    /// <summary>The scheme prefixed to the key, e.g. "Bearer". Editable because providers disagree.</summary>
+    public string TranslationCustomAuthScheme { get; set; } = "Bearer";
+
     [JsonIgnore]
     public string TranslationApiKey { get; set; } = string.Empty;
 

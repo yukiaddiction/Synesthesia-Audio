@@ -337,7 +337,16 @@ public class SettingsPage : ContentPage
                             {
                                 CreateFormLabel("Custom Base URL"),
                                 GlassTheme.FormEntry(placeholder: "e.g. https://api-free.deepl.com")
-                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationCustomBaseUrl))
+                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationCustomBaseUrl)),
+
+                                // These two were configurable in the service but unreachable from the UI (OVR-04).
+                                CreateFormLabel("Auth Header Name"),
+                                GlassTheme.FormEntry(placeholder: "Authorization")
+                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationCustomAuthHeader)),
+
+                                CreateFormLabel("Auth Scheme"),
+                                GlassTheme.FormEntry(placeholder: "Bearer")
+                                    .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationCustomAuthScheme))
                             }
                         }
                         .Bind(VisualElement.IsVisibleProperty, nameof(SettingsViewModel.IsCustomTranslationSelected))

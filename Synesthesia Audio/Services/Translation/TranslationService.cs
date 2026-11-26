@@ -151,7 +151,7 @@ public sealed class TranslationService : ITranslationService
                     settings.TranslationApiKey,
                     settings.TranslationCustomBaseUrl,
                     settings.TranslationCustomAuthHeader,
-                    "Bearer");
+                    settings.TranslationCustomAuthScheme);
 
             default:
                 return _gTranslateProvider ??= new GTranslateProvider(_httpClient, _retryAfterHandler, _logger);
