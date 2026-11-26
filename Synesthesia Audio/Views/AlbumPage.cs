@@ -17,7 +17,7 @@ namespace Synesthesia_Audio.Views;
 public class AlbumPage : ContentPage
 {
     private readonly LibraryCacheService _cacheService;
-    private readonly ObservableCollection<TrackGroup> _groups = new();
+    private readonly ObservableCollection<AlbumRow> _rows = new();
 
     public AlbumPage(AlbumViewModel viewModel, AudioService audioService, LibraryCacheService cacheService)
     {
@@ -165,23 +165,33 @@ public class AlbumPage : ContentPage
         // The list follows the view model: Album is set by query navigation and raised again after a
         // translation, so the groups are rebuilt on every change.
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        RebuildGroups(viewModel);
+        RebuildRows(viewModel);
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(AlbumViewModel.Album) && sender is AlbumViewModel viewModel)
-            RebuildGroups(viewModel);
+            RebuildRows(viewModel);
     }
 
-    private void RebuildGroups(AlbumViewModel viewModel)
+    private void RebuildRows(AlbumViewModel viewModel)
     {
-        _groups.Clear();
+        _rows.Clear();
 
         if (viewModel.Album?.SubAlbums == null) return;
 
         foreach (var subAlbum in viewModel.Album.SubAlbums)
-            _groups.Add(new TrackGroup(subAlbum));
+        {
+            // A folder whose title is the work itself has nothing to label, so it gets no header row at all
+            // rather than an invisible one that still takes up space in the list.
+            if (!string.Equals(subAlbum.Title, AlbumRow.MainGroupName, StringComparison.OrdinalIgnoreCase))
+                _rows.Add(AlbumRow.ForHeader(subAlbum));
+
+            if (!subAlbum.IsExpanded) continue;
+
+            foreach (var track in subAlbum.Tracks)
+                _rows.Add(AlbumRow.ForTrack(track));
+        }
     }
 
     protected override void OnDisappearing()
@@ -200,102 +210,134 @@ public class AlbumPage : ContentPage
     {
         return new CollectionView
         {
-            IsGrouped = true,
-            ItemsSource = _groups,
+            // Flat rows, not groups: grouping dropped the first track and left a blank row on Android.
+            IsGrouped = false,
+            ItemsSource = _rows,
             SelectionMode = SelectionMode.None,
 
             // The floating player bar overlays the bottom of the page, so the list ends above it rather than
             // hiding the last tracks behind it.
             Footer = new BoxView { HeightRequest = 96, Color = Colors.Transparent },
 
-            GroupHeaderTemplate = new DataTemplate(() =>
-            {
-                var title = new Label
-                {
-                    FontSize = AppFontSizes.PathLabel,
-                    FontAttributes = AppFonts.Bold,
-                    VerticalOptions = LayoutOptions.Center
-                }
-                    .Column(0)
-                    .Bind(Label.TextProperty, nameof(TrackGroup.Title))
-                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
-
-                var arrow = new Label { FontSize = AppFontSizes.PathLabel, VerticalOptions = LayoutOptions.Center }
-                    .Column(1)
-                    .Bind(Label.TextProperty, nameof(TrackGroup.IsExpanded), converter: BoolToArrowConverter.Instance)
-                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
-
-                var header = new Grid
-                {
-                    Padding = AppLayout.PathHeaderPadding,
-                    ColumnDefinitions = Columns.Define(Star, Auto),
-                    Children = { title, arrow }
-                }
-                .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
-
-                var tap = new TapGestureRecognizer();
-                tap.Tapped += (sender, _) =>
-                {
-                    if ((sender as BindableObject)?.BindingContext is TrackGroup group)
-                        group.SetExpanded(!group.IsExpanded);
-                };
-                header.GestureRecognizers.Add(tap);
-
-                // The synthetic container folder is not a real sub-album, so its header stays hidden while its
-                // tracks still show.
-                header.Bind(VisualElement.IsVisibleProperty, nameof(TrackGroup.Title), converter: NotMainTitleConverter.Instance);
-
-                return header;
-            }),
-
-            ItemTemplate = new DataTemplate(() =>
-            {
-                var trackTap = new TapGestureRecognizer();
-                trackTap.SetBinding(TapGestureRecognizer.CommandProperty, new Binding(nameof(AlbumViewModel.PlayTrackCommand), source: BindingContext));
-                trackTap.SetBinding(TapGestureRecognizer.CommandParameterProperty, ".");
-
-                var playGlyph = new Label { Text = "\u25B6", FontSize = AppFontSizes.ButtonLarge, VerticalOptions = LayoutOptions.Center }
-                    .Column(0)
-                    .AppThemeBinding(Label.TextColorProperty, AppColors.SuccessLight, AppColors.SuccessDark);
-
-                var titleLabel = new Label { FontSize = AppFontSizes.ButtonLarge, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 1 }
-                    .Bind(Label.TextProperty, nameof(Track.Title))
-                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
-
-                var translatedLabel = new Label { FontSize = AppFontSizes.Caption }
-                    .Bind(Label.TextProperty, nameof(Track.TranslatedTitle))
-                    .Bind(VisualElement.IsVisibleProperty, nameof(Track.TranslatedTitle), converter: new EmptyStringToFalseConverter())
-                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark);
-
-                var row = new Grid
-                {
-                    Padding = new Thickness(10, 12),
-                    ColumnDefinitions = Columns.Define(Auto, Star),
-                    ColumnSpacing = 12,
-                    Children =
-                    {
-                        playGlyph,
-                        new VerticalStackLayout
-                        {
-                            Spacing = AppLayout.SpacingExtraSmall,
-                            VerticalOptions = LayoutOptions.Center,
-                            Children = { titleLabel, translatedLabel }
-                        }.Column(1)
-                    }
-                };
-
-                row.SetBinding(SemanticProperties.DescriptionProperty, new Binding(nameof(Track.Title)));
-                SemanticProperties.SetHint(row, "Double tap to play this track");
-
-                var pointer = new PointerGestureRecognizer();
-                pointer.PointerEntered += (_, _) => row.Opacity = 0.82;
-                pointer.PointerExited += (_, _) => row.Opacity = 1;
-                row.GestureRecognizers.Add(pointer);
-                row.GestureRecognizers.Add(trackTap);
-
-                return row;
-            })
+            ItemTemplate = BuildRowSelector(),
+            ItemsLayout = new LinearItemsLayout(ItemsLayoutOrientation.Vertical) { ItemSpacing = 0 }
         };
+    }
+
+    /// <summary>
+    /// Two templates: one for a sub-album header, one for a track. A selector keeps the header and the track
+    /// separate without grouping, which is what broke the previous attempt.
+    /// </summary>
+    private DataTemplate BuildRowSelector()
+    {
+        var header = new DataTemplate(BuildHeaderRow);
+        var track = new DataTemplate(BuildTrackRow);
+
+        return new DataTemplateSelector
+        {
+            Header = header,
+            Track = track
+        };
+    }
+
+    private sealed class DataTemplateSelector : Microsoft.Maui.Controls.DataTemplateSelector
+    {
+        public DataTemplate? Header { get; init; }
+        public DataTemplate? Track { get; init; }
+
+        protected override DataTemplate OnSelectTemplate(object item, BindableObject container) =>
+            (item as AlbumRow)?.IsHeader == true ? Header! : Track!;
+    }
+
+    private View BuildHeaderRow()
+    {
+        var title = new Label
+        {
+            FontSize = AppFontSizes.PathLabel,
+            FontAttributes = AppFonts.Bold,
+            VerticalOptions = LayoutOptions.Center
+        }
+            .Column(0)
+            .Bind(Label.TextProperty, nameof(AlbumRow.Title))
+            .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
+
+        var arrow = new Label { FontSize = AppFontSizes.PathLabel, VerticalOptions = LayoutOptions.Center }
+            .Column(1)
+            .Bind(Label.TextProperty, nameof(AlbumRow.Arrow))
+            .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
+
+        var header = new Grid
+        {
+            Padding = AppLayout.PathHeaderPadding,
+            ColumnDefinitions = Columns.Define(Star, Auto),
+            Children = { title, arrow }
+        }
+        .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
+
+        // A work whose tracks sit directly in the work folder gets a header with nothing to say.
+        header.Bind(VisualElement.IsVisibleProperty, nameof(AlbumRow.IsHeaderVisible));
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += (sender, _) =>
+        {
+            if ((sender as BindableObject)?.BindingContext is AlbumRow row && row.SubAlbum != null
+                && BindingContext is AlbumViewModel viewModel)
+            {
+                row.SubAlbum.IsExpanded = !row.SubAlbum.IsExpanded;
+                RebuildRows(viewModel);
+            }
+        };
+        header.GestureRecognizers.Add(tap);
+
+        return header;
+    }
+
+    private View BuildTrackRow()
+    {
+        var trackTap = new TapGestureRecognizer();
+        trackTap.SetBinding(TapGestureRecognizer.CommandProperty, new Binding(nameof(AlbumViewModel.PlayTrackCommand), source: BindingContext));
+        trackTap.SetBinding(TapGestureRecognizer.CommandParameterProperty, nameof(AlbumRow.Track));
+
+        var playGlyph = new Label { Text = "\u25B6", FontSize = AppFontSizes.ButtonLarge, VerticalOptions = LayoutOptions.Center }
+            .Column(0)
+            .AppThemeBinding(Label.TextColorProperty, AppColors.SuccessLight, AppColors.SuccessDark);
+
+        var titleLabel = new Label { FontSize = AppFontSizes.ButtonLarge, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 1 }
+            .Bind(Label.TextProperty, nameof(AlbumRow.Title))
+            .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark);
+
+        var translatedLabel = new Label { FontSize = AppFontSizes.Caption }
+            .Bind(Label.TextProperty, nameof(AlbumRow.TranslatedTitle))
+            .Bind(VisualElement.IsVisibleProperty, nameof(AlbumRow.HasTranslation))
+            .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark);
+
+        var row = new Grid
+        {
+            Padding = new Thickness(10, 12),
+            ColumnDefinitions = Columns.Define(Auto, Star),
+            ColumnSpacing = 12,
+            Children =
+            {
+                playGlyph,
+                new VerticalStackLayout
+                {
+                    Spacing = AppLayout.SpacingExtraSmall,
+                    VerticalOptions = LayoutOptions.Center,
+                    Children = { titleLabel, translatedLabel }
+                }.Column(1)
+            }
+        };
+
+        row.SetBinding(SemanticProperties.DescriptionProperty, new Binding(nameof(AlbumRow.Title)));
+        SemanticProperties.SetHint(row, "Double tap to play this track");
+
+        var pointer = new PointerGestureRecognizer();
+        pointer.PointerEntered += (_, _) => row.Opacity = 0.82;
+        pointer.PointerExited += (_, _) => row.Opacity = 1;
+        row.GestureRecognizers.Add(pointer);
+        row.GestureRecognizers.Add(trackTap);
+
+        return row;
     }
 
 
