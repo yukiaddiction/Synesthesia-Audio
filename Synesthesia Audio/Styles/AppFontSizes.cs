@@ -22,8 +22,8 @@ public static class AppFontSizes
     public static double SmallText => 12;
     public static double Caption => 12;
     public static double ButtonSmall => 12;
-    // 11 is the floor here on purpose: DetailText labels dense metadata rows, and pushing it to 12 without a
-    // visual pass risks the phone overflow UX-09 describes. Caption and ButtonSmall are at 12 (UX-01).
-    public static double DetailText => 11;
+    // 12 is the floor for any body text (UX-01). DetailText labels dense metadata rows, so it is the value most
+    // likely to overflow a narrow card now that it is no longer below the floor.
+    public static double DetailText => 12;
     public static double CoverPlaceholderIcon => 50;
 }

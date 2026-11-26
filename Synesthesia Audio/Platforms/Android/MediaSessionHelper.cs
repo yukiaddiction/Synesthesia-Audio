@@ -60,24 +60,59 @@ internal static class MediaSessionHelper
         });
     }
 
+    /// <summary>
+    /// Logs a toolkit-internals mismatch once per process. Without this the reflection failing was completely
+    /// silent, which is indistinguishable from the media session working but the buttons being unresponsive.
+    /// </summary>
+    private static void ReportReflectionMismatch(string detail)
+    {
+        if (_reflectionMismatchReported) return;
+        _reflectionMismatchReported = true;
+
+        Synesthesia_Audio.Services.Logging.AppLog.Get<Log>().LogWarning(
+            "MediaSession: CommunityToolkit MediaElement internals changed — the Android media session could not be attached ({Detail}). " +
+            "Playback still works; lock-screen and headset buttons may not. The reflection was written against toolkit 5.0.0.",
+            detail);
+    }
+    /// <summary>
+    /// True once we have reported that the toolkit internals no longer look the way this reflection expects.
+    /// </summary>
+    private static bool _reflectionMismatchReported;
+
     private static void TryWrap(Microsoft.Maui.IElementHandler handler)
     {
         try
         {
+            // This reaches into CommunityToolkit.Maui.MediaElement internals, written against 5.0.0. The package
+            // exposes no public accessor for its media manager (verified against its source: the field is
+            // private), so a supported replacement means owning playback ourselves (OVR-03). Until then the
+            // failure has to be loud: a silent miss here is what "next/previous buttons do nothing" looks like.
             var mediaManagerField = handler.GetType().GetField("mediaManager", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var mediaManager = mediaManagerField?.GetValue(handler);
-            if (mediaManager == null) return;
+            if (mediaManager == null)
+            {
+                ReportReflectionMismatch("mediaManager field not found on " + handler.GetType().FullName);
+                return;
+            }
 
             var connectorField = mediaManager.GetType().GetField("mediaSessionConnector", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var connectorObj = connectorField?.GetValue(mediaManager);
-            if (connectorObj == null) return;
+            if (connectorObj == null)
+            {
+                ReportReflectionMismatch("mediaSessionConnector field not found");
+                return;
+            }
 
             var connector = connectorObj as MediaSessionConnector;
             if (connector == null) return;
 
             var sessionField = mediaManager.GetType().GetField("mediaSession", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var sessionObj = sessionField?.GetValue(mediaManager);
-            if (sessionObj == null) return;
+            if (sessionObj == null)
+            {
+                ReportReflectionMismatch("mediaSession field not found");
+                return;
+            }
 
             var mediaSession = sessionObj as global::Android.Support.V4.Media.Session.MediaSessionCompat;
             if (mediaSession == null) return;
@@ -94,7 +129,11 @@ internal static class MediaSessionHelper
             var playerField = mediaManager.GetType().GetField("player", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             var currentPlayer = (playerProp?.GetValue(mediaManager) ?? playerField?.GetValue(mediaManager)) as IPlayer;
 
-            if (currentPlayer == null) return;
+            if (currentPlayer == null)
+            {
+                ReportReflectionMismatch("player not found on the media manager");
+                return;
+            }
 
             if (currentPlayer is CustomForwardingPlayer)
             {
