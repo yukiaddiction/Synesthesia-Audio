@@ -2,10 +2,7 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// OVR-04: the cooldown clock and the backoff counter were separate state that had to be kept in step. This
-/// type owns both, and these tests are the contract.
-/// </summary>
+/// <summary>The limiter owns both the cooldown clock and the backoff counter so the two cannot drift apart.</summary>
 public sealed class RateLimiterTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 26, 12, 0, 0, TimeSpan.Zero);
@@ -92,7 +89,7 @@ public sealed class RateLimiterTests
         Assert.Equal(Base, limiter.RecordRateLimit(Now, null));
     }
 
-    /// <summary>A later expiry must survive an earlier one: the cooldown is already paid for.</summary>
+    /// <summary>A cooldown already granted is paid for, so a shorter later one must not cut it short.</summary>
     [Fact]
     public void A_shorter_later_limit_does_not_shorten_the_cooldown()
     {
@@ -123,7 +120,7 @@ public sealed class RateLimiterTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new RateLimiter(TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5)));
     }
 
-    /// <summary>Concurrent limits must not all compute the same step from a torn counter (BUG-m-22).</summary>
+    /// <summary>Concurrent limits must not all compute the same step from a torn counter.</summary>
     [Fact]
     public async Task Concurrent_limits_advance_the_step_once_each()
     {

@@ -5,8 +5,7 @@ using Synesthesia_Audio.Services.Translation;
 namespace Synesthesia_Audio.Services;
 
 /// <summary>
-/// Owns provider selection, the shared rate-limit cooldown and the user-facing state, so every
-/// provider inherits the same "wait a little" behaviour instead of each rediscovering it.
+/// Owns provider selection and the shared rate-limit cooldown, so every provider gets the same backoff behaviour.
 /// </summary>
 public sealed class TranslationService : ITranslationService
 {
@@ -14,7 +13,7 @@ public sealed class TranslationService : ITranslationService
     private readonly ILogger<TranslationService> _logger;
     private readonly RetryAfterState _retryAfterState;
     private readonly HttpClient _httpClient;
-    // One object owns the cooldown clock and the backoff step, so they cannot drift apart (OVR-04).
+    // One object owns both the cooldown clock and the backoff step, so they cannot drift apart.
     private readonly RateLimiter _limiter = new(
         TimeSpan.FromSeconds(AppConstants.TranslationRateLimitBaseCooldownSeconds),
         TimeSpan.FromSeconds(AppConstants.TranslationRateLimitMaxCooldownSeconds));
@@ -33,7 +32,6 @@ public sealed class TranslationService : ITranslationService
         _logger = logger;
         _retryAfterState = retryAfterState;
 
-        // Timeout and the Retry-After handler come from the named registration (DUP-02 / OVR-05).
         _httpClient = httpClientFactory.CreateClient(HttpClients.Translation);
     }
 
@@ -80,7 +78,7 @@ public sealed class TranslationService : ITranslationService
 
         if (texts.Count == 0) return results;
 
-        // Still cooling down: spend no request at all rather than provoking another 429.
+        // Spend no request while cooling down rather than provoke another 429.
         if (_limiter.IsBlocked(DateTimeOffset.UtcNow))
         {
             _logger.LogDebug("Translation skipped — cooling down for another {Seconds:0}s",
@@ -121,7 +119,7 @@ public sealed class TranslationService : ITranslationService
     {
         var delay = _limiter.RecordRateLimit(DateTimeOffset.UtcNow, limited.RetryAfter);
 
-        // Rate limiting is not an error: the UI shows a countdown instead of a failure message.
+        // Rate limiting is not an error: the UI shows a countdown instead.
         Volatile.Write(ref _lastError, null);
         _logger.LogWarning("Translation rate limited by {Provider}; cooling down for {Seconds:0}s",
             limited.ProviderName, delay.TotalSeconds);

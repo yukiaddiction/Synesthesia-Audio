@@ -12,10 +12,7 @@ using Synesthesia_Audio.Views.Components;
 
 namespace Synesthesia_Audio.Views.Components;
 
-/// <summary>
-/// Desktop master–detail pane: shows the album currently highlighted in the grid.
-/// Hidden entirely in the compact layout.
-/// </summary>
+/// <summary>Desktop-only detail pane for the album highlighted in the grid.</summary>
 public sealed class AlbumPreviewPane : Border
 {
     private const double CoverHeight = 190;

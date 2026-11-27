@@ -63,7 +63,7 @@ public class SecureFileStoreTests : IDisposable
     {
         await CreateStore().SetAsync("DeepL", "persisted:fx");
 
-        // A fresh instance must read what the previous one wrote, which is what happens across app launches.
+        // A fresh instance mirrors reading back across app launches.
         Assert.Equal("persisted:fx", await CreateStore().GetAsync("DeepL"));
     }
 
@@ -99,9 +99,8 @@ public class SecureFileStoreTests : IDisposable
         var store = CreateStore();
         await store.SetAsync("DeepL", "secret");
 
-        // Simulate a blob protected under another Windows user: decryption itself fails, which is the
-        // CryptographicException case. A generic failure is covered separately and must NOT drop the key
-        // (BUG-m-21), because a transient platform error would otherwise destroy the stored password.
+        // A blob protected under another Windows user fails with CryptographicException, the only failure that may
+        // drop the key; a generic failure could be transient.
         var hostile = CreateStore(unprotect: _ => throw new System.Security.Cryptography.CryptographicException("cannot decrypt"));
 
         Assert.Null(await hostile.GetAsync("DeepL"));

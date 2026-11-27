@@ -3,20 +3,10 @@ using CommunityToolkit.Maui.Views;
 
 namespace Synesthesia_Audio.Platforms.Android;
 
-/// <summary>
-/// Thin facade over <see cref="AndroidMediaSession"/>, kept so the call sites that already existed do not have to
-/// change at once.
-///
-/// Everything that used to live here - reflecting into CommunityToolkit's MediaElement handler to borrow its
-/// private media manager, wrapping its player with a ForwardingPlayer and installing a custom queue navigator -
-/// is gone (OVR-03). The session is the app's own now.
-/// </summary>
+// Facade over AndroidMediaSession, kept so existing call sites did not all have to change at once.
 internal static class MediaSessionHelper
 {
-    /// <summary>
-    /// The app's media session, or null before the first attach. Assigning null releases it, which is what the
-    /// foreground service does on detach.
-    /// </summary>
+    // Assigning null releases the session, which is what the foreground service does on detach.
     internal static MediaSessionCompat? CurrentSession
     {
         get => AndroidMediaSession.Current;
@@ -29,10 +19,7 @@ internal static class MediaSessionHelper
     internal static void UpdateSessionActivityIntent(string albumFolderPath) =>
         AndroidMediaSession.UpdateActivityIntent(albumFolderPath);
 
-    /// <summary>
-    /// Starts or refreshes the session. The name is kept from the reflection version: callers attach it when a media
-    /// element appears, and there is nothing to wrap any more.
-    /// </summary>
+    // Name kept from the old reflection-based version; there is nothing to wrap any more.
     internal static void TryWrapSessionPlayer(MediaElement mediaElement)
     {
         if (mediaElement == null) return;
@@ -40,11 +27,9 @@ internal static class MediaSessionHelper
         AndroidMediaSession.EnsureSession();
     }
 
-    /// <summary>Publishes the playing/paused state so the notification and headset buttons reflect it.</summary>
     internal static void UpdatePlaybackState(bool playing, long positionMs) =>
         AndroidMediaSession.UpdatePlaybackState(playing, positionMs);
 
-    /// <summary>Sets the lock-screen text and artwork for the current track.</summary>
     internal static void UpdateMetadata(string? title, string? artist, long durationMs, global::Android.Graphics.Bitmap? artwork) =>
         AndroidMediaSession.UpdateMetadata(title, artist, durationMs, artwork);
 

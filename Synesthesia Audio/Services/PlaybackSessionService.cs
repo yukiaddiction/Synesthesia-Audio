@@ -14,8 +14,7 @@ public class PlaybackSessionService
         _logger = logger;
         var appDataDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
-        // All writes go through one debounced, atomic writer: rapid track changes used to race each
-        // other on the same file and throw IOException.
+        // Debounced, atomic writer: rapid track changes would otherwise race on the file and throw IOException.
         _store = new JsonFileStore<PlaybackSessionState>(
             Path.Combine(appDataDir, "SynesthesiaAudio_Session.json"),
             saveDebounceMs: 400);
@@ -23,7 +22,6 @@ public class PlaybackSessionService
         _store.SaveFailed += ex => _logger.LogWarning(ex, "PlaybackSession: Save failed");
     }
 
-    /// <summary>Completes once the persisted session has been read.</summary>
     public Task<PlaybackSessionState> Loaded => _store.Loaded;
 
     public async Task<PlaybackSessionState?> LoadAsync()
@@ -40,17 +38,13 @@ public class PlaybackSessionService
         }
     }
 
-    /// <summary>Queues the session for writing; the store debounces and writes atomically.</summary>
     public Task SaveAsync(PlaybackSessionState state)
     {
         _store.Replace(state);
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Removes the session. Any queued save is cancelled first, so a debounced write cannot recreate
-    /// the file after it has been deleted.
-    /// </summary>
+    /// <summary>Cancels any queued save first, so a debounced write cannot recreate the deleted file.</summary>
     public async Task ClearAsync()
     {
         _store.ResetWithoutSaving();

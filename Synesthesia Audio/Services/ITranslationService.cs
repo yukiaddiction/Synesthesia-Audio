@@ -3,23 +3,21 @@ namespace Synesthesia_Audio.Services;
 public interface ITranslationService
 {
     /// <summary>
-    /// Translates one string. When <paramref name="config"/> is given it is used instead of the saved
-    /// settings, which is how the Test button verifies unsaved values without mutating shared state (DUP-03).
+    /// A non-null <paramref name="config"/> overrides the saved settings for this call only, so the Test button can
+    /// probe unsaved values without mutating shared state.
     /// </summary>
     Task<string> TranslateJaToEnAsync(string japaneseText, TranslationConfig? config = null);
-    /// <summary>Translates a batch. <paramref name="config"/> overrides the saved settings for this call only.</summary>
     Task<IReadOnlyList<string>> TranslateJaToEnBatchAsync(IReadOnlyList<string> japaneseTexts, TranslationConfig? config = null);
     string ToRomaji(string japaneseText);
     bool ContainsJapanese(string text);
     string? LastError { get; }
     void ClearError();
 
-    /// <summary>The provider that is currently configured, for display in settings.</summary>
     string ActiveProviderName { get; }
 
     /// <summary>
-    /// Non-null while the shared rate-limit cooldown is running. Rate limiting is a state with a
-    /// countdown, not an error, so it is reported separately from <see cref="LastError"/>.
+    /// Non-null during the shared rate-limit cooldown. Kept apart from <see cref="LastError"/> because it is a
+    /// countdown state, not an error.
     /// </summary>
     TimeSpan? RateLimitRemaining { get; }
 }
@@ -31,15 +29,12 @@ public static class TranslationProviders
     public const string DeepL = "DeepL";
     public const string Custom = "Custom";
 
-    // string[] rather than IReadOnlyList so it can be handed straight to a Picker's ItemsSource.
+    // An array so it can go straight into a Picker's ItemsSource.
     public static readonly string[] All = { GTranslate, DeepL, Custom };
 }
 /// <summary>
-/// An explicit provider configuration for one call.
-///
-/// The settings form used to verify what the user had typed by swapping the live settings, running one probe,
-/// then swapping them back — so a concurrent reader could observe a configuration that was never saved, and the
-/// restore had to name every field or leak one (DUP-03). Passing the values in removes both problems.
+/// Provider settings passed explicitly to one call, so probing unsaved values never swaps the live settings where
+/// a concurrent reader could see them.
 /// </summary>
 public sealed record TranslationConfig(
     string Provider,
@@ -48,7 +43,6 @@ public sealed record TranslationConfig(
     string CustomAuthHeader,
     string CustomAuthScheme)
 {
-    /// <summary>The currently saved configuration.</summary>
     public static TranslationConfig FromSettings(Models.GeneralSettings settings) => new(
         settings.TranslationProvider,
         settings.TranslationApiKey,

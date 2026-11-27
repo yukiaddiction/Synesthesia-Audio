@@ -17,8 +17,7 @@ public class LogService
         if (!Directory.Exists(logDir))
             return "No logs recorded yet.";
 
-        // Read the end of the newest logs only. This used to read every file in full and split the result, so
-        // opening the viewer read megabytes to show a few hundred lines (PERF-11).
+        // Read only the tail of the newest files, rather than megabytes to show a few hundred lines.
         var files = GetSortedLogFiles(logDir).Reverse().ToList();
         var collected = new List<string>(lineCount);
 
@@ -33,14 +32,14 @@ public class LogService
             }
             catch (IOException)
             {
-                // A log the writer still has open: skip it rather than failing the whole view.
+                // A log the writer still has open: skip it rather than fail the whole view.
             }
         }
 
         return string.Join(Environment.NewLine, collected).TrimEnd();
     }
 
-    /// <summary>How much of the end of a log file to read before trimming to whole lines.</summary>
+    // How much of the end of a file to read before trimming to whole lines.
     private const int TailChunkBytes = 256 * 1024;
 
     private static async Task<IReadOnlyList<string>> ReadTailChunkAsync(string path, int maxLines)

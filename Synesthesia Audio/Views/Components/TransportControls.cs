@@ -4,20 +4,10 @@ using Synesthesia_Audio.Styles;
 
 namespace Synesthesia_Audio.Views.Components;
 
-/// <summary>
-/// The transport buttons and the seek bar, built once for both places that show them.
-///
-/// The floating bar and the dock each spelled out their own previous / play-pause / next buttons and their own
-/// seek slider with its drag handlers. That is four copies of the same wiring, and it showed: the two bars had
-/// different sizes, different automation ids and slightly different accessibility text, and a fix to one (the
-/// seek thumb, the state-bound play/pause name) had to be made twice or was missed in one (DUP-06).
-/// </summary>
+/// <summary>Transport buttons and seek bar shared by the floating bar and the dock so the two can't drift apart.</summary>
 public static class TransportControls
 {
-    /// <summary>
-    /// Previous / play-pause / next. <paramref name="idPrefix"/> keeps the automation ids distinct so UI tests can
-    /// tell the two bars apart.
-    /// </summary>
+    /// <param name="idPrefix">Keeps automation ids distinct so UI tests can tell the two bars apart.</param>
     public static HorizontalStackLayout BuildButtons(string idPrefix, double spacing, double playButtonSize)
     {
         var previous = GlassTheme.IconButton("\u23EE", AppFontSizes.ButtonLarge, 32)
@@ -36,7 +26,7 @@ public static class TransportControls
         }
         .Bind(Button.TextProperty, nameof(AudioService.IsPlaying), converter: new Converters.PlayPauseTextConverter())
         .Bind(Button.CommandProperty, nameof(AudioService.TogglePlayCommand))
-        // Bound, not a fixed string: the name has to follow the state or a screen reader says "Play" while it plays.
+        // Bound so a screen reader doesn't announce "Play" while already playing.
         .Bind(SemanticProperties.DescriptionProperty, nameof(AudioService.PlayPauseAccessibleName))
         .GlassPill(accent: true);
         playPause.AutomationId = idPrefix + "PlayPauseButton";
@@ -56,17 +46,13 @@ public static class TransportControls
         };
     }
 
-    /// <summary>
-    /// The seek bar, with its drag handlers wired to the audio service's begin/end seek commands.
-    /// </summary>
     public static Slider BuildSeekBar(AudioService audioService, string automationId)
     {
         var seek = new Slider
         {
             Minimum = 0,
             Maximum = 1,
-            // 44 px is the smallest comfortable touch target, and a visible thumb is what makes it grabbable
-            // (UX-03).
+            // 44 px is the minimum comfortable touch target.
             HeightRequest = 44,
             AutomationId = automationId
         }

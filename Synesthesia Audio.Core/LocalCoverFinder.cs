@@ -1,23 +1,16 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Picks the image in an album folder that is most likely to be its cover.
-///
-/// Two places did this with "the first .jpg or .png the directory happened to return" (DUP-04). Directory order is
-/// arbitrary, so that could just as easily pick a screenshot of the track list as the cover. This prefers the
-/// names publishers actually use, then the largest image, and is a pure function so the ranking can be tested.
+/// Directory order is arbitrary, so "first image found" could pick a track-list screenshot. This prefers
+/// conventional cover names, then the largest image.
 /// </summary>
 public static class LocalCoverFinder
 {
     private static readonly string[] ImageExtensions = [".jpg", ".jpeg", ".png", ".webp"];
 
-    /// <summary>Stems that conventionally mean "this is the cover".</summary>
     private static readonly string[] PreferredStems = ["cover", "folder", "front", "jacket", "package"];
 
-    /// <summary>
-    /// The best cover among <paramref name="candidates"/>, or null when there is no usable image.
-    /// </summary>
-    /// <param name="candidates">File paths (or remote paths) with their size in bytes; unknown size is 0.</param>
+    /// <param name="candidates">Unknown size is 0.</param>
     public static string? SelectBest(IEnumerable<(string Path, long Length)> candidates)
     {
         ArgumentNullException.ThrowIfNull(candidates);
@@ -50,15 +43,11 @@ public static class LocalCoverFinder
         return best;
     }
 
-    /// <summary>True when the path has an extension this class will consider cover artwork.</summary>
     public static bool IsImage(string? path) =>
         !string.IsNullOrWhiteSpace(path)
         && ImageExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// 0 for a conventional cover name, 1 for any other image. Checked against the start of the stem so
-    /// "cover_alt.jpg" and "folder.jpg" both count.
-    /// </summary>
+    /// <summary>Prefix match, so "cover_alt.jpg" counts as a cover name too.</summary>
     private static int Rank(string path)
     {
         var stem = Path.GetFileNameWithoutExtension(path);

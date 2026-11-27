@@ -2,9 +2,6 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// DUP-08: the Retry-After interpretation was duplicated in the DeepL provider and the capture handler.
-/// </summary>
 public sealed class RetryAfterParserTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 25, 12, 0, 0, TimeSpan.Zero);

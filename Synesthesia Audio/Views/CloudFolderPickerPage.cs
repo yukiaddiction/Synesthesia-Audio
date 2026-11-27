@@ -64,13 +64,11 @@ public class CloudFolderPickerPage : ContentPage
             HeightRequest = 30,
             WidthRequest = 30
         }
-        // Theme-bound rather than a fixed light-palette accent (UX-01).
         .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark);
 
         var collectionView = new CollectionView
         {
-            // Without an EmptyView a folder with no subfolders showed a blank pane, which reads as a failed
-            // load rather than an empty folder (UX-05).
+            // A blank pane reads as a failed load rather than an empty folder.
             EmptyView = new Label
             {
                 Text = "This folder has no subfolders",
@@ -183,8 +181,7 @@ public class CloudFolderPickerPage : ContentPage
 
         try
         {
-            // Every level re-uses the connection captured when the picker opened, so a user who has not
-            // saved yet can still browse several levels deep.
+            // Uses the connection captured on open, so browsing works before the user has saved the settings.
             var files = await _cloudProvider.ListFilesAsync(_currentPath, _connection);
             var dirs = files.Where(f => f.IsDirectory).OrderBy(d => d.Name).ToList();
 

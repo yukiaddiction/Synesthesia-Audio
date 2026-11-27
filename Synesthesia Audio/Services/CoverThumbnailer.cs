@@ -4,11 +4,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Services;
 
 /// <summary>
-/// Writes the downscaled copies of cover artwork described by <see cref="CoverThumbnails"/>.
-///
-/// Generation is best effort: a cover that cannot be decoded (an unusual format, a truncated download) simply has
-/// no thumbnail and the views fall back to the original, so a decode problem can never make a cover disappear
-/// (PERF-08).
+/// Writes the downscaled cover copies described by <see cref="CoverThumbnails"/>. Best effort: an undecodable
+/// cover just gets no thumbnail and views fall back to the original, so it never disappears.
 /// </summary>
 public sealed class CoverThumbnailer
 {
@@ -16,16 +13,12 @@ public sealed class CoverThumbnailer
 
     public CoverThumbnailer(ILogger<CoverThumbnailer> logger) => _logger = logger;
 
-    /// <summary>
-    /// Creates the thumbnails for <paramref name="coverPath"/> that do not exist yet. Returns the paths it wrote.
-    /// </summary>
     public IReadOnlyList<string> EnsureThumbnails(string? coverPath)
     {
         if (string.IsNullOrWhiteSpace(coverPath) || !File.Exists(coverPath))
             return Array.Empty<string>();
 
-        // Only local files: a remote URL has nothing to resize until it is downloaded, and the caller stores a
-        // local path after that.
+        // A remote URL has nothing to resize yet; the caller comes back with the local path once downloaded.
         if (coverPath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             return Array.Empty<string>();
 
@@ -57,13 +50,13 @@ public sealed class CoverThumbnailer
             var original = Microsoft.Maui.Graphics.Platform.PlatformImage.FromStream(input);
             if (original is null) return false;
 
-            // Never upscale: a 100 px cover has no 256 px version.
+            // Fit the longer side to `edge`, capped at 1 so a small cover is never upscaled.
             var scale = Math.Min(1f, edge / Math.Max(original.Width, original.Height));
             if (scale >= 1f) return false;
 
             using var resized = original.Downsize(original.Width * scale, original.Height * scale);
 
-            // Written to a temporary file first so a half-written thumbnail is never picked up by a view.
+            // Temp file + move so a view never picks up a half-written thumbnail.
             tempPath = targetPath + ".tmp";
             using (var output = File.Create(tempPath))
             {

@@ -6,9 +6,8 @@ using Synesthesia_Audio.Styles;
 namespace Synesthesia_Audio.Views;
 
 /// <summary>
-/// Reachable from Settings, never from a splash screen: the EDRDG licence explicitly requires
-/// attribution on a separate screen opened from a menu. It also shows the name-data freshness date,
-/// because shipping stale ENAMDICT data is a licence violation.
+/// Opened from Settings, never a splash screen: the EDRDG licence requires attribution on a separate
+/// menu-reached screen, and shipping stale name data without its date violates it.
 /// </summary>
 public sealed class AboutSourcesPage : ContentPage
 {
@@ -63,9 +62,7 @@ public sealed class AboutSourcesPage : ContentPage
 
         stack.Add(notices);
 
-        // This page is pushed as a modal and is not wrapped in a NavigationPage, so it has no navigation
-        // bar and no toolbar to close it with. Without an in-page action the user was stuck here: on
-        // Windows and Mac there is no hardware back gesture to fall back on.
+        // Shown as a bare modal with no navigation bar, and desktop has no back gesture, so this is the only way out.
         var doneButton = new Button
         {
             Text = "Done",

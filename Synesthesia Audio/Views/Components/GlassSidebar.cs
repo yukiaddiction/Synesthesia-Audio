@@ -10,10 +10,7 @@ using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 
 namespace Synesthesia_Audio.Views.Components;
 
-/// <summary>
-/// The desktop navigation rail: brand, library filters, settings and the app version.
-/// Only shown above <see cref="AppBreakpoints.Wide"/>; the compact layout keeps using the flyout.
-/// </summary>
+/// <summary>Desktop navigation rail; the compact layout uses the Shell flyout instead.</summary>
 public sealed class GlassSidebar : Border
 {
     private readonly GlassNavItem _all;
@@ -30,9 +27,7 @@ public sealed class GlassSidebar : Border
     public GlassSidebar(MainViewModel? viewModel = null, ILogger? logger = null)
     {
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-        // The rail drives the library filter, so it must talk to the singleton view model rather than to
-        // whatever page happens to be showing. Reading BindingContext meant the filters did nothing on
-        // Settings, Album and every other page whose BindingContext is not a MainViewModel.
+        // Uses the singleton library view model, not BindingContext, so filters work from any page.
         _viewModel = viewModel ?? IPlatformApplication.Current?.Services?.GetService<MainViewModel>();
 
         StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassCardRadius };
@@ -103,8 +98,7 @@ public sealed class GlassSidebar : Border
     {
         base.OnBindingContextChanged();
 
-        // Only a fallback: the singleton injected above is preferred, because pages other than the
-        // library carry a different BindingContext.
+        // Fallback only: most pages' BindingContext isn't a MainViewModel.
         _viewModel ??= BindingContext as MainViewModel;
         Refresh();
     }
@@ -145,7 +139,6 @@ public sealed class GlassSidebar : Border
             Refresh();
     }
 
-    /// <summary>Recomputes which rail item is active from the current route and filter.</summary>
     public void Refresh()
     {
         var location = Shell.Current?.CurrentState?.Location?.OriginalString ?? string.Empty;

@@ -127,7 +127,7 @@ public class FloatingPlayerBar : Border
                     var work = cache?.GetWork(folderPath);
                     if (work != null)
                     {
-                        // Guarded: clicking the bar repeatedly used to stack copies of the album page.
+                        // Guarded so repeated taps don't stack copies of the album page.
                         await NavigationGuard.RunAsync(() =>
                             Shell.Current.GoToAsync(nameof(AlbumPage), new Dictionary<string, object> { { "Album", work } }));
                     }

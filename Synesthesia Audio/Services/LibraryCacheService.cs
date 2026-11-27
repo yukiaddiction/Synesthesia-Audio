@@ -12,7 +12,7 @@ public class LibraryCacheService : IDisposable
     private readonly object _loadLock = new();
     private volatile ConcurrentDictionary<string, WorkMetadata> _cache = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>ProductId -> FolderPath. Without it, a lookup by RJ code scanned every cached work (PERF-03).</summary>
+    // ProductId -> FolderPath, so an RJ-code lookup doesn't scan every cached work.
     private readonly ConcurrentDictionary<string, string> _pathByProductId = new(StringComparer.OrdinalIgnoreCase);
     private Task? _loaded;
 
@@ -29,10 +29,7 @@ public class LibraryCacheService : IDisposable
 
     public string CacheFilePath => _cacheFilePath;
 
-    /// <summary>
-    /// Completes once the cached library has been read and merged into memory. Startup must await this
-    /// before reading the cache, otherwise readers race the load and see an empty library.
-    /// </summary>
+    /// <summary>Startup must await this before reading the cache, or readers race the load and see an empty library.</summary>
     public Task Loaded
     {
         get
@@ -48,7 +45,6 @@ public class LibraryCacheService : IDisposable
     {
         try
         {
-            // Carries any work written while the read was still in flight (see JsonFileStore).
             var list = await _store.Loaded.ConfigureAwait(false);
 
             foreach (var work in list)
@@ -57,7 +53,7 @@ public class LibraryCacheService : IDisposable
 
                 RepairMissingCover(work);
 
-                // TryAdd, never indexer: a work cached during the load is newer than the file copy.
+                // TryAdd: a work cached during the load is newer than the file copy.
                 if (_cache.TryAdd(work.FolderPath, work)) IndexProductId(work);
             }
 
@@ -70,9 +66,8 @@ public class LibraryCacheService : IDisposable
     }
 
     /// <summary>
-    /// Deletes cover files nothing references any more. Runs after a full replace, where the reference set is
-    /// known, and is deliberately conservative: unreadable timestamps, recent files and non-images are kept
-    /// (PERF-12).
+    /// Runs only after a full replace, when the referenced set is known. Conservative: recent files, non-images and
+    /// files with unreadable timestamps are kept.
     /// </summary>
     private void CleanupOrphanedCovers()
     {
@@ -129,7 +124,7 @@ public class LibraryCacheService : IDisposable
             _logger.LogWarning(ex, "Cover cleanup failed");
         }
     }
-    /// <summary>A cover that no longer exists on disk is reported as missing so the scan can refetch it.</summary>
+    /// <summary>Blanks a dead cover path so the next scan refetches it.</summary>
     private static void RepairMissingCover(WorkMetadata work)
     {
         if (work.CoverImagePath == "placeholder_cover.jpg" ||
@@ -142,7 +137,6 @@ public class LibraryCacheService : IDisposable
         }
     }
 
-    /// <summary>Writes the current cache immediately. Debounced saves happen on their own.</summary>
     public void SaveCache()
     {
         _store.Replace(_cache.Values.ToList());
@@ -161,7 +155,7 @@ public class LibraryCacheService : IDisposable
         }
     }
 
-    /// <summary>Writes any debounced change now. Called on window stop/destroy.</summary>
+    /// <summary>Called on window stop/destroy so a debounced change isn't lost.</summary>
     public void FlushPendingSave() => SavePending();
 
     public WorkMetadata? GetWork(string folderPath)
@@ -179,13 +173,12 @@ public class LibraryCacheService : IDisposable
             return indexed;
         }
 
-        // Fallback for a work cached before the index saw it in this process.
+        // The index can miss a work cached before it was indexed in this process.
         return _cache.Values.FirstOrDefault(w =>
             !string.IsNullOrEmpty(w.ProductId) &&
             w.ProductId.Equals(productId, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>Keeps the ProductId index in step with the cache.</summary>
     private void IndexProductId(WorkMetadata work)
     {
         if (string.IsNullOrEmpty(work.ProductId)) return;
@@ -221,8 +214,7 @@ public class LibraryCacheService : IDisposable
 
     private void UpsertInStore(WorkMetadata work)
     {
-        // Route every write through the store so a write made before the load finishes is replayed
-        // onto the loaded document instead of being thrown away by it.
+        // Through the store, so a write made before the load finishes is replayed onto it rather than lost.
         _store.Update(list =>
         {
             var index = list.FindIndex(w => string.Equals(w.FolderPath, work.FolderPath, StringComparison.OrdinalIgnoreCase));
@@ -270,7 +262,6 @@ public class LibraryCacheService : IDisposable
 
         _logger.LogInformation("RJ works cache reset — {Count} cached works removed", keysToRemove.Count);
 
-        // The index would otherwise keep pointing at removed works.
         foreach (var key in keysToRemove)
         {
             foreach (var pair in _pathByProductId.Where(p => string.Equals(p.Value, key, StringComparison.OrdinalIgnoreCase)).ToList())

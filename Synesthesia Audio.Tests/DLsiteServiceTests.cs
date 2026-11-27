@@ -478,8 +478,7 @@ public class DLsiteParseWorkPageHtmlTests
         Assert.Equal("", result.CoverUrl);
         Assert.Equal("Unknown Circle", result.Circle);
         Assert.Equal("", result.VaRaw);
-        // An empty page carries no age row, so the rating is unknown. It used to default to SFW, which
-        // put R-18 works in the All-Age list whenever DLsite was blocked (BUG-M-13).
+        // Defaulting to SFW here put R-18 works in the All-Age list whenever DLsite was blocked.
         Assert.Equal(AgeRatings.Unknown, result.AgeRating);
         Assert.Equal("", result.Genre);
         Assert.False(result.TitleFound);
@@ -502,8 +501,7 @@ public class DLsiteParseWorkPageHtmlTests
     [Fact]
     public void AgeGatePage_IsNotTreatedAsAWork()
     {
-        // What DLsite actually served for every work: the age-consent page, whose only title is
-        // the bare site name. It must never be stored as a work.
+        // The age-consent page DLsite actually served for every work; its only title is the bare site name.
         var html = WrapInDlsiteShell(
             "<div class=\"age_check\">Are you over 18?</div>",
             @"<title>DLsite</title><meta property=""og:title"" content=""DLsite"" />");
@@ -518,8 +516,8 @@ public class DLsiteParseWorkPageHtmlTests
     [Fact]
     public void CurrentTemplate_TitleComesFromDocumentTitle()
     {
-        // The real page: og:title is the bare site name and there is no usable work_name heading,
-        // so the only place the work title survives is the document title.
+        // On the real page og:title is the bare site name and there is no work_name heading, so only the
+        // document title carries the work title.
         var html = WrapInDlsiteShell(
             "",
             @"<title>【6時間ASMR】溺れるまで甘やかしたい [ななしぃんく] | DLsite 同人 - R18</title>" +
@@ -613,8 +611,8 @@ public class DLsiteParseWorkPageHtmlTests
     [Fact]
     public void InvalidJsonLdTitle_DoesNotBlockDocumentTitle()
     {
-        // The regression that shipped: a rejected JSON-LD name occupied the title field and every
-        // later strategy was skipped because it only checked for emptiness.
+        // Regression: a rejected JSON-LD name filled the title field, and later strategies only checked for
+        // emptiness so they were skipped.
         var head = @"<script type=""application/ld+json"">{""@type"":""WebSite"",""name"":""DLsite""}</script>" +
                    @"<title>Fallback Work Name | DLsite 同人 - R18</title>";
 
@@ -690,8 +688,7 @@ public class DLsiteParseWorkPageHtmlTests
     [Fact]
     public void BlockedPage_WithSiteNameAsOgTitle_IsNotTreatedAsAWork()
     {
-        // Region-block and age-consent pages return HTTP 200 with the site's own name in
-        // og:title, which used to be stored as the work title.
+        // Region-block and age-consent pages return HTTP 200 with the site's own name in og:title.
         var html = WrapInDlsiteShell(
             "",
             @"<meta property=""og:title"" content=""DLsite"" />");

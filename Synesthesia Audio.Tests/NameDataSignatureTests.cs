@@ -5,12 +5,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// SEC-M-04 part 3: the published name-data manifest carries the data's SHA-256, so a hash check alone only
-/// proves the data matches the manifest. An attacker who can replace the release assets replaces both. The
-/// signature is what breaks that chain.
-///
-/// These tests generate a throwaway keypair at run time — no secret is committed, and nothing here depends on
-/// a key existing in the repository.
+/// A hash check only proves the data matches the manifest, and whoever replaces release assets replaces both; the
+/// signature breaks that chain. Keypairs are generated per run so no secret is committed.
 /// </summary>
 public sealed class NameDataSignatureTests
 {
@@ -41,7 +37,6 @@ public sealed class NameDataSignatureTests
         Assert.True(NameDataSignature.IsValid(KeyFromPem(key), Encoding.UTF8.GetBytes(Manifest), signature));
     }
 
-    /// <summary>The whole point: a swapped manifest must fail against the shipped public key.</summary>
     [Fact]
     public void A_tampered_manifest_is_rejected()
     {

@@ -17,16 +17,14 @@ public class WebDavCloudProvider : ICloudProvider
 {
     private readonly HttpClient _httpClient;
 
-    /// <summary>
-    /// Same connection pool, longer timeout: a whole-library listing can take longer than the default 100 seconds
-    /// on a slow server, and that is still far cheaper than one request per folder.
-    /// </summary>
+    // Same connection pool, longer timeout: a whole-library listing can outlast the default 100 s on a slow server
+    // and is still far cheaper than one request per folder.
     private readonly HttpClient _treeClient;
 
     private readonly SettingsService _settingsService;
     private readonly ILogger<WebDavCloudProvider> _logger;
 
-    /// <summary>Server URLs that refused (or silently shortened) a <c>Depth: infinity</c> listing this session.</summary>
+    // Servers that refused or silently shortened a Depth: infinity listing this session.
     private readonly HashSet<string> _treeRefusedFor = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _treeLock = new();
 
@@ -76,7 +74,7 @@ public class WebDavCloudProvider : ICloudProvider
     {
         if (serverUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return;
 
-        // IsConfigured is read on every operation, so this used to warn on every call (PERF-12).
+        // IsConfigured runs on every operation, so warn only once.
         if (_insecureUrlWarned) return;
         _insecureUrlWarned = true;
 
@@ -84,8 +82,7 @@ public class WebDavCloudProvider : ICloudProvider
     }
 
     /// <summary>
-    /// The connection an operation should use: the caller's explicit one when supplied (form values the
-    /// user has not saved yet), otherwise the saved settings if WebDAV is the active storage.
+    /// Prefers the caller's explicit (possibly unsaved) connection; otherwise the saved settings when WebDAV is active.
     /// </summary>
     private WebDavConnection? ResolveConnection(WebDavConnection? explicitConnection)
     {
@@ -113,11 +110,6 @@ public class WebDavCloudProvider : ICloudProvider
         return new AuthenticationHeaderValue("Basic", authString);
     }
 
-    /// <summary>
-    /// Converts a library-relative path into the path portion of a URL. The rule itself lives in
-    /// <see cref="RemotePath"/> so it can be unit-tested; this only assembles the URL and re-checks that
-    /// the resolved address really is still under the configured folder.
-    /// </summary>
     private static string BuildRelativeUrlPath(string? path) => RemotePath.NormalizeRelative(path);
 
     private static string BuildFileUrl(string baseUrl, string path)
@@ -126,7 +118,7 @@ public class WebDavCloudProvider : ICloudProvider
         var relative = BuildRelativeUrlPath(path);
         var url = normalizedBase + Uri.EscapeDataString(relative).Replace("%2F", "/");
 
-        // Belt and braces: after resolution the URL must still live under the configured folder.
+        // Defence in depth: after resolution the URL must still sit under the configured folder.
         if (Uri.TryCreate(url, UriKind.Absolute, out var resolved) &&
             Uri.TryCreate(normalizedBase, UriKind.Absolute, out var baseUri))
         {
@@ -190,7 +182,6 @@ public class WebDavCloudProvider : ICloudProvider
             string targetUrl = baseUrl;
             if (!string.IsNullOrEmpty(path))
             {
-                // Same guard as file access: a listing must not be able to walk above the base folder.
                 var relative = BuildRelativeUrlPath(path);
                 if (relative.Length > 0)
                 {
@@ -213,8 +204,6 @@ public class WebDavCloudProvider : ICloudProvider
 
             if (CloudStatusClassifier.IsAccessDenied(statusCode))
             {
-                // Refusal is not emptiness: returning an empty list here made a wrong password look like an
-                // empty library, and the scan then cached that (PAT-05).
                 var message = CloudStatusClassifier.Describe(statusCode, response.ReasonPhrase);
                 _logger.LogWarning("WebDAV listing refused: {Message}", message);
                 throw new CloudAccessDeniedException(message);
@@ -234,7 +223,6 @@ public class WebDavCloudProvider : ICloudProvider
         catch (CloudRequestFailedException) { throw; }
         catch (Exception ex)
         {
-            // A parse or transport failure must also reach the caller, otherwise it looks like an empty folder.
             _logger.LogWarning(ex, "ListFilesAsync failed for path: {Path}", path);
             throw new CloudRequestFailedException($"The folder could not be read: {ex.Message}", ex);
         }
@@ -262,8 +250,7 @@ public class WebDavCloudProvider : ICloudProvider
         }
         catch
         {
-            // The caller receives an exception, so nothing downstream will dispose this response — it used
-            // to be leaked along with its connection whenever the status was not a success (BUG-m-23).
+            // The caller only gets the exception, so nothing downstream would dispose the response.
             response.Dispose();
             throw;
         }
@@ -346,9 +333,9 @@ public class WebDavCloudProvider : ICloudProvider
     }
 
     /// <summary>
-    /// One <c>Depth: infinity</c> PROPFIND for the whole tree. Returns null - and remembers the refusal for this
-    /// server - when the server rejects it, answers only one level, or the request fails, so the caller falls back to
-    /// listing folder by folder. Access-denied is still thrown: a wrong password is not a reason to try another way.
+    /// Returns null (and remembers the refusal for this server) when the server rejects the request, answers one
+    /// level only or fails, so the caller lists folder by folder. Access denied still throws: a wrong password is
+    /// no reason to try another way.
     /// </summary>
     public async Task<List<CloudFileInfo>?> TryListTreeAsync(string path, CancellationToken cancellationToken = default)
     {
@@ -378,6 +365,7 @@ public class WebDavCloudProvider : ICloudProvider
             using var response = await _treeClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
             var statusCode = (int)response.StatusCode;
 
+            // 403 is excluded: it is also the standard "propfind-finite-depth" refusal.
             if (CloudStatusClassifier.IsAccessDenied(statusCode) && statusCode != 403)
             {
                 throw new CloudAccessDeniedException(CloudStatusClassifier.Describe(statusCode, response.ReasonPhrase));
@@ -385,7 +373,7 @@ public class WebDavCloudProvider : ICloudProvider
 
             if (!response.IsSuccessStatusCode)
             {
-                // 403 with "propfind-finite-depth" is the standard refusal; 400/501 are the common variants.
+                // Besides that 403, servers commonly refuse with 400 or 501.
                 RememberTreeRefused(baseUrl, $"HTTP {statusCode}");
                 return null;
             }
@@ -393,7 +381,7 @@ public class WebDavCloudProvider : ICloudProvider
             var xmlContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             var files = ToCloudFiles(xmlContent, baseUrl, path);
 
-            // An empty answer is not trusted either: falling back costs one listing, believing it would empty the library.
+            // An empty answer is not trusted: falling back costs one listing, believing it would empty the library.
             if (files.Count == 0) return null;
 
             if (WebDavMultistatus.LooksShallow(files.Select(f => new WebDavEntry(f.Path, f.Name, f.IsDirectory, f.Size, f.ETag)).ToList(), path))
@@ -409,7 +397,7 @@ public class WebDavCloudProvider : ICloudProvider
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
-            // A timeout or a broken body is not remembered: the server may simply have been slow this time.
+            // Not remembered: the server may just have been slow this time.
             _logger.LogWarning(ex, "WebDAV tree listing failed; falling back to folder-by-folder listing");
             return null;
         }

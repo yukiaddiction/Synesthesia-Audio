@@ -5,20 +5,14 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Services.Translation;
 
 /// <summary>
-/// GTranslate calls EnsureSuccessStatusCode(), which throws the response away before our code can read it — so
-/// Retry-After is recovered from the HTTP pipeline instead of the exception.
-///
-/// This must be registered <c>transient</c>: the HTTP client factory builds one pipeline per handler lifetime and
-/// rejects a reused handler ("The 'InnerHandler' property must be null"). Registering it as a singleton made
-/// <c>CreateClient("translation")</c> throw, which took the whole app down at startup because the translation
-/// service is constructed there. Its captured value lives in <see cref="RetryAfterState"/> so the transient
-/// instances still share one answer.
+/// GTranslate's EnsureSuccessStatusCode() discards the response, so Retry-After is captured here in the pipeline.
+/// Must be registered transient: the HTTP client factory rejects a reused handler, which crashed startup when it was
+/// a singleton. The shared <see cref="RetryAfterState"/> keeps the transient instances in agreement.
 /// </summary>
 public sealed class RetryAfterCaptureHandler : DelegatingHandler
 {
     private readonly RetryAfterState _state;
 
-    // No base handler of our own: the factory supplies the primary handler and sets InnerHandler.
     public RetryAfterCaptureHandler(RetryAfterState state) => _state = state;
 
     protected override async Task<HttpResponseMessage> SendAsync(

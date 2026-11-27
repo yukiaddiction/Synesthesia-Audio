@@ -1,11 +1,7 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// The WebDAV server rejected the credentials, or refused the request outright.
-///
-/// This is deliberately a distinct exception: an empty folder and "you are not allowed in" used to be the same
-/// answer (<c>ListFilesAsync</c> returned an empty list for both), so a wrong password looked exactly like a
-/// deleted library and the scan happily cached an empty result (PAT-05).
+/// Kept distinct from an empty listing so a wrong password is never mistaken for a deleted library and cached as empty.
 /// </summary>
 public sealed class CloudAccessDeniedException : Exception
 {
@@ -13,23 +9,18 @@ public sealed class CloudAccessDeniedException : Exception
     public CloudAccessDeniedException(string message, Exception inner) : base(message, inner) { }
 }
 
-/// <summary>The server answered, but not with something usable.</summary>
 public sealed class CloudRequestFailedException : Exception
 {
     public CloudRequestFailedException(string message) : base(message) { }
     public CloudRequestFailedException(string message, Exception inner) : base(message, inner) { }
 }
 
-/// <summary>Classifies a WebDAV HTTP status so callers can tell refusal from emptiness.</summary>
 public static class CloudStatusClassifier
 {
-    /// <summary>
-    /// 401 Unauthorized, 403 Forbidden and 407 Proxy Authentication Required all mean "the request was
-    /// understood and refused", which must never be reported as an empty listing.
-    /// </summary>
+    /// <summary>401, 403 and 407 mean the request was refused, which must never be reported as an empty listing.</summary>
     public static bool IsAccessDenied(int statusCode) => statusCode is 401 or 403 or 407;
 
-    /// <summary>A human-readable diagnosis for the log, without echoing the URL's credentials.</summary>
+    /// <summary>Takes only the status, never the URL, so credentials embedded in it cannot reach the log.</summary>
     public static string Describe(int statusCode, string? reasonPhrase)
     {
         var reason = string.IsNullOrWhiteSpace(reasonPhrase) ? "no reason phrase" : reasonPhrase.Trim();

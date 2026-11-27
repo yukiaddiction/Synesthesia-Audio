@@ -6,16 +6,9 @@ using System.Text.Json;
 namespace NameDataGen;
 
 /// <summary>
-/// Builds the compact kanji -> romaji name table the app ships, from the EDRDG JMnedict XML.
-///
-/// The file is parsed line by line rather than with XmlReader: JMnedict's DOCTYPE declares entity
-/// references (&amp;surname; etc.) that the runtime XML parser rejects, and the generated file is
-/// strictly one element per line, so a scanner is both simpler and far faster than entity juggling.
-///
-/// JMnedict has no frequency data and stores one variant reading per entry, so a name like 五十嵐
-/// appears as several entries (いかざき / いからし / ...). Picking the right variant is the hard part;
-/// this tool applies a documented heuristic and leaves genuine ties to the hand-curated override
-/// file, which wins at runtime.
+/// Builds the shipped kanji-to-romaji name table from EDRDG JMnedict. Parsed line by line because JMnedict's DOCTYPE
+/// declares entities the runtime XML parser rejects, and the file is strictly one element per line. JMnedict has no
+/// frequency data, so variant choice is heuristic; genuine ties are left to the curated override file.
 /// </summary>
 internal static class Program
 {
@@ -78,7 +71,7 @@ internal static class Program
 
                     foreach (var keb in kebs)
                     {
-                        // Only kanji-bearing keys need a table entry; kana romanises locally anyway.
+                        // Kana romanises locally anyway, so only kanji-bearing keys need an entry.
                         if (keb.Length is 0 or > 8 || !ContainsKanji(keb)) continue;
 
                         if (!byKanji.TryGetValue(keb, out var list))
@@ -106,9 +99,8 @@ internal static class Program
         var directory = Path.GetDirectoryName(Path.GetFullPath(output));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
-        // How many distinct kanji spellings share each romanisation. A common surname's romanisation
-        // is shared across many spellings (Satou for 佐藤/佐東/沙藤) while a rare variant belongs to
-        // one spelling only — this is the best ordering signal JMnedict offers.
+        // How many kanji spellings share each romanisation: a common surname's reading spans many spellings
+        // (Satou for 佐藤/佐東/沙藤) while a rare variant has one. JMnedict's best ordering signal.
         var romajiSpread = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var list in byKanji.Values)
         {
@@ -151,8 +143,7 @@ internal static class Program
                 compressedBytes = gzipped.Length,
                 rawBytes = raw.Length,
                 sha256 = sha,
-                // Digest of the IPADIC archive published alongside this meta, so the app can reject a
-                // swapped dictionary before extracting it.
+                // Lets the app reject a swapped IPADIC archive before extracting it.
                 ipadicSha256 = string.IsNullOrWhiteSpace(ipadicHash) ? null : ipadicHash.ToLowerInvariant()
             }, new JsonSerializerOptions { WriteIndented = true });
 
@@ -164,7 +155,6 @@ internal static class Program
         return 0;
     }
 
-    /// <summary>Extracts the text of a single-line element and strips XML entity markers.</summary>
     private static string TagText(string line)
     {
         var start = line.IndexOf('>');
@@ -173,15 +163,10 @@ internal static class Program
         return line[(start + 1)..end].Replace("&", string.Empty).Replace(";", string.Empty).Trim();
     }
 
-    /// <summary>
-    /// Surname/given-name entries are the only ones this app uses. An entry carrying more than one
-    /// type (typically surname + place) is an established real-world reading and outranks a
-    /// single-tagged variant — that is the signal that picks たなか over たなた.
-    /// </summary>
     private static int ScoreFor(List<string> types)
     {
-        // Type priority only. A multi-type bonus was tried and made things worse (it selected
-        // Denchuu for 田中), so variant ordering is left to the romanisation-spread signal.
+        // Type priority only. A multi-type bonus was tried and picked Denchuu for 田中, so variant ordering
+        // is left to the romanisation-spread signal.
         var score = 0;
 
         foreach (var type in types)
@@ -201,8 +186,8 @@ internal static class Program
     }
 
     /// <summary>
-    /// Keeps only personal-name entries. Unfiltered JMnedict yields ~530k keys (11 MB) dominated by
-    /// place names, products and works, which would win longest-match against real surnames.
+    /// Personal names only: unfiltered JMnedict yields ~530k keys dominated by place and product names, which would
+    /// win longest-match against real surnames.
     /// </summary>
     private static bool IsWanted(List<string> types, string romaji)
     {
@@ -224,6 +209,7 @@ internal static class Program
         return true;
     }
 
+    // CJK Unified Ideographs or Extension A.
     private static bool ContainsKanji(string text)
     {
         foreach (var c in text)

@@ -3,8 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// SEC-m-02: the app log is a file on disk that users attach to bug reports. It must not carry credentials from a
-/// URL, a token from a query string, or the shape of someone's library.
+/// Users attach the log to bug reports, so it must not carry URL credentials, query-string tokens, or the shape
+/// of someone's library.
 /// </summary>
 public sealed class LogRedactorTests
 {
@@ -61,7 +61,6 @@ public sealed class LogRedactorTests
         Assert.Equal(expected, LogRedactor.FileName(path));
     }
 
-    /// <summary>The point of the helper: neither the account name nor the library layout reaches the log.</summary>
     [Fact]
     public void A_full_cloud_track_path_discloses_neither_user_nor_layout()
     {

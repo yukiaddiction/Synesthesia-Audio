@@ -30,6 +30,7 @@ public static class AppConstants
         return name.StartsWith('.') || SystemDirectoryNames.Contains(name) || SystemFileNames.Contains(name);
     }
 
+    // Any one Japanese character: hiragana + katakana (3040-30FF), CJK Extension A (3400-4DBF), CJK Unified Ideographs (4E00-9FFF).
     public static readonly System.Text.RegularExpressions.Regex JapaneseTextRegex =
         new(@"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]", System.Text.RegularExpressions.RegexOptions.Compiled);
 
@@ -37,25 +38,18 @@ public static class AppConstants
     public const double PreviousTrackRestartThresholdSeconds = 3.0;
     public const double SessionSaveIntervalSeconds = 5.0;
 
-    // These were bound from appsettings.json through an AppSettings POCO. Nobody can edit that file after the
-    // app is packaged, so the binding only made the values harder to find and a mis-typed key silently produced
-    // a default (OVR-06). They are constants in code now.
-    //
-    // HTTP / DLsite scraping
+    // Constants rather than appsettings.json: a packaged app's config can't be edited, and a mistyped key silently fell back to a default.
     public const int DlsiteClientTimeoutSeconds = 15;
     public const int DlsiteApiTimeoutSeconds = 8;
     public const int DlsiteHtmlTimeoutSeconds = 8;
     public const int DlsiteTagFetchTimeoutSeconds = 5;
 
-    // Translation
     public const int TranslationRequestTimeoutSeconds = 6;
     public const int TranslationRateLimitBaseCooldownSeconds = 30;
     public const int TranslationRateLimitMaxCooldownSeconds = 300;
 
-    // Local HTTP Proxy
     public const int ProxyStreamTimeoutMs = 30000;
 
-    // Library Scan
     public const int MaxParallelDlsiteRequests = 4;
 }
 
@@ -70,7 +64,6 @@ public enum AgeRating
     SFW,
     NSFW,
 
-    /// <summary>Metadata could not be read. Never treated as SFW, so an unknown work cannot slip into
-    /// the All-Age list.</summary>
+    /// <summary>Never treated as SFW, so a work whose metadata couldn't be read can't slip into the All-Age list.</summary>
     Unknown
 }

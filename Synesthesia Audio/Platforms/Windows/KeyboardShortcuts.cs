@@ -15,17 +15,11 @@ using Windows.UI.Core;
 namespace Synesthesia_Audio.Desktop;
 
 /// <summary>
-/// Desktop keyboard shortcuts.
-///
-/// Two rules keep them from fighting the focused control (UX-08):
-/// the handler is registered WITHOUT <c>handledEventsToo</c>, so a key a control already consumed never reaches
-/// us; and keys are ignored while anything that handles its own Space/arrows has focus. Before this, pressing
-/// Space to toggle a focused button also started or stopped playback, because the handler ran for keys the button
-/// had already handled and only text fields were treated as "typing".
+/// Shortcuts must not fight the focused control: the handler skips keys a control already handled, and ignores
+/// keys while a control that handles Space/arrows itself has focus.
 /// </summary>
 internal static class KeyboardShortcuts
 {
-    // Supplied by App from the DI container, instead of being pulled out of a service locator (PAT-01).
     private static AudioService? _audio;
     private static MainViewModel? _main;
 
@@ -41,13 +35,8 @@ internal static class KeyboardShortcuts
         root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(OnKeyDown), handledEventsToo: false);
     }
 
-    /// <summary>
-    /// True for anything that legitimately consumes Space, the arrow keys or Escape itself. A bare
-    /// <c>TextBox</c> check was not enough: buttons, sliders, switches and list items all handle Space.
-    ///
-    /// Fully qualified on purpose — these files import both Microsoft.Maui.Controls and
-    /// Microsoft.UI.Xaml.Controls, so a bare "Button" is ambiguous and MAUI's type is the wrong one here.
-    /// </summary>
+    // Buttons, sliders, switches and list items handle Space too, not just text boxes. Types are fully qualified
+    // because the bare names also resolve to MAUI's controls.
     private static bool HandlesItsOwnKeys(object? focused) => focused is
         Microsoft.UI.Xaml.Controls.TextBox or
         Microsoft.UI.Xaml.Controls.PasswordBox or
@@ -92,7 +81,6 @@ internal static class KeyboardShortcuts
             if (HandlesItsOwnKeys(focused))
                 return;
 
-            // Supplied by Attach from the DI container: this used to pull them out of a service locator.
             var audio = _audio;
             var main = _main;
 
@@ -122,7 +110,7 @@ internal static class KeyboardShortcuts
                     break;
 
                 case VirtualKey.Escape:
-                    // Marked handled so the key does not also reach the page underneath.
+                    // Marked handled so Escape does not also reach the page underneath.
                     e.Handled = true;
                     _ = GoBackAsync();
                     break;
@@ -130,7 +118,7 @@ internal static class KeyboardShortcuts
         }
         catch (Exception ex)
         {
-            // A shortcut must never break input handling, but a silent failure made a broken shortcut invisible.
+            // A shortcut must never break input handling, but the failure should still be visible.
             System.Diagnostics.Debug.WriteLine($"KeyboardShortcuts: handling a key failed: {ex.Message}");
         }
     }

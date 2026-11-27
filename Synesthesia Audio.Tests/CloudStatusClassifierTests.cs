@@ -3,8 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// PAT-05: `ListFilesAsync` returned an empty list for both "the folder is empty" and "the server refused you",
-/// so a wrong password looked identical to a deleted library and the scan cached the empty result.
+/// An empty folder and a refused request must be told apart, or a wrong password looks like a deleted library
+/// and the scan caches the empty result.
 /// </summary>
 public sealed class CloudStatusClassifierTests
 {

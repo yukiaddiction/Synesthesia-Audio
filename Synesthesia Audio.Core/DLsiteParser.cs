@@ -29,10 +29,8 @@ public static class DLsiteParser
         /// <summary>A title candidate that failed validation, kept only for the diagnostic log.</summary>
         public string TitleRaw { get; init; } = "";
 
-        /// <summary>Property names of the JSON-LD node that was used (diagnostics only).</summary>
         public string JsonldKeys { get; init; } = "";
 
-        /// <summary>Table row labels found on the page (diagnostics only).</summary>
         public string TableLabels { get; init; } = "";
     }
 
@@ -46,19 +44,16 @@ public static class DLsiteParser
         "Forbidden"
     };
 
-    /// <summary>Row labels used for the cast / voice actor field.</summary>
     private static readonly string[] _vaLabels =
     {
         "Voice Actor", "Voice Actors", "Cast", "CV", "Character", "声優", "出演", "ボイス", "キャラクター", "キャラ"
     };
 
-    /// <summary>Row labels used for the age restriction field.</summary>
     private static readonly string[] _ageLabels =
     {
         "年齢指定", "年齢制限", "Age Restriction", "Age rating"
     };
 
-    /// <summary>Row labels used for the genre / tag field.</summary>
     private static readonly string[] _genreLabels =
     {
         "ジャンル", "Genre", "Genres", "Genre(s)", "分類", "タグ", "カテゴリ", "カテゴリー", "Tag", "Tags"
@@ -76,16 +71,14 @@ public static class DLsiteParser
         string coverUrl = "";
         string vaRaw = "";
         string ageRating = AgeRatings.Sfw;
-        // A real product page always carries an age row, so "no signal" means the page we parsed was not
-        // the product page. Reporting SFW there put R-18 works in the All-Age list.
+        // A product page always has an age row, so no signal means we parsed some other page; reporting SFW
+        // there leaked R-18 works into the All-Age list.
         bool ageRatingFound = false;
         string genre = "";
 
-        // Strategy 1: JSON-LD structured data (most reliable, standards-based).
-        // DLsite emits more than one ld+json block and the document root often carries the site
-        // name, so every candidate node is tried and only a node with a *valid* title is used.
-        // The remaining fields are harvested from that same node so they cannot come from a
-        // different entity (which is why circle and genre used to come back empty).
+        // Strategy 1: JSON-LD. DLsite emits several blocks and the root often names the site, so only a node with a
+        // valid title is used, and the other fields come from that same node.
+        // Regex: each <script type="application/ld+json"> block; group 1 is its JSON body.
         var jsonLdMatches = Regex.Matches(html,
             @"<script\s+type=""application/ld\+json""[^>]*>(.*?)</script>",
             RegexOptions.Singleline | RegexOptions.IgnoreCase);
@@ -180,9 +173,7 @@ public static class DLsiteParser
             catch { }
         }
 
-        // Strategy 2: og:meta tags as secondary extraction.
-        // A region-block or consent page carries the site's own name here, which used to be
-        // stored as the work title, so only accept it when it actually looks like a title.
+        // Strategy 2: og: meta. Block and consent pages put the site name here, so only a plausible title is accepted.
         if (!IsValidWorkTitle(parsedTitle) && !isEng)
         {
             var ogTitle = System.Net.WebUtility.HtmlDecode(ExtractMetaContent(html, "og:title"));
@@ -198,6 +189,7 @@ public static class DLsiteParser
         }
         if (string.IsNullOrEmpty(coverUrl))
         {
+            // <meta itemprop="image" content="...">; group 1 is the URL.
             var itempropMatch = Regex.Match(html, @"<meta\s+itemprop=""image""\s+content=""([^""]*)""", RegexOptions.IgnoreCase);
             if (itempropMatch.Success)
                 coverUrl = itempropMatch.Groups[1].Value;
@@ -212,15 +204,16 @@ public static class DLsiteParser
             if (!string.IsNullOrEmpty(maker)) circle = System.Net.WebUtility.HtmlDecode(maker);
         }
 
-        // Strategy 3: Classic regex-based extraction for remaining fields
+        // Strategy 3: classic markup scraping for the remaining fields.
         if (!IsValidWorkTitle(parsedTitle))
         {
-            // (.*?) instead of ([^<]+): the current template wraps the heading in nested tags,
-            // which silently broke this strategy and made real product pages look unparseable.
+            // Inner HTML of <h1 id="work_name">; lazy (.*?) rather than [^<]+ because the current template nests
+            // tags inside the heading.
             var titleMatch = Regex.Match(html, @"<h1[^>]*id=""work_name""[^>]*>(.*?)</h1>",
                 RegexOptions.IgnoreCase | RegexOptions.Singleline);
             if (titleMatch.Success)
             {
+                // Strip every tag.
                 var heading = Regex.Replace(titleMatch.Groups[1].Value, @"<[^>]+>", string.Empty);
                 var headingText = System.Net.WebUtility.HtmlDecode(heading.Trim());
                 if (IsValidWorkTitle(headingText))
@@ -245,8 +238,7 @@ public static class DLsiteParser
             }
         }
 
-        // Only now default. This also replaces a non-empty but invalid title, which is what used
-        // to short-circuit every later strategy - the JSON-LD site name "DLsite" did exactly that.
+        // Also replaces a non-empty but invalid title, such as the JSON-LD site name "DLsite".
         if (!IsValidWorkTitle(parsedTitle))
         {
             parsedTitle = "Unknown Title";
@@ -255,6 +247,8 @@ public static class DLsiteParser
 
         if (isEng && string.IsNullOrEmpty(originalTitleRaw))
         {
+            // English pages: <th>Original title</th><td>[<span>]value[</span>]</td>; group 1 is the value, whose
+            // remaining tags are then stripped.
             var origTitleMatch = Regex.Match(html, @"<th[^>]*>\s*Original\s+[Tt]itle\s*</th>\s*<td[^>]*>\s*(?:<span[^>]*>)?(.*?)(?:</span>)?\s*</td>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
             if (origTitleMatch.Success)
                 originalTitleRaw = System.Net.WebUtility.HtmlDecode(Regex.Replace(origTitleMatch.Groups[1].Value, @"<[^>]+>", "").Trim());
@@ -262,12 +256,14 @@ public static class DLsiteParser
 
         if (circle == "Unknown Circle")
         {
+            // <span class="maker_name"><a ...>name</a>; group 1 is the circle name.
             var circleMatch = Regex.Match(html, @"<span[^>]*class=""maker_name""[^>]*>\s*<a[^>]+>([^<]+)</a>", RegexOptions.IgnoreCase);
             if (circleMatch.Success) circle = System.Net.WebUtility.HtmlDecode(circleMatch.Groups[1].Value.Trim());
         }
 
         if (string.IsNullOrEmpty(coverUrl))
         {
+            // Exactly <meta itemprop="image" content="...">; group 1 is the URL.
             var coverMatch = Regex.Match(html, @"<meta itemprop=""image"" content=""([^""]+)""", RegexOptions.IgnoreCase);
             if (coverMatch.Success)
             {
@@ -278,7 +274,6 @@ public static class DLsiteParser
 
         if (string.IsNullOrEmpty(vaRaw))
         {
-            // Current DLsite template: <dt class="c-productInfo__key">声優</dt><dd …>value</dd>
             vaRaw = FindDefinitionValue(html, _vaLabels);
         }
 
@@ -287,8 +282,7 @@ public static class DLsiteParser
             vaRaw = FindTableValue(html, _vaLabels);
         }
 
-        // Plenty of DLsite works list the cast inside the title ("...【CV:name】...") rather than
-        // in a metadata row, which is why a row-only scan came back empty on every work.
+        // Many works list the cast only inside the title ("...【CV:name】...").
         if (string.IsNullOrEmpty(vaRaw))
         {
             vaRaw = ExtractCastFromTitle(parsedTitle);
@@ -297,7 +291,6 @@ public static class DLsiteParser
         if (ageRating == "SFW")
         {
             // Current template: <dt>年齢指定</dt><dd><span class="label_r18">R18</span></dd>.
-            // Without this every work came back SFW, so the library filters were meaningless.
             var ageText = FindDefinitionValue(html, _ageLabels);
             if (string.IsNullOrEmpty(ageText))
                 ageText = FindTableValue(html, _ageLabels);
@@ -307,17 +300,20 @@ public static class DLsiteParser
                 ageRating = ResolveAgeRating(ageText);
                 ageRatingFound = true;
             }
+            // The R18 badge's CSS class anywhere on the page.
             else if (Regex.IsMatch(html, "label_r18", RegexOptions.IgnoreCase))
             {
                 ageRating = AgeRatings.Nsfw;
                 ageRatingFound = true;
             }
 
+            // Legacy row <th>年齢指定|年齢制限|Age Restriction|Age rating</th><td>value</td>; group 1 is the cell.
             var ageMatch = Regex.Match(html, @"<th[^>]*>\s*(?:年齢指定|年齢制限|Age\s+Restriction|Age\s+rating)\s*</th>\s*<td[^>]*>(.*?)</td>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
             if (ageMatch.Success)
             {
                 ageRatingFound = true;
                 var tdContent = ageMatch.Groups[1].Value;
+                // Adult markers: R18/R-18, 18+, ADL, 18禁, 18歳未満使用禁止.
                 if (Regex.IsMatch(tdContent, @"(R-?18|18\+|ADL|18禁|18歳未満使用禁止)", RegexOptions.IgnoreCase))
                     ageRating = AgeRatings.Nsfw;
             }
@@ -330,8 +326,7 @@ public static class DLsiteParser
 
         if (string.IsNullOrEmpty(genre))
         {
-            // Current DLsite template links each tag as .../fsr/=/genre/<id>/... - the most
-            // reliable signal, and the only one that survived the redesign.
+            // Genre-index links are the only tag signal that survived the template redesign.
             genre = ExtractGenreLinks(html);
         }
 
@@ -349,7 +344,7 @@ public static class DLsiteParser
         bool circleFound = circle != "Unknown Circle";
         bool coverFound = !string.IsNullOrEmpty(coverUrl);
 
-        // Diagnostics for the fields that still fail: which labels the page actually uses.
+        // Diagnostics: the first ten distinct <th> labels, to show which labels the page actually uses.
         var labelList = new List<string>();
         foreach (Match labelMatch in Regex.Matches(html, @"<th\b[^>]*>(.*?)</th>",
                      RegexOptions.IgnoreCase | RegexOptions.Singleline))
@@ -388,6 +383,7 @@ public static class DLsiteParser
 
     private static string ExtractMetaContent(string html, string property)
     {
+        // <meta property|name="X" content="...">, tried with double then single quotes; group 1 is the content.
         var match = Regex.Match(html,
             $@"<meta\s+(?:property|name)=""{Regex.Escape(property)}""\s+content=""([^""]*)""",
             RegexOptions.IgnoreCase);
@@ -403,29 +399,24 @@ public static class DLsiteParser
         return string.Empty;
     }
 
-    /// <summary>
-    /// The document title, used only to tell an age gate apart from a region block when a page
-    /// turns out not to be a product page.
-    /// </summary>
+    /// <summary>Used only to tell an age gate from a region block when a page is not a product page.</summary>
     public static string ExtractDocumentTitle(string html)
     {
         if (string.IsNullOrEmpty(html))
             return string.Empty;
 
+        // Inner text of the <title> element.
         var match = Regex.Match(html, @"<title[^>]*>(.*?)</title>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         return match.Success ? System.Net.WebUtility.HtmlDecode(match.Groups[1].Value.Trim()) : string.Empty;
     }
 
-    /// <summary>
-    /// The work title as it appears in the document title, without the site suffix
-    /// ("Work name | DLsite 同人 - R18" becomes "Work name").
-    /// </summary>
     private static string ExtractTitleFromDocument(string html)
     {
         var raw = ExtractDocumentTitle(html);
         if (string.IsNullOrEmpty(raw))
             return string.Empty;
 
+        // Drops a "| DLsite..." suffix (ASCII or full-width bar): "Work name | DLsite 同人 - R18" becomes "Work name".
         var stripped = Regex.Replace(raw, @"\s*[|｜]\s*DLsite.*$", string.Empty, RegexOptions.IgnoreCase).Trim();
         return stripped;
     }
@@ -478,7 +469,6 @@ public static class DLsiteParser
         }
     }
 
-    /// <summary>Reads a nested string such as brand.name.</summary>
     private static string ReadJsonNestedString(System.Text.Json.JsonElement node, string property, string nestedProperty)
     {
         if (node.ValueKind != System.Text.Json.JsonValueKind.Object ||
@@ -579,24 +569,22 @@ public static class DLsiteParser
         }
     }
 
-    /// <summary>Maps the 年齢指定 text to NSFW/SFW. "全年齢" is the all-ages marker.</summary>
+    /// <summary>Anything without an adult marker, including "全年齢", is SFW.</summary>
     private static string ResolveAgeRating(string value)
     {
         if (string.IsNullOrEmpty(value))
             return "SFW";
 
+        // Adult markers: R18/R-18, 18禁, 18+, 成人, 18歳未満, adult.
         if (Regex.IsMatch(value, @"(R-?18|18禁|18\+|成人|18歳未満|adult)", RegexOptions.IgnoreCase))
             return "NSFW";
 
         return "SFW";
     }
 
-    /// <summary>
-    /// Definition-list metadata used by the current template:
-    /// &lt;dt class="c-productInfo__key"&gt;label&lt;/dt&gt;&lt;dd&gt;value&lt;/dd&gt;.
-    /// </summary>
     private static string FindDefinitionValue(string html, string[] labels)
     {
+        // Adjacent <dt>label</dt><dd>value</dd> pairs, as the current template uses; groups 1 and 2 are their inner HTML.
         foreach (Match pair in Regex.Matches(html,
                      @"<dt\b[^>]*>(.*?)</dt>\s*<dd\b[^>]*>(.*?)</dd>",
                      RegexOptions.IgnoreCase | RegexOptions.Singleline))
@@ -613,13 +601,10 @@ public static class DLsiteParser
         return string.Empty;
     }
 
-    /// <summary>
-    /// Genre tags as anchor text of links into the genre index. Survives the template redesign,
-    /// unlike the old table markup.
-    /// </summary>
     private static string ExtractGenreLinks(string html)
     {
         var names = new List<string>();
+        // <a> elements whose href contains /fsr/=/genre/; group 1 is the anchor's inner HTML.
         foreach (Match anchor in Regex.Matches(html,
                      @"<a\b[^>]*href=""[^""]*/fsr/=/genre/[^""]*""[^>]*>(.*?)</a>",
                      RegexOptions.IgnoreCase | RegexOptions.Singleline))
@@ -633,11 +618,11 @@ public static class DLsiteParser
     }
 
     /// <summary>
-    /// Scans table rows for a label cell followed by a value cell. Far more tolerant of markup
-    /// changes than one exact &lt;th&gt;...&lt;td&gt; pattern, which is what broke genre and cast.
+    /// Any row whose first cell matches a label: an exact &lt;th&gt;...&lt;td&gt; pattern broke on markup changes.
     /// </summary>
     private static string FindTableValue(string html, string[] labels)
     {
+        // Each <tr>'s inner HTML, then its <th>/<td> cells; \1 makes the closing tag match the opening one.
         foreach (Match row in Regex.Matches(html, @"<tr\b[^>]*>(.*?)</tr>",
                      RegexOptions.IgnoreCase | RegexOptions.Singleline))
         {
@@ -683,6 +668,7 @@ public static class DLsiteParser
     /// <summary>Anchor texts when present, otherwise the cell's own text.</summary>
     private static string ExtractCellText(string cellHtml)
     {
+        // Inner HTML of every <a> element.
         var anchors = Regex.Matches(cellHtml, @"<a\b[^>]*>(.*?)</a>",
             RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
@@ -705,20 +691,19 @@ public static class DLsiteParser
 
     private static string StripTags(string value)
     {
+        // Tags become spaces, then whitespace runs collapse to one space.
         var text = Regex.Replace(value, @"<[^>]+>", " ");
         text = System.Net.WebUtility.HtmlDecode(text);
         return Regex.Replace(text, @"\s+", " ").Trim();
     }
 
-    /// <summary>
-    /// Cast written into the title itself, e.g. "【CV:立花日菜】" or "(cv.鈴代紗弓)".
-    /// The capture stops at the closing bracket so the rest of the title is not swallowed.
-    /// </summary>
+    /// <summary>Cast written into the title, e.g. "【CV:立花日菜】" or "(cv.鈴代紗弓)".</summary>
     private static string ExtractCastFromTitle(string title)
     {
         if (string.IsNullOrEmpty(title))
             return string.Empty;
 
+        // "CV" (ASCII or full-width) + ":", "：" or "."; group 1 runs up to a closing 】 ] ) or ）.
         var match = Regex.Match(title, @"[CcＣ][VvＶ]\s*[:：.]\s*([^】\]\)）]+)");
         if (!match.Success)
             return string.Empty;
@@ -728,8 +713,7 @@ public static class DLsiteParser
     }
 
     /// <summary>
-    /// DLsite answers blocked or consent pages with its own name in the title meta tags, so a
-    /// non-product page must never be mistaken for a parsed work.
+    /// Block and consent pages carry DLsite's own name as the title, so a non-product page must never pass as a work.
     /// </summary>
     private static bool IsValidWorkTitle(string? title)
     {
@@ -796,11 +780,7 @@ public static class DLsiteParser
             System.Text.Json.JsonElement element = default;
             bool elementFound = false;
 
-            // Compared through DlsiteWorkNumber so the three lookup paths cannot disagree (DUP-08).
-            
-            // the product.json endpoint can return either a single object or an array.
-            // the workno field sometimes includes the RJ prefix and sometimes doesn't,
-            // so we strip all non-digits and match by number only.
+            // product.json returns an object or an array, and workno may or may not carry the RJ prefix.
             if (root.ValueKind == System.Text.Json.JsonValueKind.Array)
             {
                 foreach (var item in root.EnumerateArray())

@@ -3,12 +3,8 @@ using Microsoft.Extensions.Logging;
 namespace Synesthesia_Audio.Services;
 
 /// <summary>
-/// Holds "the user tapped a notification for this album" until the UI is ready to act on it.
-///
-/// This lived as a private static field on <c>MainActivity</c>, read and written through two static methods that a
-/// page also called directly (PAT-07). Static mutable state on an Activity outlives the Activity, so a stale path
-/// could survive a re-created activity and navigate to the wrong album. As a singleton this has one owner, and the
-/// request is cleared the moment it is consumed.
+/// Holds "the user tapped a notification for this album" until the UI is ready. A singleton rather than static
+/// state on the Activity, which would outlive a re-created activity and could open the wrong album.
 /// </summary>
 public sealed class StartupNavigation
 {
@@ -19,7 +15,6 @@ public sealed class StartupNavigation
 
     public StartupNavigation(ILogger<StartupNavigation> logger) => _logger = logger;
 
-    /// <summary>Records the album an intent asked for. Null or empty is ignored.</summary>
     public void RequestAlbum(string? albumFolderPath)
     {
         if (string.IsNullOrEmpty(albumFolderPath)) return;
@@ -27,9 +22,7 @@ public sealed class StartupNavigation
         lock (_lock) _pendingAlbumFolderPath = albumFolderPath;
     }
 
-    /// <summary>
-    /// Takes the pending request, clearing it so it is acted on at most once. Null when there is nothing waiting.
-    /// </summary>
+    /// <summary>Clears the request as it is taken, so it is acted on at most once.</summary>
     public string? TakePendingAlbum()
     {
         lock (_lock)
@@ -40,10 +33,6 @@ public sealed class StartupNavigation
         }
     }
 
-    /// <summary>
-    /// Acts on a pending request against the library cache: resolves it to a known work and navigates there.
-    /// Anything unknown is dropped rather than navigated to, and the reason is logged.
-    /// </summary>
     public async Task TryNavigateAsync(
         LibraryCacheService cacheService,
         INavigationService navigationService)
@@ -57,7 +46,7 @@ public sealed class StartupNavigation
         var work = cacheService.GetWork(pending);
         if (work == null)
         {
-            // An intent can name anything. Navigating to a work we do not have would open an empty album.
+            // An intent can name anything; an unknown work would open an empty album.
             _logger.LogInformation("Album navigation request did not match a cached work; dropping it");
             return;
         }

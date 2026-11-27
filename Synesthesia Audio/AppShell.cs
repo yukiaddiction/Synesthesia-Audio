@@ -80,9 +80,7 @@ public class AppShell : Shell
         _themeChangedHandler ??= (_, _) => MainThread.BeginInvokeOnMainThread(UpdateFlyoutSelection);
 
     /// <summary>
-    /// The shell is created per window, but it listens to the singleton view model and to the application.
-    /// Those handlers must go when the window does, or every re-created window leaves the previous shell
-    /// alive and still reacting to filter and theme changes.
+    /// The shell is per window but subscribes to process-lifetime objects; unsubscribing here keeps a dead window's shell from leaking.
     /// </summary>
     protected override void OnHandlerChanged()
     {
@@ -118,8 +116,7 @@ public class AppShell : Shell
 
     private View CreateFlyoutContent()
     {
-        // "All" is the home for works whose age rating could not be determined: they must not appear in
-        // All Age, but they also must not become unreachable when DLsite is blocked.
+        // "All" keeps works with an unknown age rating reachable, since they are excluded from All Age.
         _allNav = CreateNavItem("All");
         _allNav.Container.GestureRecognizers.Add(new TapGestureRecognizer
         {
@@ -230,9 +227,6 @@ public class AppShell : Shell
         return new ScrollView { Content = flyoutStack };
     }
 
-    /// <summary>
-    /// One flyout row: a rounded glass pill with a left accent bar that appears when active.
-    /// </summary>
     private static NavItem CreateNavItem(string text)
     {
         var accent = new BoxView
@@ -305,9 +299,7 @@ public class AppShell : Shell
     }
 
     /// <summary>
-    /// Applies the active/inactive look through <c>AppThemeBinding</c> rather than reading the
-    /// current theme. Reading <c>RequestedTheme</c> here left the labels stale, because the
-    /// theme-changed notification can arrive before the property itself is updated.
+    /// Uses AppThemeBinding instead of reading RequestedTheme, which can still be stale when the theme-changed event fires.
     /// </summary>
     private static void ApplyNavState(NavItem nav, bool isActive)
     {

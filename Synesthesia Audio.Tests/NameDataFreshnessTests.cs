@@ -3,9 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// BUG-m-01: the app re-downloaded the name table on every launch because it compared the published date
-/// against the bundled one, which only changes when a new build ships. The comparison must be against the
-/// revision already applied.
+/// Freshness compares against the revision already applied; the bundled date only changes with a new build, so
+/// comparing against it re-downloaded the table on every launch.
 /// </summary>
 public sealed class NameDataFreshnessTests
 {
@@ -21,7 +20,6 @@ public sealed class NameDataFreshnessTests
         Assert.False(NameDataFreshness.IsNewRevision("2026-11-24", "2026-11-24"));
     }
 
-    /// <summary>First run, or the user cleared app data: nothing has been applied yet.</summary>
     [Fact]
     public void Nothing_applied_yet_means_take_the_published_revision()
     {
@@ -44,10 +42,7 @@ public sealed class NameDataFreshnessTests
         Assert.False(NameDataFreshness.IsNewRevision(" 2026-11-24 ", "2026-11-24"));
     }
 
-    /// <summary>
-    /// The regression this finding is about: after applying a revision, a further launch must not fetch it
-    /// again — with the old comparison the bundled date differed, so this returned true forever.
-    /// </summary>
+    /// <summary>Regression: comparing against the bundled date made this return true forever.</summary>
     [Fact]
     public void A_second_launch_after_applying_does_not_refetch()
     {

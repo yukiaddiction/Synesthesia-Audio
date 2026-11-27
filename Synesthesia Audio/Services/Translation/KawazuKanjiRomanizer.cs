@@ -7,20 +7,15 @@ using Microsoft.Extensions.Logging;
 namespace Synesthesia_Audio.Services.Translation;
 
 /// <summary>
-/// Optional last-resort reading for kanji the name table does not contain, using Kawazu (MeCab).
-/// <para>
-/// Kawazu needs an IPADIC dictionary on disk, which is ~50 MB — far too large to bundle in the APK
-/// or commit to git — so it is fetched once, in the background, from a release asset and cached in
-/// app data. Until it arrives this returns null and the romaniser keeps the kanji verbatim, so the
-/// feature degrades to table-only rather than failing.
-/// </para>
+/// Last-resort MeCab reading for kanji missing from the name table. The ~50 MB IPADIC dictionary is too big to
+/// bundle, so it is downloaded once in the background; until then this returns null and kanji stay verbatim.
 /// </summary>
 public sealed class KawazuKanjiRomanizer
 {
     private const string DictionaryZipUrl =
         "https://github.com/yukiaddiction/Synesthesia-Audio/releases/download/names-data/ipadic.zip";
 
-    /// <summary>Publishes the digest of <see cref="DictionaryZipUrl"/>; there is no other way to verify it.</summary>
+    // Publishes the zip's digest; the only way to verify the download.
     private const string DictionaryMetaUrl =
         "https://github.com/yukiaddiction/Synesthesia-Audio/releases/download/names-data/name_readings.meta.json";
 
@@ -34,7 +29,6 @@ public sealed class KawazuKanjiRomanizer
     public KawazuKanjiRomanizer(ILogger<KawazuKanjiRomanizer> logger, IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
-        // Large dictionaries: the long timeout comes from the named registration (DUP-02).
         _httpClient = httpClientFactory.CreateClient(HttpClients.NameData);
     }
 
@@ -42,7 +36,6 @@ public sealed class KawazuKanjiRomanizer
 
     private static string DictionaryDirectory => Path.Combine(FileSystem.AppDataDirectory, "IpaDic");
 
-    /// <summary>Downloads and prepares the dictionary once. Safe to call repeatedly.</summary>
     public async Task WarmUpAsync()
     {
         if (_converter is not null || _attempted) return;
@@ -55,9 +48,7 @@ public sealed class KawazuKanjiRomanizer
 
             if (!File.Exists(Path.Combine(DictionaryDirectory, "sys.dic")))
             {
-                // The archive is published next to a meta file carrying its digest. Without that digest
-                // there is nothing to check a ~50 MB download against, so refuse it rather than extract an
-                // unverified dictionary that shapes every romanised name.
+                // Without a published digest there is nothing to verify against, so refuse the download.
                 var expectedHash = await TryReadPublishedDictionaryHashAsync().ConfigureAwait(false);
                 if (expectedHash is null)
                 {
@@ -88,7 +79,7 @@ public sealed class KawazuKanjiRomanizer
         }
         catch (Exception ex)
         {
-            // Expected while the repository has no ipadic.zip asset published yet.
+            // Expected while no ipadic.zip release asset is published.
             _logger.LogInformation(ex, "Kawazu fallback unavailable; names fall back to the table");
         }
         finally
@@ -97,10 +88,6 @@ public sealed class KawazuKanjiRomanizer
         }
     }
 
-    /// <summary>
-    /// Reads the published digest of the dictionary archive, or null when it cannot be obtained. The
-    /// caller treats null as "do not download" — an unverifiable 50 MB archive must not be extracted.
-    /// </summary>
     private async Task<string?> TryReadPublishedDictionaryHashAsync()
     {
         try
@@ -131,9 +118,7 @@ public sealed class KawazuKanjiRomanizer
     }
 
     /// <summary>
-    /// Romanises a kanji span, or returns null when the dictionary is absent.
-    /// Kawazu's conversion is CPU-bound and completes synchronously, so blocking here is safe; the
-    /// callers already run off the UI thread during scans.
+    /// Blocking on the result is safe: Kawazu completes synchronously and callers already run off the UI thread.
     /// </summary>
     public string? TryRomanize(string kanjiSpan)
     {

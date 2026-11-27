@@ -3,9 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// BUG-m-19: the Google/Bing batch path joins every input with a newline and splits the reply back. If the
-/// reply cannot be aligned one-to-one with the inputs, the caller must be told to fall back — a silently
-/// misaligned list would attach one work's tag to another work.
+/// Batch translation joins inputs with newlines and splits the reply back; a reply that cannot be aligned
+/// one-to-one must be rejected, or one work's tag lands on another.
 /// </summary>
 public sealed class BatchTranslationSplitterTests
 {
@@ -31,8 +30,8 @@ public sealed class BatchTranslationSplitterTests
     }
 
     /// <summary>
-    /// A blank line means the service dropped or split an item. Splitting with RemoveEmptyEntries would make
-    /// the count appear to match and shift every later translation onto the wrong input.
+    /// A blank line means the service dropped or split an item; skipping it would make the count match and shift
+    /// every later translation onto the wrong input.
     /// </summary>
     [Fact]
     public void A_blank_line_in_the_middle_is_rejected()
@@ -71,7 +70,7 @@ public sealed class BatchTranslationSplitterTests
         Assert.Empty(BatchTranslationSplitter.TrySplit("anything", 0)!);
     }
 
-    /// <summary>An input holding a newline must not be able to fake an extra batch item.</summary>
+    /// <summary>A newline inside an input would otherwise fake an extra batch item.</summary>
     [Theory]
     [InlineData("Line one\nLine two", "Line one Line two")]
     [InlineData("Line one\r\nLine two", "Line one Line two")]
@@ -84,9 +83,6 @@ public sealed class BatchTranslationSplitterTests
         Assert.Equal(expected, BatchTranslationSplitter.SanitizeInput(input));
     }
 
-    /// <summary>
-    /// The full contract: a sanitised input list always joins to exactly one line per input.
-    /// </summary>
     [Fact]
     public void Flattened_inputs_join_to_the_expected_line_count()
     {

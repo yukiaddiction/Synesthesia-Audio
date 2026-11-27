@@ -16,7 +16,7 @@ public partial class TagMappingService
     private readonly JsonFileStore<Dictionary<string, string>> _store;
     private readonly ILogger<TagMappingService> _logger;
 
-    /// <summary>Strips trailing "[...]" and "(...)" annotations from a tag. Compiled once, with a timeout (PAT-10).</summary>
+    // Matches any "[...]" or "(...)" annotation, lazily so adjacent groups are removed one by one.
     [System.Text.RegularExpressions.GeneratedRegex(@"\[.*?\]|\(.*?\)", System.Text.RegularExpressions.RegexOptions.None, 200)]
     private static partial System.Text.RegularExpressions.Regex BracketSuffixPattern();
 
@@ -32,7 +32,6 @@ public partial class TagMappingService
         LoadInitialMappings();
         LoadUserMappings();
 
-        // Save permanent cache file on first launch if it doesn't exist yet
         if (!File.Exists(FilePath))
         {
             SaveUserMappings(force: true);
@@ -74,13 +73,11 @@ public partial class TagMappingService
     {
         try
         {
-            // Mappings are read through the shared store, and awaited here on purpose: MapTag/MapGenres
-            // are synchronous call sites (scanning, genre re-mapping), so the table has to be complete
-            // before the first call. The store has no thread-affine waits, so this cannot deadlock.
+            // Blocking on purpose: MapTag/MapGenres are synchronous, so the table must be complete before the
+            // first call. The store has no thread-affine waits, so this cannot deadlock.
             var saved = _store.Loaded.GetAwaiter().GetResult();
             foreach (var kvp in saved)
             {
-                // Filter out corrupt dictionary artifacts automatically
                 if (!IsCorruptDictionaryArtifact(kvp.Value))
                 {
                     _tagMap[kvp.Key] = kvp.Value;
@@ -91,6 +88,7 @@ public partial class TagMappingService
         catch (Exception ex) { _logger.LogError(ex, "LoadUserMappings failed"); }
     }
 
+    /// <summary>Dictionary-gloss leftovers (brackets, "allude"/"imply" usage notes) that aren't real tag names.</summary>
     public static bool IsCorruptDictionaryArtifact(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return true;
@@ -112,10 +110,7 @@ public partial class TagMappingService
         return string.IsNullOrWhiteSpace(clean) ? raw.Trim() : clean;
     }
 
-    /// <summary>
-    /// Queues the current table for writing. The store debounces (several DLsite tasks add mappings in
-    /// parallel) and writes atomically, so concurrent adds can no longer corrupt the file.
-    /// </summary>
+    /// <summary>Debounced and atomic, because several DLsite tasks add mappings in parallel.</summary>
     private void SaveUserMappings(bool force = false)
     {
         _store.Replace(new Dictionary<string, string>(_tagMap, StringComparer.OrdinalIgnoreCase));
@@ -124,7 +119,6 @@ public partial class TagMappingService
         if (force) FlushAsync().GetAwaiter().GetResult();
     }
 
-    /// <summary>Writes any pending mapping change now. Called on shutdown.</summary>
     public Task FlushAsync() => _store.FlushAsync();
 
     public string MapTag(string rawTag)

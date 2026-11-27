@@ -4,15 +4,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Synesthesia_Audio.Services.Logging;
 
-/// <summary>
-/// Writes the app log to one file.
-///
-/// Every category gets its own <see cref="FileLogger"/>, but they all append to the same <c>app.log</c>.
-/// Each instance used to own its own <see cref="SemaphoreSlim"/>, so the lock only serialised writes within a
-/// single category: two categories writing at once interleaved into the same file, and rotation could race an
-/// append. Writes now go through <see cref="FileLogWriter"/>, which is one queue and one consumer for the whole
-/// process (BUG-m-22).
-/// </summary>
 public class FileLogger : ILogger, IDisposable
 {
     private readonly string _categoryName;
@@ -33,8 +24,7 @@ public class FileLogger : ILogger, IDisposable
         var message = formatter(state, exception);
         var entry = FormatLogEntry(logLevel, message, exception);
 
-        // Enqueue, never write inline: logging from the UI thread must not touch the disk, and a slow write
-        // must not stall the caller. The queue is bounded, so a log storm drops old lines instead of growing.
+        // Never write inline: logging from the UI thread must not touch the disk.
         FileLogWriter.Enqueue(entry);
     }
 
@@ -51,9 +41,7 @@ public class FileLogger : ILogger, IDisposable
 
         if (exception != null)
         {
-            // Full ToString(): message, inner exception chain and stack trace. Logging only the
-            // message made a recurring crash (14 occurrences of "MauiContext is null") impossible
-            // to locate from the app log, because the throw site was never recorded.
+            // Full ToString() so the stack trace is kept; the message alone never shows where it was thrown.
             sb.Append(" | Exception: ");
             sb.Append(exception);
         }
@@ -63,10 +51,9 @@ public class FileLogger : ILogger, IDisposable
 
     public static void PurgeOldLogs() => FileLogWriter.PurgeOldLogs(FileLogWriter.RetentionDays);
 
+    // The writer is process-wide, so there is nothing per-instance to release.
     public void Dispose()
     {
-        // The writer is process-wide and lives for the lifetime of the app; there is nothing per-instance
-        // left to release.
         GC.SuppressFinalize(this);
     }
 }

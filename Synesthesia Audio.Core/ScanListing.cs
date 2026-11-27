@@ -1,6 +1,5 @@
 namespace Synesthesia_Audio.Core;
 
-/// <summary>One entry returned while walking a library folder.</summary>
 public sealed class ScanEntry
 {
     public ScanEntry(string path, bool isDirectory, string? eTag = null)
@@ -13,79 +12,54 @@ public sealed class ScanEntry
     public string Path { get; }
     public bool IsDirectory { get; }
 
-    /// <summary>
-    /// The server's change tag for this entry (WebDAV <c>getetag</c>, or <c>getlastmodified</c> when there is none).
-    /// Null when the source has no such thing (local disk).
-    /// </summary>
+    /// <summary>WebDAV <c>getetag</c>, or <c>getlastmodified</c> when absent; null on local disk.</summary>
     public string? ETag { get; }
 }
 
 /// <summary>
-/// Lists one folder. Implemented once for the local disk and once for WebDAV so the walk itself — and
-/// its failure bookkeeping — exists in exactly one place and can be tested without touching either.
+/// One implementation per backend (local, WebDAV) so the walk and its failure bookkeeping exist once and are
+/// testable without either.
 /// </summary>
 public interface IScanFileSource
 {
     Task<IReadOnlyList<ScanEntry>> ListAsync(string path, CancellationToken cancellationToken = default);
 }
 
-/// <summary>A source that can also list a whole tree in one request (WebDAV <c>Depth: infinity</c>).</summary>
 public interface ITreeScanFileSource : IScanFileSource
 {
-    /// <summary>
-    /// Every entry beneath <paramref name="rootPath"/>, or null when the server will not answer such a request.
-    /// A null answer makes the walk fall back to listing folder by folder; it is not an error.
-    /// </summary>
+    /// <summary>WebDAV <c>Depth: infinity</c>. Null means the server refused, so the walk falls back to per-folder listing; it is not an error.</summary>
     Task<IReadOnlyList<ScanEntry>?> TryListTreeAsync(string rootPath, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// What a walk found, and — just as important — what it could not read. A caller must never treat an
-/// incomplete walk as an empty library.
-/// </summary>
+/// <summary>Records what could not be read, because an incomplete walk must never be treated as an empty library.</summary>
 public sealed class ScanListingResult
 {
     public List<string> AudioFiles { get; } = new();
 
-    /// <summary>Folders that could not be listed (offline share, permission denied, server error).</summary>
     public List<string> FailedPaths { get; } = new();
 
-    /// <summary>True when the root folder itself could not be listed, so nothing is known about the library.</summary>
     public bool RootFailed { get; set; }
 
     public bool IsComplete => !RootFailed && FailedPaths.Count == 0;
 
-    /// <summary>Change tag of every folder seen, keyed by its normalised path.</summary>
     public Dictionary<string, string> DirectoryETags { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>True when the whole tree came back from one request.</summary>
     public bool UsedTreeListing { get; set; }
 
-    /// <summary>Folders whose contents were taken from the previous scan because their change tag had not moved.</summary>
     public int ReusedFolders { get; set; }
 
-    /// <summary>Listing requests made, for the log.</summary>
     public int ListRequests { get; set; }
 }
 
 public static class ScanListing
 {
-    /// <summary>How many times one folder is asked for before it is recorded as unreadable.</summary>
     public const int ListAttempts = 3;
 
     /// <summary>
-    /// Walks <paramref name="rootPath"/> breadth-first, collecting audio files and remembering every
-    /// folder that failed. A failing subtree is recorded and skipped; it never aborts the whole walk
-    /// (unless it is the root itself, which is reported through <see cref="ScanListingResult.RootFailed"/>).
-    ///
-    /// Folders are listed <paramref name="maxParallelism"/> at a time. A WebDAV library spent the whole walk
-    /// waiting on one round trip per folder, which is where most of a cloud scan's time went (PERF-02); the
-    /// cap keeps the fan-out polite to the server. Local disk listing is effectively unaffected.
-    ///
-    /// When the source can list a whole tree in one request (<see cref="ITreeScanFileSource"/>) that is tried
-    /// first, and a refusal falls back to the walk. <paramref name="reuseSubtree"/> lets the caller skip a folder
-    /// whose contents it already knows: when it returns a file list for a directory entry, those files are used and
-    /// the folder is not listed.
+    /// Breadth-first walk that records failing folders and skips them instead of aborting; only a failed root is fatal.
+    /// Folders are listed <paramref name="maxParallelism"/> at a time because WebDAV round trips dominate a cloud scan.
+    /// A whole-tree listing is tried first when supported, and <paramref name="reuseSubtree"/> lets the caller supply
+    /// a folder's files from the previous scan instead of listing it.
     /// </summary>
     public static async Task<ScanListingResult> CollectAudioFilesAsync(
         IScanFileSource source,
@@ -136,7 +110,7 @@ public static class ScanListing
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Take a batch of folders and list them together. `pending` is only touched by this thread.
+            // `pending` is only touched by this thread; only the listing calls run in parallel.
             var batch = new List<string>(maxParallelism);
             while (batch.Count < maxParallelism && pending.Count > 0) batch.Add(pending.Dequeue());
 
@@ -147,7 +121,6 @@ public static class ScanListing
             {
                 if (listing.Error != null)
                 {
-                    // Record it and keep walking: one unreadable folder must not decide the whole scan.
                     result.FailedPaths.Add(listing.Directory);
                     if (IsSameDirectory(listing.Directory, rootPath)) result.RootFailed = true;
                     continue;
@@ -181,14 +154,14 @@ public static class ScanListing
                 }
             }
 
-            // Report as folders are walked so a slow (WebDAV) library still shows movement.
+            // Reported per batch so a slow WebDAV library still shows movement.
             onAudioFileCount?.Invoke(result.AudioFiles.Count);
         }
 
         return result;
 
-        // A WebDAV server under load drops the odd connection mid-answer (pCloud: "response ended prematurely").
-        // Retrying that folder twice, a moment later, keeps one flaky answer from leaving a work out of the library.
+        // Loaded WebDAV servers drop the odd connection mid-answer (pCloud: "response ended prematurely"), so retry
+        // before recording a folder as unreadable and leaving its work out of the library.
         async Task<(string Directory, IReadOnlyList<ScanEntry> Entries, Exception? Error)> ListOneAsync(string directory)
         {
             var delay = retryDelay ?? TimeSpan.FromSeconds(1);
@@ -205,14 +178,15 @@ public static class ScanListing
                     lock (result) result.ListRequests++;
                 }
 
+                // Linear backoff: wait delay x attempt (1s, 2s, ...) between tries.
                 if (delay > TimeSpan.Zero) await Task.Delay(delay * attempt, cancellationToken).ConfigureAwait(false);
             }
         }
     }
 
     /// <summary>
-    /// Takes a whole-tree listing. The ignore rule looks at names, so every folder between the root and an entry is
-    /// checked: a file inside "__MACOSX/x" is skipped even though its own name is fine.
+    /// The ignore rule looks at names, so every folder between root and entry is checked: a file inside "__MACOSX/x"
+    /// is skipped even though its own name is fine.
     /// </summary>
     private static void AddTree(
         ScanListingResult result,
@@ -255,13 +229,11 @@ public static class ScanListing
         return false;
     }
 
-    /// <summary>Forward-slash, no trailing separator — the form comparisons below expect.</summary>
     public static string NormalizePath(string? path) => (path ?? string.Empty).Replace('\\', '/').TrimEnd('/');
 
     public static bool IsSameDirectory(string? a, string? b) =>
         string.Equals(NormalizePath(a), NormalizePath(b), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>True when <paramref name="path"/> is the folder itself or lives beneath it.</summary>
     public static bool IsUnderOrEqual(string? path, string? folder)
     {
         var candidate = NormalizePath(path);
@@ -272,21 +244,13 @@ public static class ScanListing
     }
 }
 
-/// <summary>
-/// Decides what may be written back to the library cache after a scan. This is what stops an offline
-/// or half-broken listing from wiping metadata, covers and translations the user already has.
-/// </summary>
+/// <summary>Stops an offline or half-broken listing from wiping metadata, covers and translations the user already has.</summary>
 public static class LibraryCacheMergePolicy
 {
-    /// <summary>
-    /// Replacing the whole cache is only safe when the walk saw everything. If the root failed, nothing
-    /// is known and the cache must be left alone.
-    /// </summary>
     public static bool CanReplaceWholeCache(ScanListingResult listing) => listing.IsComplete;
 
     /// <summary>
-    /// Builds the list to persist: everything the scan found, plus cached works that live under a folder
-    /// the scan could not read, since those may still exist on disk and only their re-listing failed.
+    /// Keeps cached works under folders the scan could not read: they may still exist, only their re-listing failed.
     /// </summary>
     public static List<T> Merge<T>(
         IEnumerable<T> scannedWorks,
@@ -308,8 +272,7 @@ public static class LibraryCacheMergePolicy
             var path = folderPathOf(cached);
             if (string.IsNullOrEmpty(path) || known.Contains(path)) continue;
 
-            // A work the scan found already stands for this folder (an entry cached under an older rule, such as a
-            // work's own sub-folder): keeping it would show the same work twice.
+            // Already represented by a scanned work (e.g. cached under an older rule as its sub-folder); keeping it would duplicate.
             if (known.Any(k => ScanListing.IsUnderOrEqual(path, k) || ScanListing.IsUnderOrEqual(k, path))) continue;
 
             // Either way round: a work under an unreadable folder, or an unreadable folder inside the work

@@ -1,18 +1,12 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// The rules that turn a flat list of audio files into works, sub-albums and tracks.
-///
-/// These are pure path and naming decisions, so they live in Core where they can be tested instead of only being
-/// exercised by scanning a real library. They used to be private helpers inside the scan service, which is the
-/// "WorkGrouper" part of the split the audit asks for (PAT-09).
+/// Pure path and naming rules for grouping audio files into works, sub-albums and tracks, kept here so they are testable
+/// without scanning a real library.
 /// </summary>
 public static class WorkGrouper
 {
-    /// <summary>
-    /// The directory part of a remote path, normalised to forward slashes. Empty string for a path with no
-    /// directory, so callers can distinguish "the work folder itself" from "unparseable".
-    /// </summary>
+    /// <summary>Empty for a path with no directory, so callers can tell "the work folder itself" from "unparseable".</summary>
     public static string GetRemoteDirectory(string? path)
     {
         if (string.IsNullOrEmpty(path)) return string.Empty;
@@ -22,7 +16,6 @@ public static class WorkGrouper
         return lastSlash >= 0 ? cleanPath[..lastSlash] : string.Empty;
     }
 
-    /// <summary>The file name part of a remote path, with either separator.</summary>
     public static string GetRemoteFileName(string? path)
     {
         if (string.IsNullOrEmpty(path)) return string.Empty;
@@ -33,11 +26,8 @@ public static class WorkGrouper
     }
 
     /// <summary>
-    /// The sub-album a file belongs to: the directory between the work folder and the file, or null when the file
-    /// sits directly in the work folder (the caller names that group "Main").
-    ///
-    /// A directory outside the work folder is also null - a file that is not actually under this work must not
-    /// invent a sub-album for it.
+    /// Null for files directly in the work folder (the caller's "Main" group) and for directories outside the work,
+    /// which must not invent a sub-album.
     /// </summary>
     public static string? GetSubAlbumName(string? fileDirectory, string workPath)
     {
@@ -56,10 +46,7 @@ public static class WorkGrouper
         return string.IsNullOrEmpty(relative) ? null : relative;
     }
 
-    /// <summary>
-    /// Which duplicate to keep when the same track exists in several formats: lossless first, then lossy, then
-    /// anything unknown - keeping the best copy rather than whichever the file system happened to list first.
-    /// </summary>
+    /// <summary>Lossless before lossy, so a track present in several formats keeps its best copy.</summary>
     public static int GetExtensionPriority(string? extension) =>
         extension?.ToLowerInvariant() switch
         {
@@ -71,7 +58,6 @@ public static class WorkGrouper
             _ => 99
         };
 
-    /// <summary>The title shown for a file, without directory or extension.</summary>
     public static string GetTrackTitle(string? pathOrFileName) =>
         Path.GetFileNameWithoutExtension(GetRemoteFileName(pathOrFileName));
 }

@@ -10,14 +10,10 @@ using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 namespace Synesthesia_Audio.Views.Components;
 
 /// <summary>
-/// The glass page frame. Above <see cref="AppBreakpoints.Wide"/> it adds a persistent sidebar and
-/// drops the menu button; below it behaves exactly like the compact phone layout.
+/// Page frame that reflows one composition instead of building two layouts: past the wide breakpoint the
+/// sidebar column opens and pages toggle their own panes via <see cref="LayoutModeChanged"/>.
+/// Host pages must hide Shell's nav bar themselves, since the scaffold draws its own app bar.
 /// </summary>
-/// <remarks>
-/// One composition reflows rather than two layouts being built: the sidebar column animates
-/// between 0 and its full width, and pages subscribe to <see cref="LayoutModeChanged"/> to toggle
-/// optional panes. Pages must also call <c>Shell.SetNavBarIsVisible(this, false)</c>.
-/// </remarks>
 public sealed class GlassScaffold : Grid
 {
     private readonly ColumnDefinition _sidebarColumn;
@@ -30,7 +26,6 @@ public sealed class GlassScaffold : Grid
     private bool _isWide;
     private bool _modeInitialized;
 
-    /// <summary>Raised when the window crosses the wide breakpoint.</summary>
     public event EventHandler<bool>? LayoutModeChanged;
 
     private readonly ILogger _logger;
@@ -98,32 +93,24 @@ public sealed class GlassScaffold : Grid
         SizeChanged += OnSizeChanged;
     }
 
-    /// <summary>Primary page heading shown in the app bar.</summary>
     public Label TitleLabel { get; }
 
-    /// <summary>Supporting caption under the heading.</summary>
     public Label SubtitleLabel { get; }
 
-    /// <summary>The theme-bound aurora background.</summary>
     public GlassBackdrop Backdrop { get; }
 
-    /// <summary>The desktop navigation rail (hidden while compact).</summary>
     public GlassSidebar Sidebar => _sidebar;
 
-    /// <summary>True while the window is wide enough for the desktop composition.</summary>
     public bool IsWide => _isWide;
 
-    /// <summary>Right-aligned app bar actions.</summary>
     public IList<IView> Actions => _actionBar.Children;
 
-    /// <summary>Replaces the page body.</summary>
     public void SetBody(View body)
     {
         _bodyHost.Children.Clear();
         _bodyHost.Children.Add(body);
     }
 
-    /// <summary>Adds a floating element on top of the body (player, toast).</summary>
     public void AddOverlay(View overlay) => _overlayHost.Children.Add(overlay);
 
     private void OnSizeChanged(object? sender, EventArgs e) => ApplyWidth(Width);
@@ -150,8 +137,8 @@ public sealed class GlassScaffold : Grid
     }
 
     /// <summary>
-    /// Shell's own flyout is redundant once the sidebar is visible, and disabling it also removes
-    /// the stray pane toggle Shell draws into the Windows title bar.
+    /// Disables Shell's flyout while the sidebar shows: it's redundant, and this also removes the stray pane
+    /// toggle Shell draws in the Windows title bar.
     /// </summary>
     private static void SyncFlyoutBehavior(bool wide, ILogger logger)
     {
@@ -242,8 +229,7 @@ public sealed class GlassScaffold : Grid
             var navigation = Shell.Current?.Navigation;
             if (navigation == null) return;
 
-            // A page presented modally (the edit sheet, the folder picker) lives on the modal stack. Popping the
-            // shell stack instead navigated the view *behind* the open sheet and left it open (UX-04).
+            // Modal pages must pop the modal stack; popping Shell's would navigate the page behind the open sheet.
             if (navigation.ModalStack.Count > 0)
             {
                 await navigation.PopModalAsync();

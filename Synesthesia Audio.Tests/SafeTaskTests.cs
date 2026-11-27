@@ -3,8 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// PAT-08: a fire-and-forget call loses its exception entirely. The helper must observe it and hand it to a
-/// reporter, only once, and must never let the reporter's own failure escape.
+/// Fire-and-forget loses exceptions entirely; the helper must report each one once and never let the reporter's
+/// own failure escape.
 /// </summary>
 public sealed class SafeTaskTests
 {
@@ -23,14 +23,12 @@ public sealed class SafeTaskTests
         Assert.Equal("boom", exception.Message);
     }
 
-    /// <summary>A task that faulted before the call must still be reported, not silently dropped.</summary>
     [Fact]
     public void An_already_faulted_task_reports_synchronously()
     {
         Exception? captured = null;
 
-        // Genuinely already complete: a ContinueWith would never run for it, so this is the case that needs the
-        // synchronous branch.
+        // Already complete, so a continuation would never run; this exercises the synchronous branch.
         Task.FromException(new InvalidOperationException("already failed"))
             .FireAndForget(ex => captured = ex);
 
@@ -55,7 +53,6 @@ public sealed class SafeTaskTests
     {
         Task? nothing = null;
 
-        // Must not throw.
         nothing.FireAndForget(_ => throw new InvalidOperationException("should not be called"));
     }
 
@@ -73,7 +70,7 @@ public sealed class SafeTaskTests
         Assert.False(reporterCalled);
     }
 
-    /// <summary>The reporter is diagnostic code; if it throws, the faulted operation must not be worsened.</summary>
+    /// <summary>The reporter is diagnostic code; its own failure must not worsen the faulted operation.</summary>
     [Fact]
     public async Task A_throwing_reporter_does_not_escape()
     {

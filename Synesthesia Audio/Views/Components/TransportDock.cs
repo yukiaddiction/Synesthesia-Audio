@@ -12,10 +12,7 @@ using Synesthesia_Audio.Views.Components;
 
 namespace Synesthesia_Audio.Views.Components;
 
-/// <summary>
-/// The desktop transport dock: now-playing cluster, transport with seek, and volume/options.
-/// Only shown in the wide composition; the compact layout keeps <see cref="Views.FloatingPlayerBar"/>.
-/// </summary>
+/// <summary>Desktop player dock; the compact layout uses <see cref="Views.FloatingPlayerBar"/> instead.</summary>
 public sealed class TransportDock : Border
 {
     public TransportDock(AudioService audioService)
@@ -85,7 +82,7 @@ public sealed class TransportDock : Border
             VerticalOptions = LayoutOptions.Center,
             AutomationId = "DockVolumeSlider"
         }
-        // Theme-bound: the fixed light accent stayed pale against the dark panel (UX-01).
+        // Theme-bound because the light accent is too pale on the dark panel.
         .AppThemeBinding(Slider.ThumbColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
         .Bind(Slider.ValueProperty, nameof(AudioService.Volume), BindingMode.TwoWay)
         .AppThemeBinding(Slider.MinimumTrackColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)

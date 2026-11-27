@@ -6,18 +6,9 @@ using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 
 namespace Synesthesia_Audio.Views.Components;
 
-/// <summary>
-/// The two row views of the album's virtualised list: a folder header and a track.
-///
-/// They live here rather than inside the page so both templates are plain factories the DataTemplateSelector can
-/// hand to the CollectionView, which materialises a row only when it scrolls into view (PERF-07).
-/// </summary>
+/// <summary>Plain row factories the album page's DataTemplateSelector hands to its virtualised list.</summary>
 public static class AlbumRowViews
 {
-    /// <summary>
-    /// A folder header: title, track count and a chevron. Tapping it folds the folder, which the page implements by
-    /// rebuilding the row list.
-    /// </summary>
     public static View Header(Action<AlbumRow> onToggle, Func<bool> sectionVisible)
     {
         var title = new Label
@@ -67,7 +58,6 @@ public static class AlbumRowViews
         return header;
     }
 
-    /// <summary>A track row: play glyph, title, and the translated title when there is one.</summary>
     public static View Track(object? playCommand)
     {
         var trackTap = new TapGestureRecognizer();

@@ -3,9 +3,8 @@ using System.Net;
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Recognises a rate limit inside whatever a provider threw. GTranslate's AggregateTranslator wraps
-/// every translator's failure in an AggregateException, so the 429 sits one level down and has to be
-/// unwrapped; the bundled JSON parse error on the 429 body must be ignored, not treated as a fault.
+/// GTranslate's AggregateTranslator wraps every translator failure in an AggregateException, so the 429 sits a
+/// level down; the JSON parse error bundled alongside it must not count as a separate fault.
 /// </summary>
 public static class RateLimitDetector
 {

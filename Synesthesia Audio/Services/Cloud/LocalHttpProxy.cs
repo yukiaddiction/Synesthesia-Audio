@@ -14,21 +14,12 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Services.Cloud;
 
 /// <summary>
-/// Loopback HTTP bridge used to stream WebDAV files into the media element.
-///
-/// Any process on the machine can reach a loopback port, so the proxy is not a public service:
-/// <list type="bullet">
-///   <item>it only starts when a WebDAV track actually needs streaming, so a Local library never opens a port;</item>
-///   <item>every request must carry a 32-byte token generated for this run, compared in constant time;</item>
-///   <item>callers reference files by an opaque id this class maps to a path, so a request can never name
-///   an arbitrary file on the WebDAV account.</item>
-/// </list>
+/// Loopback HTTP bridge that streams WebDAV files into the media element. Any local process can reach a loopback
+/// port, so it only starts when a WebDAV track needs it, demands a per-run secret token, and serves files by
+/// opaque id so a request can never name an arbitrary path on the account.
 /// </summary>
 public class LocalHttpProxy : IDisposable
 {
-    // Diagnostics used to go through a static Log method backed by a static logger field. Nothing outside this
-    // class called it, so it is instance state now and the proxy has no static mutable state left (PAT-07).
-
     private volatile TcpListener? _listener;
     private readonly ICloudProvider _cloudProvider;
     private readonly ILogger<LocalHttpProxy> _logger;
@@ -37,11 +28,10 @@ public class LocalHttpProxy : IDisposable
     private volatile bool _isRunning;
     private int _requestCount;
 
-    /// <summary>Per-run secret. A request without it is refused, so another local process cannot borrow
-    /// the user's WebDAV credentials.</summary>
+    // Without it another local process could borrow the user's WebDAV credentials.
     private readonly ProxyAccessToken _token = ProxyAccessToken.Create();
 
-    /// <summary>Opaque id to remote path. Callers pick the id we gave them, never the path.</summary>
+    // Callers only ever hold the id we issued, never the remote path.
     private readonly ConcurrentDictionary<string, string> _pathById = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _idByPath = new(StringComparer.Ordinal);
 
@@ -49,9 +39,6 @@ public class LocalHttpProxy : IDisposable
     {
         _cloudProvider = cloudProvider;
         _logger = logger;
-
-        // Deliberately not started here: constructing the singleton at app start used to open a port for
-        // every user, including the ones on a purely local library.
     }
 
     public bool IsRunning => _isRunning;
@@ -96,10 +83,6 @@ public class LocalHttpProxy : IDisposable
         }
     }
 
-    /// <summary>
-    /// Starts the proxy if needed and returns a URL the media element can play. The path is registered
-    /// behind an opaque id; the caller never passes a path to the HTTP surface.
-    /// </summary>
     public string CreateStreamUrl(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("A remote path is required.", nameof(path));
@@ -111,15 +94,16 @@ public class LocalHttpProxy : IDisposable
         _pathById[id] = path;
 
         var url = $"http://127.0.0.1:{_port}/stream/{_token.Value}/{id}";
-        // Only the file name: the remote path discloses the user's cloud layout (SEC-m-02).
+        // Log only the file name: the full remote path discloses the user's cloud layout.
         AddLog($"CreateStreamUrl: {LogRedactor.FileName(path)} -> {url}");
         return url;
     }
 
+    // Base64url without padding, so the id fits in a path segment.
     private static string ToUrlSafeBase64(byte[] bytes) =>
         Convert.ToBase64String(bytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
-    /// <summary>Constant-time token check so a local attacker cannot probe it byte by byte.</summary>
+    // Constant-time comparison, so the token cannot be probed byte by byte.
     private bool IsValidToken(string? candidate) => _token.Matches(candidate);
 
     private async Task ListenLoopAsync()
@@ -158,9 +142,8 @@ public class LocalHttpProxy : IDisposable
                 }
                 catch (SocketException ex)
                 {
-                    // An accept failure concerns one connection, not the whole proxy. Exiting the loop on
-                    // the first one left the proxy permanently dead while IsRunning still looked true, so
-                    // every later stream failed with no way to recover except a restart.
+                    // One failed accept concerns one connection; leaving the loop would kill the proxy while IsRunning still
+                    // reported true.
                     AddLog($"Accept socket error: {ex.SocketErrorCode}: {ex.Message} — continuing");
                     await Task.Delay(50);
                 }
@@ -175,8 +158,6 @@ public class LocalHttpProxy : IDisposable
         {
             lock (_startLock)
             {
-                // Only clear state this loop owns: a restart may already have installed a new listener, and
-                // nulling it blindly would make the next EnsureRunning start a second one on the old port.
                 if (ReferenceEquals(_listener, listener))
                 {
                     _listener = null;
@@ -233,7 +214,6 @@ public class LocalHttpProxy : IDisposable
 
                 if (!IsValidToken(segments[0]))
                 {
-                    // No token, wrong token, stale token from a previous run: never forward credentials.
                     AddLog($"#{reqNum} Invalid or missing proxy token — 403");
                     await WriteErrorAsync(networkStream, 403, "Forbidden");
                     return;
@@ -265,8 +245,8 @@ public class LocalHttpProxy : IDisposable
                 var cl = webDavResponse.Content.Headers.ContentLength;
                 AddLog($"#{reqNum} WebDAV response: {(int)webDavResponse.StatusCode} {webDavResponse.ReasonPhrase}, Content-Length: {(cl.HasValue ? cl.Value.ToString() : "N/A")}");
 
-                // A 200 whose body is HTML almost always means the server answered with a login page or an
-                // error page. Forwarding it as audio leaves the player silently stuck with no clue why.
+                // A 200 with an HTML body is almost always a login or error page; forwarding it as audio would leave the
+                // player silently stuck.
                 var serverType = webDavResponse.Content.Headers.ContentType?.MediaType;
                 if (webDavResponse.IsSuccessStatusCode &&
                     serverType != null &&
@@ -312,8 +292,7 @@ public class LocalHttpProxy : IDisposable
     {
         var statusCode = (int)webDavResponse.StatusCode;
         var reason = webDavResponse.ReasonPhrase ?? string.Empty;
-        // The status line is built from the server's own reason phrase: the hand-written table said "OK" for
-        // every code it did not list, which is how a 429 once looked like success in the proxy log (OVR-07).
+        // Use the server's own reason phrase so a non-success status is never mislabelled "OK".
         var statusText = reason.Length > 0 ? reason : "Unknown";
 
         var serverContentType = webDavResponse.Content.Headers.ContentType?.MediaType;

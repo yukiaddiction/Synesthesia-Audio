@@ -2,14 +2,8 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// Tests for the two guards that keep the WebDAV integration contained: the loopback proxy token
-/// (SEC-M-01) and the remote path rule (SEC-M-02).
-/// </summary>
 public sealed class RemoteAccessGuardTests
 {
-    // ---- SEC-M-01: the proxy refuses anything without the current run's token ----
-
     [Fact]
     public void Token_matches_its_own_value()
     {
@@ -45,8 +39,6 @@ public sealed class RemoteAccessGuardTests
         Assert.DoesNotContain('/', value);
         Assert.DoesNotContain('=', value);
     }
-
-    // ---- SEC-M-02: a remote path may never climb out of the base folder ----
 
     [Theory]
     [InlineData("../../x")]

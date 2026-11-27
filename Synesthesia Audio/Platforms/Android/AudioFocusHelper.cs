@@ -7,7 +7,7 @@ using Microsoft.Maui.ApplicationModel;
 namespace Synesthesia_Audio.Platforms.Android;
 
 
-/// <summary>One resolved logger for this file (framework-created classes cannot take a dependency) — PAT-01.</summary>
+// Framework-created classes cannot take an injected logger, so the file shares one resolved instance.
 internal static class FileLog79371
 {
     internal static readonly ILogger<AudioFocusHelper> Logger = Synesthesia_Audio.Services.Logging.AppLog.Get<AudioFocusHelper>();
@@ -128,28 +128,25 @@ internal class AudioFocusHelper : Java.Lang.Object, AudioManager.IOnAudioFocusCh
                     switch (focusChange)
                     {
                         case AudioFocus.Loss:
-                            // Permanent loss: hand the focus back as well, and stop. There is nothing to
-                            // resume later, so the AudioService records this as a focus-caused pause and
-                            // AbandonFocus clears the request.
+                            // Permanent loss: nothing to resume later, so give the focus back as well.
                             AbandonFocus();
                             audioService.PauseForFocusLoss();
                             break;
 
                         case AudioFocus.LossTransient:
-                            // Keep the request so a Gain can resume, but stop playing now. Previously this
-                            // only set flags, so audio kept playing over calls and other players.
+                            // Keep the request so a later Gain can resume, but stop playing now.
                             _hasFocus = false;
                             audioService.PauseForFocusLoss();
                             break;
 
                         case AudioFocus.LossTransientCanDuck:
-                            // We may keep playing, but quietly.
+                            // Allowed to keep playing, but quietly.
                             audioService.SetDucked(true);
                             break;
 
                         case AudioFocus.Gain:
                             _hasFocus = true;
-                            // Restores volume, and resumes only if the focus loss is what paused playback.
+                            // Resumes only if the focus loss is what paused playback.
                             audioService.ResumeAfterFocusGain();
                             break;
                     }

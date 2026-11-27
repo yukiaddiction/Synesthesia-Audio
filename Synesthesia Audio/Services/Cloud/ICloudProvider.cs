@@ -11,7 +11,7 @@ public class CloudFileInfo
     public bool IsDirectory { get; set; }
     public long Size { get; set; }
 
-    /// <summary>The server's change tag (etag, or last-modified when there is none). Null when it sent neither.</summary>
+    // Falls back to last-modified when the server sends no etag; null when it sent neither.
     public string? ETag { get; set; }
 }
 
@@ -19,21 +19,20 @@ public interface ICloudProvider
 {
     bool IsConfigured { get; }
 
-    // Each operation takes an optional explicit connection. Passing one means "use exactly these
-    // values", which lets Browse and Test Connection work with unsaved form input without ever
-    // mutating the shared saved settings. Omitting it falls back to the saved settings.
+    // An explicit connection means "use exactly these values", so Browse and Test Connection work with unsaved
+    // form input without touching the saved settings.
     Task<(bool Success, string ErrorMessage)> TestConnectionAsync(WebDavConnection? connection = null);
     Task<List<CloudFileInfo>> ListFilesAsync(string path, WebDavConnection? connection = null);
 
     /// <summary>
-    /// Everything beneath <paramref name="path"/> in one request, or null when the server will not do that (most
-    /// refuse <c>Depth: infinity</c> by default). A refusal is remembered so later scans do not ask again.
+    /// Whole tree in one request, or null when the server refuses <c>Depth: infinity</c> (most do by default).
+    /// A refusal is remembered so later scans do not ask again.
     /// </summary>
     Task<List<CloudFileInfo>?> TryListTreeAsync(string path, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// True once a listing showed the server changes a folder's etag whenever anything beneath it changes
-    /// (Nextcloud, ownCloud, oCIS). Only then may a rescan skip an unchanged folder without listing it.
+    /// True once the server proved it updates a folder's etag when anything beneath it changes (Nextcloud, ownCloud,
+    /// oCIS). Only then may a rescan skip an unchanged folder without listing it.
     /// </summary>
     bool PropagatesFolderETags { get; }
     Task<Stream> GetFileStreamAsync(string path, WebDavConnection? connection = null);

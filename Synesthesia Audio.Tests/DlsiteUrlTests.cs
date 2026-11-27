@@ -2,9 +2,6 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// DUP-08: the protocol-relative URL fix-up was written out four times inside the DLsite parser.
-/// </summary>
 public sealed class DlsiteUrlTests
 {
     [Fact]

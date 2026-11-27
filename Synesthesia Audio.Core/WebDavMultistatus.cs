@@ -3,44 +3,33 @@ using System.Xml.Linq;
 
 namespace Synesthesia_Audio.Core;
 
-/// <summary>One resource from a PROPFIND answer, with its path relative to the configured base URL.</summary>
+/// <summary>Path is relative to the configured base URL.</summary>
 public sealed record WebDavEntry(string Path, string Name, bool IsDirectory, long Size, string? ETag);
 
-/// <summary>What a PROPFIND answer held.</summary>
 public sealed class WebDavListing
 {
     public List<WebDavEntry> Entries { get; } = new();
 
     /// <summary>
-    /// True when the server answered the ownCloud <c>fileid</c> property. Nextcloud, ownCloud and oCIS do, and they
-    /// are the servers that change a folder's etag whenever anything beneath it changes, which is what lets a rescan
-    /// skip an unchanged work without listing it.
+    /// Servers reporting <c>oc:fileid</c> (Nextcloud, ownCloud, oCIS) change a folder's etag whenever anything beneath
+    /// it changes, which lets a rescan skip an unchanged work without listing it.
     /// </summary>
     public bool HasOwnCloudFileIds { get; set; }
 }
 
-/// <summary>
-/// Builds and reads WebDAV PROPFIND messages. Lives in Core so the parsing - which decides what the scan sees - is
-/// tested without a server.
-/// </summary>
+/// <summary>Lives in Core so the parsing, which decides what the scan sees, is tested without a server.</summary>
 public static class WebDavMultistatus
 {
     public const string OwnCloudNamespace = "http://owncloud.org/ns";
 
-    /// <summary>
-    /// The properties asked for. <c>oc:fileid</c> is harmless on other servers: an unknown property is reported as
-    /// not found in its own propstat block.
-    /// </summary>
+    /// <summary>Asking for <c>oc:fileid</c> is harmless elsewhere: an unknown property lands in its own not-found propstat.</summary>
     public static string RequestBody =>
         "<?xml version=\"1.0\" encoding=\"utf-8\" ?>" +
         "<d:propfind xmlns:d=\"DAV:\" xmlns:oc=\"" + OwnCloudNamespace + "\"><d:prop>" +
         "<d:displayname/><d:resourcetype/><d:getcontentlength/><d:getetag/><d:getlastmodified/><oc:fileid/>" +
         "</d:prop></d:propfind>";
 
-    /// <summary>
-    /// Parses a multistatus answer. <paramref name="requestedPath"/> (relative to the base) is left out of the result
-    /// wherever it appears, so a folder never lists itself as its own child.
-    /// </summary>
+    /// <summary>Drops <paramref name="requestedPath"/> wherever it appears, so a folder never lists itself as its own child.</summary>
     public static WebDavListing Parse(string xml, string baseUrl, string? requestedPath)
     {
         var listing = new WebDavListing();
@@ -94,8 +83,8 @@ public static class WebDavMultistatus
     }
 
     /// <summary>
-    /// True when a <c>Depth: infinity</c> answer is really a one-level answer: there are folders, yet nothing two
-    /// levels down. Some servers downgrade the depth silently, and trusting that would make a library look empty.
+    /// Some servers silently downgrade <c>Depth: infinity</c> to one level; trusting that would make a library look
+    /// empty. Shallow means there are folders, yet nothing two levels below the root.
     /// </summary>
     public static bool LooksShallow(IReadOnlyList<WebDavEntry> entries, string? rootPath)
     {
@@ -115,9 +104,8 @@ public static class WebDavMultistatus
     }
 
     /// <summary>
-    /// The href's path below the base, decoded. The href is resolved while still escaped: decoding it first turned a
-    /// "#" or "?" in a folder name into a fragment or query, so "RJ123/#1 本編" came back as "RJ123" and the walk
-    /// listed the parent again instead of the sub-folder.
+    /// Resolves the href while still escaped: decoding first turned a "#" or "?" in a folder name into a fragment or
+    /// query, so "RJ123/#1 本編" came back as "RJ123".
     /// </summary>
     private static string? RelativePath(string href, Uri baseUri, string baseDecoded)
     {
@@ -155,12 +143,13 @@ public static class WebDavMultistatus
         if (string.IsNullOrWhiteSpace(status)) return true;
 
         var parts = status.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        // Status line is "HTTP/1.1 200 OK"; any 2xx code counts.
         return parts.Length >= 2 && parts[1].StartsWith('2');
     }
 
     /// <summary>
-    /// Slashes trimmed and Unicode composed, for comparing only. Servers that store decomposed names (NAS shares
-    /// written from a Mac) answer "ボ" as two code points; the stored path is left exactly as the server spelt it.
+    /// For comparison only: NAS shares written from a Mac store decomposed names ("ボ" as two code points), so
+    /// compose to NFC. Stored paths keep the server's spelling.
     /// </summary>
     private static string Comparable(string? path) =>
         (path ?? string.Empty).Replace('\\', '/').Trim('/').Normalize(NormalizationForm.FormC);

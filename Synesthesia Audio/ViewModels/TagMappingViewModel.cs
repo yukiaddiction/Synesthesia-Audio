@@ -4,14 +4,10 @@ using Synesthesia_Audio.Services;
 
 namespace Synesthesia_Audio.ViewModels;
 
-/// <summary>One key/value pair in the mapping list, so a CollectionView has an item type to bind to.</summary>
 public sealed record TagMappingRow(string Key, string Value);
 
 /// <summary>
-/// The tag mapping page's state: the mapping list, the filter, and the save/delete/clean operations.
-///
-/// This existed only inside the page, which meant the filtering, the remap-after-save and the cleanup could not be
-/// exercised without a UI (PAT-09 asks for the view model by name). The page now owns layout and binding only.
+/// Holds the tag mapping logic outside the page so filtering, remapping and cleanup can be tested without a UI.
 /// </summary>
 public class TagMappingViewModel
 {
@@ -35,13 +31,12 @@ public class TagMappingViewModel
         _logger = logger;
     }
 
-    /// <summary>The rows currently shown, already filtered and ordered.</summary>
     public ObservableCollection<TagMappingRow> Rows { get; } = new();
 
-    /// <summary>True when the filter matches nothing, so the page can explain the blank area (UX-05).</summary>
+    // Lets the page explain a blank list instead of showing nothing.
     public bool IsEmpty => Rows.Count == 0;
 
-    /// <summary>Filter text. Setting it re-filters; the caller debounces, because that is a UI concern.</summary>
+    /// <summary>Re-filters on every set; debouncing is left to the page because it is a UI concern.</summary>
     public string SearchText
     {
         get => _searchText;
@@ -63,17 +58,13 @@ public class TagMappingViewModel
         Load();
     }
 
-    /// <summary>Removes a mapping and refreshes the list.</summary>
     public void RemoveMapping(string jpKey)
     {
         _tagService.RemoveMapping(jpKey);
         Load();
     }
 
-    /// <summary>
-    /// Saves a row's translation and remaps every cached work off the UI thread - it used to block the page for the
-    /// whole library on every row save (PERF-09).
-    /// </summary>
+    /// <summary>Remaps the whole library off the UI thread so saving a row doesn't freeze the page.</summary>
     public async Task SaveMappingAsync(string jpKey, string engValue)
     {
         _tagService.AddOrUpdateMapping(jpKey, engValue);
@@ -89,7 +80,6 @@ public class TagMappingViewModel
         }
     }
 
-    /// <summary>Clean and reset bad tags, then reload this list and the library.</summary>
     public async Task CleanAndResetAsync()
     {
         await Services.TagCleanup.RunAsync(_cacheService, _tagService, async () =>

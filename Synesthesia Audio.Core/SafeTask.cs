@@ -1,26 +1,19 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Starts a task that nobody awaits, but observes its failure instead of letting it vanish.
-///
-/// A fire-and-forget call written as <c>_ = SomethingAsync();</c> loses its exception entirely: the task faults,
-/// nothing reads <c>Exception</c>, and the failure surfaces — if at all — as an unobserved-task event long after
-/// the context that would have explained it is gone. That is how a player can silently stop advancing a queue,
-/// or a session save can silently stop saving (PAT-08).
+/// <c>_ = SomethingAsync();</c> loses its exception, so a player could silently stop advancing its queue. This
+/// observes the fault and reports it instead.
 /// </summary>
 public static class SafeTask
 {
-    /// <summary>
-    /// Observes <paramref name="task"/>, reporting a fault to <paramref name="onError"/>. A null task is a no-op,
-    /// an already-completed task reports immediately, and a throwing reporter never escapes.
-    /// </summary>
+    /// <summary>A throwing reporter never escapes.</summary>
     public static void FireAndForget(this Task? task, Action<Exception>? onError = null)
     {
         if (task is null) return;
 
         if (task.IsCompleted)
         {
-            // Already finished: report now, because there is no continuation left to run.
+            // No continuation would ever run on a finished task, so report now.
             if (task.IsFaulted) Report(task.Exception, onError);
             return;
         }
@@ -52,7 +45,7 @@ public static class SafeTask
         }
         catch
         {
-            // A failure reporter must never take down the operation it was only supposed to describe.
+            // A failure reporter must never take down the operation it only describes.
         }
     }
 }

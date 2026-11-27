@@ -12,7 +12,7 @@ using Synesthesia_Audio.Services;
 namespace Synesthesia_Audio.Platforms.Android;
 
 
-/// <summary>One resolved logger for this file (framework-created classes cannot take a dependency) — PAT-01.</summary>
+// Framework-created classes cannot take an injected logger, so the file shares one resolved instance.
 internal static class FileLog87377
 {
     internal static readonly ILogger<ScanForegroundService> Logger = Services.Logging.AppLog.Get<ScanForegroundService>();
@@ -47,8 +47,7 @@ public class ScanForegroundService : Service
     {
         try
         {
-            // A second start while a scan is running used to begin a parallel scan: two walks writing the
-            // same cache, and the first one's failure list clobbered by the second (BUG-m-02).
+            // Ignore a second start: a parallel scan would write the same cache and clobber the first one's failures.
             if (_isRunning)
             {
                 FileLog87377.Logger
@@ -164,8 +163,8 @@ public class ScanForegroundService : Service
     }
 
     /// <summary>
-    /// Android 15+ stops a dataSync foreground service that runs too long. Cancelling first means the scan
-    /// ends as Interrupted rather than leaving the UI showing a scan that is no longer running.
+    /// Android 15+ stops a long-running dataSync foreground service. Cancelling first ends the scan as Interrupted
+    /// rather than leaving the UI showing a scan that is no longer running.
     /// </summary>
     public override void OnTimeout(int startId)
     {

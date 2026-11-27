@@ -17,16 +17,12 @@ namespace Synesthesia_Audio.Services;
 public class DLsiteService
 {
     /// <summary>
-    /// Sent deliberately, and worth documenting rather than copying blindly (SEC-m-09): DLsite serves a reduced
-    /// page to clients it does not recognise, and that page has no metadata in it. No login or access control is
-    /// bypassed — the pages read here are the ones the user's own library already points at.
+    /// DLsite serves unrecognised clients a reduced page with no metadata. No login or access control is bypassed.
     /// </summary>
     public const string DefaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
     /// <summary>
-    /// The R-18 sections of DLsite gate on these flags; without them the site answers with the age-consent page,
-    /// whose og:title is the bare site name. Acknowledging the gate once here is what makes the metadata rows
-    /// reachable at all.
+    /// Without these flags the R-18 sections answer with the age-consent page, which carries no work metadata.
     /// </summary>
     private const string AgeGateCookie = "age_check_done=1; adultchecked=1; work_view_mode=2;";
 
@@ -39,11 +35,7 @@ public class DLsiteService
     private readonly ScanStateService _scanStateService;
     private readonly ILogger<DLsiteService> _logger;
 
-    /// <summary>
-    /// Shared backoff for "the server is telling us to slow down" answers (PERF-04). Scraping a large library
-    /// fans out several requests per work; without this a 429 was simply logged and the next work asked
-    /// again immediately.
-    /// </summary>
+    // Shared across works: a large scan fans out several requests per work, so one 429 must pause them all.
     private readonly RateLimiter _rateLimiter = new(
         TimeSpan.FromSeconds(5),
         TimeSpan.FromSeconds(120));
@@ -61,22 +53,15 @@ public class DLsiteService
         _dialog = dialogService;
         _scanStateService = scanStateService;
         _logger = logger;
-        // Headers, timeout and handler now come from the named client registration (DUP-02 / OVR-05).
         _httpClient = httpClientFactory.CreateClient(HttpClients.DLsite);
     }
 
     public static void ResetUnreachableAlert() => _dlsiteUnreachableAlerted = false;
 
-    /// <summary>
-    /// Called at the start of each scan so the detailed "not a product page" warning is emitted
-    /// once per scan instead of once per work.
-    /// </summary>
+    /// <summary>Called per scan so the "not a product page" warning fires once per scan, not once per work.</summary>
     public static void ResetScanDiagnostics() => _nonProductPageWarned = false;
 
-    /// <summary>
-    /// Trips the shared backoff when DLsite answers "slow down". Only 429 and 503 mean that; a 403 is a
-    /// refusal and a 404 is a missing work, and neither gets better by waiting.
-    /// </summary>
+    /// <summary>Only 429/503 mean "slow down"; a 403 or 404 doesn't improve by waiting.</summary>
     private void NoteThrottling(HttpResponseMessage response)
     {
         var statusCode = (int)response.StatusCode;
@@ -91,10 +76,7 @@ public class DLsiteService
             "DLsite answered {StatusCode}; pausing requests for {Seconds:0}s", statusCode, delay.TotalSeconds);
     }
 
-    /// <summary>
-    /// One compact line describing which fields a parsed page yielded, so a layout change on
-    /// DLsite can be diagnosed from the log instead of guessed at.
-    /// </summary>
+    /// <summary>One log line of which fields parsed, so a DLsite layout change can be diagnosed from the log.</summary>
     private static string DescribeFields(DLsiteParser.RawWorkPageData raw)
     {
         var summary =
@@ -103,7 +85,7 @@ public class DLsiteService
             $"genre={(raw.GenreFound ? "ok" : "no")} cover={(raw.CoverFound ? "ok" : "no")} " +
             $"jsonld={(raw.HasJsonLd ? "yes" : "no")} table={(raw.HasMetaTable ? "yes" : "no")} age={raw.AgeRating}";
 
-        // Only spill the raw evidence when something is still missing, so normal scans stay quiet.
+        // Raw evidence only when something is missing, so normal scans stay quiet.
         if (!raw.VaFound || !raw.GenreFound)
         {
             summary += $" th=[{raw.TableLabels}]";
@@ -118,7 +100,7 @@ public class DLsiteService
 
     public async Task<(string CoverUrl, string Title, string TranslatedTitle, string Circle, string VA, string AgeRating, string Genre)> GetWorkMetadataAsync(string rjCode)
     {
-        // Still backing off from a 429/503: spend no request at all rather than earning another one.
+        // While backing off, send nothing rather than earn another 429.
         if (_rateLimiter.IsBlocked(DateTimeOffset.UtcNow))
         {
             _logger.LogDebug(
@@ -128,6 +110,8 @@ public class DLsiteService
         }
 
         _logger.LogDebug("Fetching DLsite metadata for {RjCode}", rjCode);
+        // The JSON API is raced across the three storefronts (first with a title wins); the HTML pages are a
+        // sequential fallback.
         string[] apiUrls = new[]
         {
             $"https://www.dlsite.com/maniax/api/=/product.json?work_id={rjCode}",
@@ -182,8 +166,7 @@ public class DLsiteService
 
         if (response == null || !response.IsSuccessStatusCode)
         {
-            // The previous attempt's response is about to be forgotten; without this it leaked its socket
-            // and buffered body on every fallback hop (BUG-m-23).
+            // Dispose before overwriting, or each fallback hop leaks a socket and buffered body.
             response?.Dispose();
 
             url = $"https://www.dlsite.com/maniax/work/=/product_id/{rjCode}.html";
@@ -215,9 +198,7 @@ public class DLsiteService
             if (!_dlsiteUnreachableAlerted)
             {
                 _dlsiteUnreachableAlerted = true;
-                // A modal window in the middle of a scan is the wrong place to report an outage: the scan is
-                // already running and its summary lists what could not be fetched, so during a scan this is a
-                // log line rather than a dialog (UX-05).
+                // No modal mid-scan: the scan summary already lists what couldn't be fetched.
                 var scanRunning = _scanStateService.Snapshot().Status == Synesthesia_Audio.Core.ScanStatus.Running;
                 _logger.LogWarning(
                     "DLsite unreachable — all API and HTML endpoints failed for {RjCode} ({Mode})",
@@ -239,12 +220,11 @@ public class DLsiteService
                 }
             }
 
-            // The final attempt's response is never read on this path, so release it here (BUG-m-23).
             response?.Dispose();
             return ("", "", "", "", "", AgeRatings.Unknown, "");
         }
 
-        // Reached again only by a later successful fetch, so the outage alert can fire for a new outage.
+        // Re-arm the outage alert for the next outage.
         _dlsiteUnreachableAlerted = false;
 
         try
@@ -253,19 +233,15 @@ public class DLsiteService
             NoteThrottling(response);
             var html = await response.Content.ReadAsStringAsync();
 
-            // The body is fully buffered now, so release the response instead of leaving it to the GC: the
-            // fallback chain allocated one HttpResponseMessage per attempt (BUG-m-23).
             response.Dispose();
 
             var raw = DLsiteParser.ParseWorkPageHtml(html, url);
 
-            // The JSON endpoints gate on TitleFound; the HTML fallback did not, so a blocked or
-            // consent page was stored as a work titled "DLsite" with every other field empty.
+            // A blocked or consent page has no title; storing it would create a work called "DLsite" with no fields.
             if (!raw.TitleFound)
             {
                 var detail = $"HTTP {statusCode}, <title>='{DLsiteParser.ExtractDocumentTitle(html)}', og:title='{raw.ParsedTitle}', {DescribeFields(raw)}";
 
-                // One warning per scan; the rest stay at Information so the log stays readable.
                 if (!_nonProductPageWarned)
                 {
                     _nonProductPageWarned = true;
@@ -399,8 +375,7 @@ public class DLsiteService
 
                 if (english.Equals(tag, StringComparison.OrdinalIgnoreCase))
                 {
-                    // Machine translation uploads the work's tags to a third-party service, so it only
-                    // happens when the user has opted in. Locally mapped tags never reach this branch.
+                    // Machine translation sends tags to a third party, so it is opt-in.
                     if (!_settingsService.CurrentSettings.TranslateDlsiteTags)
                     {
                         mapped.Add(english);

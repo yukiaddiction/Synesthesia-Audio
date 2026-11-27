@@ -33,8 +33,7 @@ public class AlbumPage : ContentPage
             HeightRequest = 40,
             WidthRequest = 40
         }
-        // SuccessLight is 2.8:1 on white, below the 3:1 floor for a UI component, and never changed for the
-        // dark theme (UX-01).
+        // Primary, not SuccessLight: that was 2.8:1 on white, under the 3:1 contrast floor for UI components.
         .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
         .Bind(VisualElement.IsVisibleProperty, nameof(AlbumViewModel.Album), converter: new NotNullToFalseConverter());
 
@@ -137,8 +136,8 @@ public class AlbumPage : ContentPage
             }
         }.Glass(strong: true, elevated: true);
 
-        // The cover and metadata are the list's header, so the page is one virtualised scroll. They used to sit in an
-        // Auto row above the list, and on a phone the metadata could take the whole height and leave the tracks none.
+        // Cover and metadata live in the list header so the page is one virtualised scroll; in a row above the
+        // list they could take the whole phone screen and leave the tracks no height.
         var header = new VerticalStackLayout
         {
             Spacing = AppLayout.GlassSectionGap,
@@ -151,8 +150,7 @@ public class AlbumPage : ContentPage
             }
         };
 
-        // Folder headers and tracks are rows, so only what is on screen is materialised. Grouping was tried first
-        // and rendered one group on Android (PERF-07).
+        // Folder headers are flat rows rather than CollectionView groups, which rendered only one group on Android.
         var trackList = new CollectionView
         {
             ItemsSource = _rows,
@@ -173,7 +171,6 @@ public class AlbumPage : ContentPage
 
     }
 
-    /// <summary>Header and track templates, chosen per row. No grouping, so nothing is dropped.</summary>
     private DataTemplate BuildRowSelector() => new RowTemplateSelector
     {
         OnToggle = ToggleSection,
@@ -199,7 +196,6 @@ public class AlbumPage : ContentPage
         }
     }
 
-    /// <summary>Rebuilds the flat row list from the album's folders, keeping each folder's expanded state.</summary>
     private void RebuildRows(AlbumViewModel viewModel)
     {
         _rows.Clear();
@@ -208,7 +204,7 @@ public class AlbumPage : ContentPage
 
         foreach (var subAlbum in viewModel.Album.SubAlbums)
         {
-            // Every folder is listed, including the main one holding files that sit directly in the work.
+            // The main folder (files directly in the work) gets a header too, so it can be collapsed like the rest.
             _rows.Add(AlbumRow.ForHeader(subAlbum));
 
             if (!subAlbum.IsExpanded) continue;
@@ -225,8 +221,8 @@ public class AlbumPage : ContentPage
     }
 
     /// <summary>
-    /// Listens for the album and builds the rows now. The album usually arrives (through the query property) before
-    /// the page appears, so waiting for a change alone left the list empty; this subscription was lost in 03c5bd3.
+    /// Builds the rows immediately as well as on change: the album usually arrives through the query property
+    /// before the page appears, so waiting for a change alone leaves the list empty.
     /// </summary>
     protected override void OnAppearing()
     {
@@ -248,7 +244,6 @@ public class AlbumPage : ContentPage
         base.OnDisappearing();
     }
 
-    /// <summary>Tapping a folder header folds or unfolds that folder.</summary>
     private void ToggleSection(AlbumRow row)
     {
         if (row.SubAlbum == null || BindingContext is not AlbumViewModel viewModel) return;
@@ -256,10 +251,6 @@ public class AlbumPage : ContentPage
         row.SubAlbum.IsExpanded = !row.SubAlbum.IsExpanded;
         RebuildRows(viewModel);
     }
-    /// <summary>
-    /// The hero artwork: the shared cover component plus the two things only the hero has - the scrim that
-    /// makes the sheet above it read as depth, and the product-id badge.
-    /// </summary>
     private static Grid BuildHeroCover()
     {
         var pathBinding = $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.CoverImagePath)}";
@@ -275,7 +266,7 @@ public class AlbumPage : ContentPage
                 VerticalOptions = LayoutOptions.Center
             });
 
-        // Scrim so the overlapping sheet above the artwork reads as depth, not as a seam.
+        // Darkens the bottom so the overlapping metadata sheet reads as depth, not as a seam.
         cover.Children.Add(new Border
         {
             StrokeThickness = 0,

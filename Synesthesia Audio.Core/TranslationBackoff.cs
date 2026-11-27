@@ -5,9 +5,8 @@ public static class TranslationBackoff
     private const int MaxDoublings = 5;
 
     /// <summary>
-    /// Resolves the cooldown after a rate-limited translation request. The server's own Retry-After
-    /// wins when we managed to capture it (GTranslate discards the response, so it is captured in the
-    /// HTTP pipeline instead); otherwise exponential backoff from the configured base delay, capped.
+    /// The server's Retry-After wins when captured (GTranslate discards the response, so the HTTP pipeline captures
+    /// it); otherwise <c>base * 2^(n-1)</c>, with the exponent clamped to 0..5 and the result capped at maxDelay.
     /// </summary>
     public static TimeSpan Next(
         int consecutiveRateLimits,

@@ -3,12 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// BUG-m-15: a double tap fires two handlers, and both pushed a page. The single-flight gate drops the second
-/// so only one page is ever pushed.
-///
-/// These tests use a fresh <see cref="SingleFlightGate"/> each time rather than the process-wide
-/// <see cref="SingleFlight"/> facade: xUnit runs test classes in parallel, so sharing the static instance made
-/// one test's in-flight operation drop another test's call — which is how this file was intermittently red.
+/// A double tap must push only one page. Each test uses a fresh <see cref="SingleFlightGate"/> because xUnit runs
+/// classes in parallel, and the shared <see cref="SingleFlight"/> facade let one test drop another's call.
 /// </summary>
 public sealed class SingleFlightTests
 {
@@ -20,7 +16,6 @@ public sealed class SingleFlightTests
         Assert.True(await gate.RunAsync(() => Task.CompletedTask));
     }
 
-    /// <summary>The exact double-tap shape: the second call arrives while the first is mid-flight.</summary>
     [Fact]
     public async Task A_second_call_while_one_is_running_is_dropped()
     {
@@ -97,7 +92,6 @@ public sealed class SingleFlightTests
         Assert.False(gate.IsRunning);
     }
 
-    /// <summary>The facade the app actually calls must behave the same way.</summary>
     [Fact]
     public async Task The_process_wide_facade_still_runs_an_operation()
     {

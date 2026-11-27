@@ -55,8 +55,7 @@ public class LogViewerPage : ContentPage
             Padding = new Thickness(14),
             HorizontalOptions = LayoutOptions.Center,
             MaximumWidthRequest = AppBreakpoints.ReaderMaxWidth,
-            // A CollectionView virtualises its items, so "show all" no longer lays out every line at once
-            // (PERF-11). The old shape was one Label inside a ScrollView.
+            // Virtualised so "show all" doesn't lay out every log line at once.
             Content = new CollectionView
             {
                 ItemTemplate = new DataTemplate(() =>
@@ -67,8 +66,7 @@ public class LogViewerPage : ContentPage
                         LineBreakMode = LineBreakMode.WordWrap
                     }
                     .Bind(Label.TextProperty, ".")
-                    // The panel behind this list is GlassDeep, which is dark in both themes, so the text has to
-                    // be light in both. It used the light-theme text colour in light mode: #112A3E on #112A3E.
+                    // Light text in both themes: the GlassDeep panel behind it is dark in both.
                     .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryDark, AppColors.TextPrimaryDark))
             }
             .Bind(ItemsView.ItemsSourceProperty, nameof(LogViewerViewModel.LogLines))

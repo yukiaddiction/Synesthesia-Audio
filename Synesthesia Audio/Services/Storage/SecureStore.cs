@@ -5,18 +5,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Services.Storage;
 
 /// <summary>
-/// Credential store for user-supplied secrets. Values are never written as plaintext: the
-/// persistence layer only ever sees protected values.
-/// <para>
-/// Windows desktop builds are unpackaged, so MAUI's SecureStorage cannot persist (its container
-/// needs package identity). Windows therefore keeps DPAPI and uses a file container from
-/// <see cref="SecureFileStore"/>. Every other platform keeps SecureStorage, which is backed by the
-/// Android Keystore / iOS Keychain.
-/// </para>
-/// <para>
-/// If no protector is usable at runtime, the value is held for this session only and
-/// <see cref="IsPersistent"/> turns false so the UI can say so, rather than dropping the secret.
-/// </para>
+/// Unpackaged Windows builds have no package identity, so MAUI SecureStorage cannot persist there; Windows uses a
+/// DPAPI-protected file instead. Other platforms use SecureStorage (Keystore / Keychain).
 /// </summary>
 public sealed class SecureStore : ISecureStore
 {
@@ -34,8 +24,7 @@ public sealed class SecureStore : ISecureStore
     {
         _logger = logger;
 #if WINDOWS
-        // A dedicated subfolder rather than the root of LocalAppData (SEC-m-03): the container should not sit
-        // loose among every other application's files.
+        // Own subfolder, so the container does not sit loose among every other app's files in LocalAppData.
         var directory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SynesthesiaAudio");
         var path = Path.Combine(directory, FileName);
@@ -47,10 +36,7 @@ public sealed class SecureStore : ISecureStore
     }
 
 #if WINDOWS
-    /// <summary>
-    /// Moves a container written by an older build (which lived directly in LocalAppData) into the new folder,
-    /// so the move does not look like a wiped credential store to the user.
-    /// </summary>
+    // Older builds wrote to the LocalAppData root; moving the file keeps the move from looking like lost credentials.
     private void MigrateFromLocalAppDataRoot(string newDirectory, string newPath)
     {
         try
@@ -67,7 +53,7 @@ public sealed class SecureStore : ISecureStore
         }
         catch (Exception ex)
         {
-            // Leaving the old file alone is safe: the user simply has to enter the secret again.
+            // Safe to leave behind: the user just has to enter the secret again.
             _logger.LogWarning(ex, "Could not move the existing credential container");
         }
     }
@@ -142,8 +128,7 @@ public sealed class SecureStore : ISecureStore
         lock (_sessionLock)
             _sessionOnly[key] = value;
 
-        // False means "this value did not reach durable storage". Callers surface that to the user instead
-        // of letting a credential quietly disappear when the app closes.
+        // False means "not durable", so callers can tell the user instead of the credential vanishing on exit.
         return false;
     }
 

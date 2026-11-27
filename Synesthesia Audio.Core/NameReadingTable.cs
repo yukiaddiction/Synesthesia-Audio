@@ -1,8 +1,8 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Kanji to romaji name readings from EDRDG JMnedict (CC BY-SA 4.0), overlaid with a curated
-/// override file that wins for names where JMnedict's variant ordering is unreliable.
+/// Kanji-to-romaji name readings from EDRDG JMnedict (CC BY-SA 4.0), overlaid with a curated override file for
+/// names where JMnedict's variant ordering is unreliable.
 /// </summary>
 public sealed class NameReadingTable
 {
@@ -20,13 +20,10 @@ public sealed class NameReadingTable
 
     public int Count => _entries.Count;
 
-    /// <summary>Longest key length in characters, used to bound the greedy match loop.</summary>
+    /// <summary>Bounds the greedy match loop.</summary>
     public int MaxKeyLength => _maxKeyLength;
 
-    /// <summary>
-    /// Builds a table from <c>kanji&lt;TAB&gt;romaji</c> lines. Later sources win, so overrides must be
-    /// applied after the generated table.
-    /// </summary>
+    /// <summary>Later sources win, so overrides must be applied after the generated table.</summary>
     public static NameReadingTable FromLines(IEnumerable<string> lines, NameReadingTable? baseTable = null)
     {
         var entries = baseTable is null
@@ -53,9 +50,7 @@ public sealed class NameReadingTable
         return new NameReadingTable(entries, max);
     }
 
-    /// <summary>
-    /// Greedy longest-match at <paramref name="start"/>. Longest-first matters: 一ノ瀬 must beat 一.
-    /// </summary>
+    /// <summary>Longest-first matters: 一ノ瀬 must beat 一.</summary>
     public bool TryMatchLongest(string text, int start, out int length, out string romaji)
     {
         length = 0;

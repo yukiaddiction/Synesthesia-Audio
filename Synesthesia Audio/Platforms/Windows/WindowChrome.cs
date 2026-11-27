@@ -7,8 +7,7 @@ using WinRT.Interop;
 namespace Synesthesia_Audio.Desktop;
 
 /// <summary>
-/// Paints the Windows title bar with the app palette so the caption strip stops clashing with the
-/// theme. This is the one place the design leaves MAUI's cross-platform surface.
+/// Paints the Windows title bar with the app palette so the caption strip does not clash with the theme.
 /// </summary>
 internal static class WindowChrome
 {

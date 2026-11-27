@@ -6,19 +6,15 @@ namespace Synesthesia_Audio.Services.Storage;
 
 #if WINDOWS
 /// <summary>
-/// Minimal DPAPI wrapper over crypt32.dll. MAUI's SecureStorage cannot be used for this: desktop
-/// builds here are unpackaged (WindowsPackageType=None), so its ApplicationData.Current container
-/// has no package identity. DPAPI itself needs no identity, and a file container does not either.
+/// Minimal crypt32 DPAPI wrapper. Unpackaged desktop builds have no package identity for MAUI SecureStorage,
+/// but DPAPI and a plain file need none.
 /// </summary>
 internal static class WindowsDpapi
 {
     private const int CryptProtectUiForbidden = 0x1;
 
-    /// <summary>
-    /// App-specific entropy (SEC-m-03). Without it any process running as this user could decrypt these blobs,
-    /// because DPAPI's default scope is "the same user". With it, only code that knows this value can — so a
-    /// stolen container file is not enough on its own.
-    /// </summary>
+    // DPAPI's default scope is "same user", so without app-specific entropy any process of this user could decrypt
+    // the blobs; with it a stolen container file is not enough on its own.
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("SynesthesiaAudio.SecureStore.v1");
 
     public static byte[] Protect(byte[] data)
@@ -49,9 +45,7 @@ internal static class WindowsDpapi
         }
         catch (Win32Exception)
         {
-            // A blob written before entropy was introduced cannot be decrypted with it. Falling back keeps the
-            // user's existing credential instead of making them retype it; the next save stores it protected
-            // (SEC-m-03). This is a migration path, not the normal one.
+            // Migration path: blobs written before entropy was added; the next save re-protects them with it.
             return UnprotectCore(data, useEntropy: false);
         }
     }
@@ -59,7 +53,7 @@ internal static class WindowsDpapi
     private static byte[] UnprotectCore(byte[] data, bool useEntropy)
     {
         var input = DataBlob.FromBytes(data);
-        // A default blob has a null pointer, which is exactly the "no optional entropy" argument.
+        // A default blob's null pointer is exactly the "no optional entropy" argument.
         var entropy = useEntropy ? DataBlob.FromBytes(Entropy) : default;
         var output = DataBlob.ForOutput();
         try
@@ -88,12 +82,8 @@ internal static class WindowsDpapi
     [DllImport("kernel32.dll")]
     private static extern IntPtr LocalFree(IntPtr hMem);
 
-    /// <summary>
-    /// A DATA_BLOB with ownership that matches its allocation: input buffers are allocated with
-    /// <see cref="Marshal.AllocHGlobal(Int32)"/> and must be released with <see cref="Marshal.FreeHGlobal"/>,
-    /// while the output buffer is allocated by crypt32 with LocalAlloc and must be released with LocalFree.
-    /// The old code used LocalFree for both, which is the wrong pairing for the input (SEC-m-03).
-    /// </summary>
+    // Frees with the allocator that made the buffer: input via AllocHGlobal/FreeHGlobal, crypt32's output via
+    // LocalAlloc/LocalFree.
     [StructLayout(LayoutKind.Sequential)]
     private struct DataBlob
     {
@@ -112,7 +102,6 @@ internal static class WindowsDpapi
             return blob;
         }
 
-        /// <summary>An output blob, whose buffer crypt32 will allocate.</summary>
         public static DataBlob ForOutput()
         {
             var blob = default(DataBlob);

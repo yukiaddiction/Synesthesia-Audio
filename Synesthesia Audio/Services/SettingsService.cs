@@ -24,21 +24,13 @@ public class SettingsService
     private GeneralSettings _currentSettings = new();
 
     /// <summary>
-    /// A snapshot of the current settings.
-    ///
-    /// A copy on purpose (PAT-03): this used to hand out the live object, so any caller could mutate shared state
-    /// at any time — which is what made "temporarily swap the settings, do something, swap them back" look safe
-    /// (BUG-M-04). Assigning to a property of the returned object now changes nothing; use
-    /// <see cref="UpdateSettings"/>.
+    /// A copy, so callers can't mutate shared state behind the lock; write through <see cref="UpdateSettings"/>.
     /// </summary>
     public GeneralSettings CurrentSettings
     {
         get { lock (_settingsLock) return Clone(_currentSettings); }
     }
 
-    /// <summary>
-    /// Applies a change to the settings under the lock and persists it. The supported way to write settings.
-    /// </summary>
     public void UpdateSettings(Action<GeneralSettings> mutate)
     {
         if (mutate == null) return;
@@ -51,7 +43,7 @@ public class SettingsService
             _savedSinceConstruction = true;
         }
 
-        // Secrets are [JsonIgnore]d in the document, so they persist through the secure store instead.
+        // Secrets are [JsonIgnore]d in the document, so they go to the secure store instead.
         _ = PersistSecretAsync(CloudPasswordKey, snapshot.CloudPassword);
         _ = PersistSecretAsync(TranslationApiKeyKey, snapshot.TranslationApiKey);
 
@@ -63,10 +55,7 @@ public class SettingsService
             snapshot.StorageType, snapshot.IsDarkMode, snapshot.TranslateDlsiteTags, snapshot.TranslationProvider);
     }
 
-    /// <summary>
-    /// Changes the in-memory value without writing anything — used when a secret is loaded from the secure store,
-    /// which must not trigger a save of what was just read.
-    /// </summary>
+    /// <summary>No save: used when loading a secret, which must not write back what was just read.</summary>
     public void UpdateSettingsInMemory(Action<GeneralSettings> mutate)
     {
         if (mutate == null) return;
@@ -79,7 +68,6 @@ public class SettingsService
         lock (_apiKeyLoadLock) _apiKeyLoadTask = Task.CompletedTask;
     }
 
-    /// <summary>Non-null when the platform could not persist a secret, so the UI can say so.</summary>
     public string? SecureStoreWarning => _secureStore.LastError;
 
     /// <summary>False when secrets are held for this session only.</summary>
@@ -93,17 +81,15 @@ public class SettingsService
         string appDataDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         _settingsFilePath = Path.Combine(appDataDir, "SynesthesiaAudio_Settings.json");
 
-        // No I/O here on purpose: the document is read by Loaded, which startup awaits before the UI
-        // reads any setting. The store owns its own copy of the document, so UI code that mutates
-        // CurrentSettings can never race a save.
+        // No I/O here: Loaded reads the document, and startup awaits it before the UI reads any setting.
         _store = new JsonFileStore<GeneralSettings>(_settingsFilePath, saveDebounceMs: 250);
         _store.LoadFailed += ex => _logger.LogError(ex, "Settings could not be read — the previous file was kept as .bak");
         _store.SaveFailed += ex => _logger.LogError(ex, "SaveSettings: failed to write settings file");
     }
 
     /// <summary>
-    /// Completes once settings and both secrets have been read. Startup awaits this before showing the
-    /// UI, so an early save cannot be overwritten by a late load.
+    /// Covers settings and both secrets. Startup awaits it before showing the UI, so a late load can't overwrite an
+    /// early save.
     /// </summary>
     public Task Loaded
     {
@@ -120,14 +106,12 @@ public class SettingsService
     {
         try
         {
-            // Carries any settings saved while the read was in flight (see JsonFileStore).
             var persisted = await _store.Loaded.ConfigureAwait(false);
 
             bool adopt;
             lock (_settingsLock)
             {
-                // A save made during the load already put the authoritative values in CurrentSettings;
-                // adopting the file copy would undo it.
+                // A save during the load is authoritative; adopting the file copy would undo it.
                 adopt = !_savedSinceConstruction;
                 if (adopt) _currentSettings = Clone(persisted);
             }
@@ -197,7 +181,6 @@ public class SettingsService
         try
         {
             var password = await _secureStore.GetAsync(CloudPasswordKey).ConfigureAwait(false);
-            // In-memory only: a secret just read from the secure store must not be written back.
             UpdateSettingsInMemory(s => s.CloudPassword = password ?? string.Empty);
         }
         catch (Exception ex)
@@ -239,8 +222,7 @@ public class SettingsService
         _ = PersistSecretAsync(CloudPasswordKey, settings.CloudPassword);
         _ = PersistSecretAsync(TranslationApiKeyKey, settings.TranslationApiKey);
 
-        // Persist a copy: GeneralSettings carries [JsonIgnore] on the secrets, and keeping the store's
-        // document distinct from the live object means a later mutation cannot tear a concurrent write.
+        // A copy, so a later mutation of the live object can't tear a concurrent write.
         _store.Replace(Clone(settings));
 
         _logger.LogInformation("Settings saved — storage: {Storage}, darkMode: {DarkMode}, translateTags: {TranslateTags}, translation: {Provider}",

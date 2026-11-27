@@ -28,16 +28,12 @@ public class MainPage : ContentPage
         _logger = logger;
         _viewModel = viewModel;
 
-        // Without this the page has no BindingContext, and both consequences are silent: every bound
-        // control in this page (the scan command, the sort command, the search box, the album list,
-        // the progress bar) resolves against null, and OnAppearing's InitializeAsync never runs because
-        // it is gated on `BindingContext is MainViewModel`. The app then shows an empty library forever
-        // and Save & Rescan appears to do nothing, because the data it loads has nowhere to go.
+        // Required: without it every binding resolves against null and OnAppearing never initialises the
+        // view model, so the library silently stays empty.
         BindingContext = viewModel;
         _collectionView = new CollectionView
         {
-            // Without this a search that matches nothing showed a blank area, which reads as a broken
-            // screen rather than an empty result (UX-05).
+            // A blank area reads as a broken screen rather than a search with no matches.
             EmptyView = new Label
             {
                 Text = "No albums match your search",
@@ -90,8 +86,7 @@ public class MainPage : ContentPage
         .AppThemeBinding(SearchBar.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
         .AppThemeBinding(SearchBar.PlaceholderColorProperty, AppColors.TextTertiaryLight, AppColors.TextSecondaryDark);
 
-        // A screen reader announces the placeholder text only incidentally; the description says what the field
-        // is for (UX-07).
+        // Screen readers don't reliably announce the placeholder, so the field's purpose is stated explicitly.
         SemanticProperties.SetDescription(searchBar, "Search library");
         SemanticProperties.SetHint(searchBar, "Filters albums by title as you type");
         var searchPill = new Border
@@ -182,7 +177,7 @@ public class MainPage : ContentPage
         var previewPane = new AlbumPreviewPane { IsVisible = false };
         PreviewPane = previewPane;
 
-        // Column 1 collapses to zero while compact, so the grid gets the full width back.
+        // The preview column is zero-width while compact so the album grid gets the full width.
         var contentGrid = new Grid
         {
             ColumnDefinitions = Columns.Define(Star, new GridLength(0)),
@@ -213,7 +208,6 @@ public class MainPage : ContentPage
             }
         };
 
-        // The two players are independent components; only one is ever visible, chosen by mode.
         var compactPlayerHost = new Grid { Children = { new FloatingPlayerBar(audioService, IPlatformApplication.Current!.Services!.GetRequiredService<LibraryCacheService>()) } };
         var dockHost = new Grid { Children = { new TransportDock(audioService) }, IsVisible = false };
 
@@ -241,7 +235,7 @@ public class MainPage : ContentPage
         UpdateSubtitle();
     }
 
-    /// <summary>The search box, so the Ctrl+F shortcut can focus it.</summary>
+    /// <summary>Exposed so the Ctrl+F shortcut can focus it.</summary>
     public SearchBar? SearchHost { get; }
 
     private AlbumPreviewPane PreviewPane { get; }
@@ -254,8 +248,7 @@ public class MainPage : ContentPage
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // Albums is replaced wholesale on every refresh, so the caption follows the
-        // view-model properties rather than subscribing to a collection instance.
+        // Albums is replaced wholesale on refresh, so watch the property rather than a collection instance.
         if (e.PropertyName is nameof(MainViewModel.Albums) or nameof(MainViewModel.SelectedFilter))
         {
             UpdateSubtitle();
@@ -278,13 +271,12 @@ public class MainPage : ContentPage
 
         UiEvents.FocusSearchRequested += OnFocusSearchRequested;
 
-        // MainViewModel is a singleton, so a page that subscribed in its constructor and never unsubscribed
-        // kept the whole re-created UI tree alive and reacting after a window was re-created.
+        // Subscribed per appearance, not in the constructor: the view model is a singleton and would otherwise
+        // keep a re-created window's old UI tree alive.
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
 
-        // Once per page instance, not once per appearance: returning to the library from any page used to
-        // re-prompt for notification permission and re-run initialization every single time (UX-04).
+        // Once per page instance, so returning to the library doesn't re-prompt for permission or re-initialise.
         try
         {
             if (!_notificationPermissionChecked)
@@ -301,8 +293,6 @@ public class MainPage : ContentPage
 
         try
         {
-            // The view model is a singleton and guards its own initialization; this only avoids the repeat
-            // work when returning to the page.
             if (BindingContext is MainViewModel vm && !_initialized)
             {
                 _initialized = true;
@@ -311,7 +301,7 @@ public class MainPage : ContentPage
 
             UpdateSubtitle();
 
-            // The intent's album request is consumed here, once the library is loaded (PAT-07).
+            // A launch intent's album request can only be honoured once the library is loaded.
             if (IPlatformApplication.Current?.Services?.GetService<StartupNavigation>() is { } startupNavigation)
             {
                 var navigationService = IPlatformApplication.Current?.Services?.GetService<INavigationService>();
@@ -332,7 +322,6 @@ public class MainPage : ContentPage
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 
-    /// <summary>Ctrl+F from the desktop keyboard handler.</summary>
     private void OnFocusSearchRequested()
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -347,15 +336,14 @@ public class MainPage : ContentPage
         base.OnSizeAllocated(width, height);
         if (width <= 0) return;
 
-        // Reserve the chrome the grid no longer occupies when the desktop panes are up.
+        // In wide mode the grid only gets what's left after the sidebar, the preview pane and 48px of gutters.
         var available = width;
         if (AppBreakpoints.IsWide(width))
             available -= AppBreakpoints.SidebarWidth + AppBreakpoints.PreviewPaneWidth + 48;
 
         var span = available > 900 ? 4 : available > 640 ? 3 : 2;
 
-        // OnSizeAllocated fires for every resize frame. Replacing the layout each time rebuilt the grid
-        // and threw away the scroll position, so the column count is changed in place instead.
+        // Runs on every resize frame; replacing the layout would rebuild the grid and lose the scroll position.
         if (_collectionView.ItemsLayout is GridItemsLayout grid)
         {
             if (grid.Span == span) return;

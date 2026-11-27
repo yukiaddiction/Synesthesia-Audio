@@ -1,18 +1,12 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Google/Bing are called with all the strings of a batch joined by newlines, and the reply is split back
-/// into one translation per input. That only works if the reply keeps exactly one non-empty line per input,
-/// which it does not always do: the service reflows, merges or drops lines, and an input that itself contains
-/// a newline corrupts the count before the request is even made.
-///
-/// Both halves of that contract live here so they are testable, and so a caller always either gets a
-/// correctly aligned list or is told to fall back — never a silently misaligned one, which would put one
-/// work's tag on another work.
+/// Batched Google/Bing translation joins inputs with newlines and splits the reply. The service may reflow, merge
+/// or drop lines, so callers get either a correctly aligned list or a signal to fall back, never a misaligned one.
 /// </summary>
 public static class BatchTranslationSplitter
 {
-    /// <summary>Flattens line breaks inside one input so it cannot break the per-item line contract.</summary>
+    /// <summary>An embedded newline would break the one-line-per-input contract.</summary>
     public static string SanitizeInput(string? text)
     {
         if (string.IsNullOrEmpty(text)) return string.Empty;
@@ -24,10 +18,7 @@ public static class BatchTranslationSplitter
             .Trim();
     }
 
-    /// <summary>
-    /// Splits a joined translation into one entry per input, or returns <c>null</c> when the reply cannot be
-    /// aligned with certainty. Callers must fall back to per-item requests on <c>null</c>.
-    /// </summary>
+    /// <summary>Returns null when the reply cannot be aligned with certainty; callers then fall back to per-item requests.</summary>
     public static IReadOnlyList<string>? TrySplit(string? translated, int expectedCount)
     {
         if (expectedCount <= 0) return Array.Empty<string>();

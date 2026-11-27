@@ -3,9 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// Reproduces the cloud layout from the device, without the device: a work whose files sit directly in it next to
-/// folders that also contain files, plus folders at the same level as each other. The previous rule keyed sections
-/// off one leaf name and hid some of them, so folders disappeared.
+/// Reproduces the device's cloud layout without the device. Keying sections off one leaf name used to hide
+/// sibling folders.
 /// </summary>
 public sealed class SectionBuilderTests
 {
@@ -33,7 +32,6 @@ public sealed class SectionBuilderTests
         Assert.Equal("04_お風呂屋さんで聞きAS", sections[2].Title);
     }
 
-    /// <summary>Two folders at the same level must both appear - this is the case that went missing.</summary>
     [Fact]
     public void Sibling_folders_are_both_kept()
     {
@@ -50,7 +48,6 @@ public sealed class SectionBuilderTests
         Assert.Equal(new[] { "01_first", "02_second" }, sections.Select(s => s.Title));
     }
 
-    /// <summary>Nested folders keep their whole relative path, so no depth is lost or merged.</summary>
     [Fact]
     public void Nested_folders_keep_their_relative_path()
     {

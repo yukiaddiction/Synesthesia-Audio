@@ -23,8 +23,7 @@ public class AlbumCardView : Border
 
         var cover = CoverImageView.Card(nameof(WorkMetadata.CoverImagePath));
 
-        // The footer rides up over the cover; the overlap is what makes the panel read as glass
-        // sitting above the artwork rather than as a plain stacked card.
+        // The footer overlaps the cover so it reads as glass above the artwork, not a stacked card.
         var footer = new Border
         {
             StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassFooterRadius },
@@ -57,8 +56,7 @@ public class AlbumCardView : Border
             }
         }.Glass(strong: true);
 
-        // A work whose metadata could not be fetched looked exactly like a complete one, so the only clue was
-        // an empty circle/genre. It says so now (UX-05).
+        // Otherwise a work whose metadata couldn't be fetched looks identical to a complete one.
         var pendingBadge = new Border
         {
             BackgroundColor = AppColors.WarningDark,
@@ -89,18 +87,15 @@ public class AlbumCardView : Border
             }
         };
 
-        // Grid items live in a virtualised CollectionView: no ambient shadow at rest, the stroke and
-        // translucent fill carry the depth. A hover shadow is added only for the pointed-at card.
+        // No resting shadow on virtualised grid items for performance; only the hovered card gets one.
         this.Glass(elevated: false);
         ToolTipProperties.SetText(this, string.Empty);
         SetBinding(ToolTipProperties.TextProperty, new Binding(nameof(WorkMetadata.Title)));
 
-        // The card is a tappable surface with no readable text of its own, so a screen reader had nothing to
-        // announce (UX-07). The title is already bound for the tooltip; bind it as the description too.
+        // The card itself has no readable text, so give screen readers the title.
         SetBinding(SemanticProperties.DescriptionProperty, new Binding(nameof(WorkMetadata.Title)));
         SemanticProperties.SetHint(this, "Double tap to open the album");
 
-        // Single tap previews on desktop and opens on compact; a double tap always opens.
         var singleTap = new TapGestureRecognizer { NumberOfTapsRequired = 1 };
         singleTap.Tapped += (sender, _) =>
         {
@@ -133,7 +128,7 @@ public class AlbumCardView : Border
 
     private void ApplyHover(bool isHovered)
     {
-        // ClearValue rather than assigning null: VisualElement.Shadow is not nullable.
+        // ClearValue because VisualElement.Shadow is not nullable.
         if (isHovered)
             Shadow = _hoverShadow;
         else

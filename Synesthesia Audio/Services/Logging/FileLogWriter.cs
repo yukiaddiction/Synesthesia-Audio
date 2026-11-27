@@ -3,11 +3,8 @@ using System.Threading.Channels;
 namespace Synesthesia_Audio.Services.Logging;
 
 /// <summary>
-/// The single writer for the app log.
-///
-/// One bounded queue and one consumer for the whole process, so every category appends to the same file in
-/// order and rotation can never race an append. Logging from the UI thread only enqueues; the disk work
-/// happens on the consumer's thread.
+/// One queue and one consumer for the whole process, so every category appends to app.log in order and rotation
+/// can never race an append. Callers only enqueue; disk work happens on the consumer.
 /// </summary>
 internal static class FileLogWriter
 {
@@ -16,10 +13,7 @@ internal static class FileLogWriter
     private const long MaxFileSizeBytes = 1 * 1024 * 1024;
     private const int MaxBackupFiles = 3;
 
-    /// <summary>
-    /// Bounded on purpose: a runaway log source must not turn into unbounded memory growth. Old entries are
-    /// dropped rather than the caller being blocked.
-    /// </summary>
+    // Bounded so a runaway log source cannot grow memory; old lines are dropped instead of blocking callers.
     private static readonly Channel<string> Channel = System.Threading.Channels.Channel.CreateBounded<string>(
         new BoundedChannelOptions(4096)
         {
@@ -51,7 +45,7 @@ internal static class FileLogWriter
         {
             while (await reader.WaitToReadAsync().ConfigureAwait(false))
             {
-                // Batch whatever is already queued so a burst costs one file open instead of one per line.
+                // Drain what is already queued so a burst costs one file open, not one per line.
                 while (batch.Count < 256 && reader.TryRead(out var line))
                 {
                     batch.Add(line);
@@ -65,7 +59,7 @@ internal static class FileLogWriter
         }
         catch (Exception ex)
         {
-            // The logger must never take the app down, and there is nowhere left to report to.
+            // The logger must never take the app down, and there is nowhere else to report.
             System.Diagnostics.Debug.WriteLine($"FileLogWriter consumer stopped: {ex.Message}");
         }
     }

@@ -26,13 +26,11 @@ public partial class MainViewModel : BaseViewModel
 
     public ObservableCollection<WorkMetadata> Albums { get; set; } = new();
 
-    /// <summary>Filter that shows everything, including works whose rating could not be determined.</summary>
+    // The only filter that includes works with an unknown rating.
     public const string FilterAll = "All";
 
-    /// <summary>Filter that shows only works confirmed as all-ages.</summary>
     public const string FilterAllAge = AgeRatings.Sfw;
 
-    /// <summary>Filter that shows only works confirmed as R-18.</summary>
     public const string FilterR18 = AgeRatings.Nsfw;
 
     private static string FilterTitle(string? filter)
@@ -65,10 +63,7 @@ public partial class MainViewModel : BaseViewModel
     [ObservableProperty]
     private bool _isScanning;
 
-    /// <summary>
-    /// The work highlighted in the desktop preview pane. Null until something is picked; the
-    /// compact layout never shows the pane, so this stays unused there.
-    /// </summary>
+    // Drives the desktop preview pane only; unused in the compact layout.
     [ObservableProperty]
     private WorkMetadata? _selectedWork;
 
@@ -105,10 +100,7 @@ public partial class MainViewModel : BaseViewModel
 
     private Timer? _searchDebounceTimer;
 
-    /// <summary>
-    /// Debounced: filtering the whole library on every keystroke rebuilt the album list dozens of times while
-    /// typing, which is what made search feel heavy on a large library (PERF-06).
-    /// </summary>
+    /// <summary>Debounced so typing doesn't rebuild the whole album list on every keystroke.</summary>
     partial void OnSearchTextChanged(string value)
     {
         lock (_scanPollLock)
@@ -142,9 +134,7 @@ public partial class MainViewModel : BaseViewModel
         _isInitializing = true;
         try
         {
-            // Every store reads its file lazily so nothing does I/O in a constructor. Wait for them here
-            // before the first read: otherwise the UI races the load and shows an empty library with
-            // default settings, and the "quick check for new works" believes every folder is new.
+            // Stores load lazily; reading before they finish shows an empty library and makes every folder look new.
             await Task.WhenAll(_cacheService.Loaded, _settingsService.Loaded, _scanStateService.Loaded);
 
             _logger.LogInformation("Library initializing — works in cache: {Count}", _allWorks.Count);
@@ -368,7 +358,6 @@ public partial class MainViewModel : BaseViewModel
     {
         lock (_scanPollLock)
         {
-            // A new scan may report its own completion exactly once.
             _scanFinishedHandled = 0;
 
             if (_scanPollTimer == null)
@@ -377,9 +366,7 @@ public partial class MainViewModel : BaseViewModel
                 return;
             }
 
-            // StopScanPolling only pauses the existing timer. Leaving it paused made the second and every
-            // later scan invisible to the poller, so IsScanning stayed true forever and the Rescan button
-            // looked dead until the app was restarted.
+            // StopScanPolling only pauses the timer, so it must be restarted or later scans never finish in the UI.
             _scanPollTimer.Change(PollIntervalMs, PollIntervalMs);
         }
     }
@@ -393,8 +380,7 @@ public partial class MainViewModel : BaseViewModel
     }
 
     /// <summary>
-    /// True for the first caller of the current scan only. The in-process task and the poller can both
-    /// observe the same finished scan, which used to raise the completion alert twice.
+    /// Both the in-process task and the poller can see the same finished scan; only the first may show the alert.
     /// </summary>
     private bool TryClaimScanFinished() =>
         Interlocked.Exchange(ref _scanFinishedHandled, 1) == 0;
@@ -422,8 +408,7 @@ public partial class MainViewModel : BaseViewModel
     {
         var filtered = _allWorks.AsEnumerable();
 
-        // Unknown ratings are deliberately excluded from All Age: a work we could not read must never be
-        // presented as all-ages. They stay reachable through the All filter.
+        // Unknown ratings are excluded from All Age on purpose; they stay reachable through All.
         if (string.Equals(SelectedFilter, FilterR18, StringComparison.OrdinalIgnoreCase))
             filtered = filtered.Where(w => w.IsNsfw);
         else if (string.Equals(SelectedFilter, FilterAllAge, StringComparison.OrdinalIgnoreCase))
@@ -483,7 +468,6 @@ public partial class MainViewModel : BaseViewModel
         }
         else
         {
-            // If no path set yet, open folder picker (initial scan). Otherwise rescan existing path.
             if (string.IsNullOrEmpty(pathToScan))
             {
                 try
@@ -505,8 +489,7 @@ public partial class MainViewModel : BaseViewModel
                     var result = await FolderPicker.Default.PickAsync(default);
                     if (!result.IsSuccessful) return;
 
-                    // Same conversion the Settings picker uses; keeping it in Core means the two pickers can
-                    // no longer disagree about what a picked folder is (BUG-m-18).
+                    // Shared with the Settings picker so both agree on what a picked folder's path is.
                     pathToScan = AndroidStoragePath.ToFileSystemPath(result.Folder.Path);
 
                     if (!Directory.Exists(pathToScan)) return;
@@ -521,9 +504,7 @@ public partial class MainViewModel : BaseViewModel
             }
             else if (!Directory.Exists(pathToScan))
             {
-                // Ask before clearing: a folder on an unmounted SD card or a temporarily unavailable network
-                // share is not necessarily gone, and wiping the setting silently made the user re-pick it and
-                // lose every cached work keyed to that path (BUG-m-18).
+                // Ask first: the folder may just be on an unmounted drive, and replacing it orphans every cached work under it.
                 var repick = await _dialog.ConfirmAsync(
                     "Folder Not Found",
                     $"The configured folder could not be opened:\n{pathToScan}\n\n" +
@@ -582,8 +563,7 @@ public partial class MainViewModel : BaseViewModel
     {
         if (album == null) return;
 
-        // A double tap fires the single-tap handler as well, and both used to push while the first push was
-        // still animating, stacking two copies of the same album page.
+        // A double tap also fires the single-tap handler; the guard stops two album pages being pushed.
         await NavigationGuard.RunAsync(() =>
             _navigation.GoToAsync(nameof(AlbumPage), new Dictionary<string, object> { { "Album", album } }));
     }

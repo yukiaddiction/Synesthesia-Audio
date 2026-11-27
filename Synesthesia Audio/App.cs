@@ -43,11 +43,10 @@ public class App : Application
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        // A re-created activity needs a fresh, unparented UI graph. Reusing the singleton Shell
-        // made Window.OnPageChanged run against a null MauiContext and killed the process.
+        // A re-created activity needs a fresh Shell; reusing one crashed with a null MauiContext.
         var shell = _services.GetRequiredService<AppShell>();
 
-        // A view cannot be re-parented into a new window, so each window gets its own element.
+        // A view can't be re-parented into a new window, so each window gets its own element.
         var mediaElement = new MediaElement
         {
             ShouldShowPlaybackControls = true,
@@ -58,27 +57,23 @@ public class App : Application
         _audioService.SetMediaElement(mediaElement);
         shell.SetMediaElement(mediaElement);
 
-        // Retention runs here rather than in the constructor: it walks the log directory and deletes files, which
-        // is I/O that has no business on the startup path. Fired off the UI thread once the window exists (PAT-02).
+        // Log purging is file I/O, so it runs off the UI thread once the window exists, not on the startup path.
         Task.Run(static () => Services.Logging.FileLogger.PurgeOldLogs()).FireAndForget(ex =>
             _logger.LogDebug(ex, "Purging old log files failed"));
 
         var window = new Window(shell);
 
-        // Declared outside the WINDOWS block because the shutdown path below unsubscribes it on every
-        // platform; it stays null where there is no desktop chrome to re-apply.
+        // Declared outside the WINDOWS block because shutdown unsubscribes it on every platform.
         EventHandler<AppThemeChangedEventArgs>? themeChangedHandler = null;
 
 #if WINDOWS
-        // Desktop window contract: open at a comfortable size, never below what the wide
-        // composition needs, and remember whatever the user resized it to.
+        // The minimum size is what the wide desktop layout needs to fit.
         window.Width = Preferences.Get("WindowWidth", 1440d);
         window.Height = Preferences.Get("WindowHeight", 900d);
         window.MinimumWidth = 880;
         window.MinimumHeight = 640;
 
-        // Per window, not per app: this used to be a field on the singleton App, so a re-created window
-        // never had its chrome or keyboard shortcuts attached again.
+        // Per window, not a field on the singleton App, so a re-created window gets its chrome and shortcuts again.
         var desktopChromeApplied = false;
 
         window.HandlerChanged += (_, _) =>
@@ -97,8 +92,7 @@ public class App : Application
             }
         };
 
-        // Application lives for the whole process, so this handler is unsubscribed when the window dies;
-        // otherwise every re-created window leaked another one that still targeted the dead window.
+        // Application outlives the window, so this handler is removed in Destroying or it would leak per re-created window.
         if (Application.Current != null)
         {
             themeChangedHandler = (_, _) => MainThread.BeginInvokeOnMainThread(() => ApplyDesktopChrome(window));
@@ -169,10 +163,6 @@ public class App : Application
         return window;
     }
 
-    /// <summary>
-    /// Persists the current window size so the next launch reopens at the same place.
-    /// Only the Windows target has a resizable desktop window.
-    /// </summary>
     private static void SaveWindowBounds(Window window)
     {
 #if WINDOWS
@@ -185,7 +175,7 @@ public class App : Application
         }
         catch
         {
-            // Window bounds are a convenience, never a failure path.
+            // Remembering the size is a convenience; never let it fail shutdown.
         }
 #endif
     }

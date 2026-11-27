@@ -5,9 +5,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// BUG-m-21: a credential must never be silently dropped. The store used to delete an entry on *any*
-/// decryption failure, and it started from an empty dictionary when the file could not be parsed — both
-/// paths destroyed a stored password without telling anyone.
+/// A stored password must never be silently destroyed, whether decryption fails transiently or the file cannot
+/// be parsed.
 /// </summary>
 public sealed class SecureFileStoreHardeningTests : IDisposable
 {
@@ -33,7 +32,7 @@ public sealed class SecureFileStoreHardeningTests : IDisposable
         }
     }
 
-    /// <summary>Stands in for DPAPI: prefix on write, strip on read. Unreadable values simulate corruption.</summary>
+    /// <summary>Stands in for DPAPI; unreadable values simulate corruption.</summary>
     private static Task<string> Protect(string value) => Task.FromResult("enc:" + value);
 
     private static Task<string> Unprotect(string value)
@@ -70,10 +69,6 @@ public sealed class SecureFileStoreHardeningTests : IDisposable
         Assert.False(entries!.ContainsKey("CloudPassword"));
     }
 
-    /// <summary>
-    /// A transient failure must not cost the user their password: the entry has to survive, and a later
-    /// read has to succeed.
-    /// </summary>
     [Fact]
     public async Task A_transient_failure_does_not_destroy_the_credential()
     {
@@ -89,7 +84,7 @@ public sealed class SecureFileStoreHardeningTests : IDisposable
         Assert.Equal("hunter2", await CreateStore().GetAsync("CloudPassword"));
     }
 
-    /// <summary>A corrupt container is kept aside so the encrypted blobs remain recoverable.</summary>
+    /// <summary>Keeping the corrupt container aside leaves the encrypted blobs recoverable.</summary>
     [Fact]
     public async Task A_corrupt_container_is_backed_up_not_discarded()
     {

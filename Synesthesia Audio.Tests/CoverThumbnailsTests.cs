@@ -2,10 +2,7 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// PERF-08: thumbnails sit next to the original and share its stem, so the naming is the contract between the
-/// generator and every view that asks for one.
-/// </summary>
+/// <summary>The thumbnail name is the only contract between the generator and every view that asks for one.</summary>
 public sealed class CoverThumbnailsTests
 {
     [Fact]
@@ -13,9 +10,7 @@ public sealed class CoverThumbnailsTests
     {
         var result = CoverThumbnails.For("/data/covers/abc.jpg", CoverThumbnails.CardEdge);
 
-        // Compared by file name and folder rather than by a built-up path: Path.Combine rewrites separators, so an
-        // exact string comparison here asserted Windows behaviour rather than the naming rule (it was this test
-        // that was wrong, not the code).
+        // Compared by name and folder because Path.Combine rewrites separators per platform.
         Assert.Equal("abc.256.jpg", Path.GetFileName(result));
         Assert.Equal("covers", Path.GetFileName(Path.GetDirectoryName(result)));
     }

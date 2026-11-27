@@ -3,18 +3,13 @@ using Microsoft.Extensions.Logging;
 namespace Synesthesia_Audio.Services.Logging;
 
 /// <summary>
-/// A logger for the classes the framework constructs, which cannot take one by constructor injection: Android
-/// services, activity helpers, custom players.
-///
-/// It holds an explicitly initialised factory rather than reaching into a service locator (PAT-01). Until
-/// <see cref="Initialize"/> runs, every call returns a null logger, so logging before startup is silent rather
-/// than throwing.
+/// Logger source for classes the framework constructs (Android services, activity helpers, players), which cannot
+/// take one by injection. Before <see cref="Initialize"/> runs it hands out null loggers, so early logging is silent.
 /// </summary>
 public static class AppLog
 {
     private static ILoggerFactory? _factory;
 
-    /// <summary>Called once at startup with the app's logger factory.</summary>
     public static void Initialize(ILoggerFactory factory) => _factory = factory;
 
     public static ILogger<T> Get<T>() where T : class =>

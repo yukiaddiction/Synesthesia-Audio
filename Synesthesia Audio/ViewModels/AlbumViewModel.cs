@@ -110,8 +110,7 @@ public partial class AlbumViewModel : BaseViewModel
         
         var allTracks = Album.SubAlbums.SelectMany(sa => sa.Tracks).ToList();
 
-        // the android lock screen notification reads metadata from the currently playing track,
-        // so push album-level cover art and voice actor info down to every track
+        // The Android lock-screen notification reads metadata from the playing track, so copy album-level info onto each.
         foreach (var t in allTracks)
         {
             t.CoverImagePath = Album.CoverImagePath;

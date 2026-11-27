@@ -38,9 +38,6 @@ public static class MauiProgram
             logging.AddProvider(new FileLoggerProvider());
         });
 
-        // The Debug provider was registered twice: inside AddLogging above and again through
-        // builder.Logging. One registration is enough, and the duplicate emitted every line twice (PAT-10).
-
         builder.Services.AddSingleton<LogService>();
         builder.Services.AddSingleton<IDialogService, DialogService>();
         builder.Services.AddSingleton<INavigationService, NavigationService>();
@@ -49,9 +46,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<SettingsService>();
         builder.Services.AddSingleton<TagMappingService>();
         builder.Services.AddSingleton<LibraryCacheService>();
-        // Named clients (DUP-02 / OVR-05). Each service asks for its purpose by name, so the timeout, headers and
-        // handler chain for that purpose live in exactly one place, and the handler pools last the process
-        // lifetime instead of being rebuilt per service instance.
+        // Named clients keep each purpose's timeout, headers and handlers in one place, with pooled handlers shared process-wide.
         builder.Services.AddHttpClient(HttpClients.DLsite, client =>
         {
             client.Timeout = TimeSpan.FromSeconds(AppConstants.DlsiteClientTimeoutSeconds);
@@ -59,7 +54,7 @@ public static class MauiProgram
             client.DefaultRequestHeaders.Add("Accept-Language", "ja,en-US;q=0.9,en;q=0.8");
             client.DefaultRequestHeaders.Add("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
             client.DefaultRequestHeaders.Add("Referer", "https://www.dlsite.com/");
-            // The age gate is a cookie, not a flag: without it DLsite answers with the interstitial page.
+            // Without the age-gate cookies DLsite answers with its interstitial page instead of the work.
             client.DefaultRequestHeaders.Add("Cookie", "age_check_done=1; adultchecked=1; work_view_mode=2;");
         }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { MaxConnectionsPerServer = 16 });
 
@@ -80,8 +75,7 @@ public static class MauiProgram
             client.DefaultRequestHeaders.Add("User-Agent", DLsiteService.DefaultUserAgent);
         });
 
-        // Transient, not singleton: the HTTP factory builds one pipeline per handler lifetime and rejects a
-        // reused handler. The captured value lives in RetryAfterState, which is the singleton.
+        // The HTTP factory rejects a reused handler, so the handler is transient and its captured state is the singleton.
         builder.Services.AddSingleton<RetryAfterState>();
         builder.Services.AddTransient<RetryAfterCaptureHandler>();
         builder.Services.AddSingleton<ITranslationService, TranslationService>();
@@ -113,24 +107,20 @@ public static class MauiProgram
 builder.Services.AddTransient<TagMappingPage>();
         builder.Services.AddTransient<SettingsPage>();
         builder.Services.AddTransient<LogViewerPage>();
-        // Per-window UI graph: a re-created activity gets its own unparented Shell. Keeping these
-        // singletons let the same Shell be attached to a second window, which crashed the app
-        // inside Window.OnPageChanged with "MauiContext is null".
+        // Transient so each window gets its own Shell; sharing one across windows crashed with "MauiContext is null".
         builder.Services.AddTransient<AppShell>();
 
 
 
         var app = builder.Build();
-        // AppLog is the one logger that cannot be injected: the framework constructs its callers (PAT-01).
+        // AppLog serves callers the framework constructs, which can't receive an injected logger.
         Synesthesia_Audio.Services.Logging.AppLog.Initialize(app.Services.GetRequiredService<ILoggerFactory>());
         RegisterGlobalExceptionHandlers();
         return app;
     }
 
     /// <summary>
-    /// The last two AppLog.Get calls in the app, and the only place where resolving a logger at the call site is
-    /// right: these handlers are registered before the container exists and may run during shutdown, so there is
-    /// no injected logger to hold. AppLog returns a NullLogger until the factory is initialised (PAT-01).
+    /// Resolves loggers through AppLog because these handlers may fire before the container exists or during shutdown.
     /// </summary>
     private static void RegisterGlobalExceptionHandlers()
     {

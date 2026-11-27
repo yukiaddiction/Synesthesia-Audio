@@ -2,10 +2,7 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// PERF-12: cover files were never deleted. Because this policy decides what may be deleted from disk, every
-/// reason it might be wrong gets a test.
-/// </summary>
+/// <summary>This policy decides what gets deleted from disk, so every way it could be wrong gets a test.</summary>
 public sealed class CoverCleanupPolicyTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 26, 12, 0, 0, TimeSpan.Zero);

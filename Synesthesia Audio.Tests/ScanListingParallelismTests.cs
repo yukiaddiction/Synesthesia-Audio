@@ -3,12 +3,11 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// PERF-02: the folder walk listed one folder at a time, so a WebDAV library spent most of a scan waiting on a
-/// round trip per folder. It now lists a bounded batch at a time — bounded, so a cloud server is not flooded.
+/// One round trip per folder dominated WebDAV scans, so folders are listed in batches, bounded so a cloud server
+/// is not flooded.
 /// </summary>
 public sealed class ScanListingParallelismTests
 {
-    /// <summary>Records how many listings are in flight at once, and can be made slow.</summary>
     private sealed class TrackingFileSource : IScanFileSource
     {
         private readonly Dictionary<string, List<ScanEntry>> _directories = new(StringComparer.OrdinalIgnoreCase);
@@ -16,7 +15,6 @@ public sealed class ScanListingParallelismTests
 
         public int MaxObservedInFlight { get; private set; }
 
-        /// <summary>Wall clock allowed for the expected callers to arrive before the test gives up on them.</summary>
         private static readonly TimeSpan ConcurrencyWindow = TimeSpan.FromSeconds(5);
         public int ListCalls { get; private set; }
         public TimeSpan Delay { get; init; } = TimeSpan.Zero;
@@ -27,7 +25,6 @@ public sealed class ScanListingParallelismTests
             return this;
         }
 
-        /// <summary>How many callers must be in flight together for the gate to open.</summary>
         public int ExpectedConcurrent { get; set; } = 1;
 
         private readonly TaskCompletionSource<bool> _concurrent =
@@ -50,7 +47,7 @@ public sealed class ScanListingParallelismTests
             }
             catch (TimeoutException)
             {
-                // A sequential implementation: the caller gives up waiting and the assertions report it.
+                // A sequential walk ends up here; the assertions report it.
             }
         }
         public async Task<IReadOnlyList<ScanEntry>> ListAsync(string path, CancellationToken cancellationToken = default)
@@ -64,10 +61,8 @@ public sealed class ScanListingParallelismTests
 
             try
             {
-                // Wait for the other callers to arrive, up to a generous window. A sequential walk would leave the
-                // first caller waiting out the whole window, which is a definite failure rather than a flaky one:
-                // asserting on "did concurrency happen within a few milliseconds" failed whenever the machine was
-                // busy building something else.
+                // A generous window keeps a sequential walk a definite failure, whereas a tight timing check
+                // flaked whenever the machine was busy.
                 await WaitForConcurrencyAsync(cancellationToken).ConfigureAwait(false);
 
                 return _directories.TryGetValue(path, out var entries)
@@ -103,7 +98,7 @@ public sealed class ScanListingParallelismTests
         Assert.True(source.SawConcurrency, "the walk never had more than one listing in flight");
     }
 
-    /// <summary>The cap matters: a cloud server should not receive an unbounded burst of PROPFINDs.</summary>
+    /// <summary>A cloud server should not receive an unbounded burst of PROPFINDs.</summary>
     [Fact]
     public async Task Parallelism_is_bounded_by_the_cap()
     {
@@ -133,7 +128,7 @@ public sealed class ScanListingParallelismTests
         Assert.Equal(1, source.MaxObservedInFlight);
     }
 
-    /// <summary>Batching must not lose the failure bookkeeping that BUG-M-01 depends on.</summary>
+    /// <summary>Cache retention depends on failed folders being recorded, so batching must keep that bookkeeping.</summary>
     [Fact]
     public async Task A_failed_folder_is_still_recorded_in_a_parallel_batch()
     {

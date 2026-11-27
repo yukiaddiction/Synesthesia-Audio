@@ -9,11 +9,8 @@ using Microsoft.Extensions.Logging;
 namespace Synesthesia_Audio.Views.Components;
 
 /// <summary>
-/// One row of the tag-mapping editor.
-///
-/// The inputs come from bindable properties rather than constructor arguments so a
-/// <see cref="CollectionView"/> can recycle the view for a different mapping. That is what lets the page
-/// virtualise the list instead of building a view per row up front (PERF-09).
+/// Takes its values from bindable properties rather than the constructor so a CollectionView can recycle
+/// it for another mapping, letting the page virtualise the list.
 /// </summary>
 public class TagMappingRowView : Border
 {
@@ -37,10 +34,8 @@ public class TagMappingRowView : Border
         set => SetValue(EngValueProperty, value);
     }
 
-    /// <summary>Called with the typed key and value when the row is saved.</summary>
     public Action<string, string>? OnSave { get; set; }
 
-    /// <summary>Called with the key after the user confirms deletion.</summary>
     public Action<string>? OnDelete { get; set; }
 
     private readonly Label _jpLabel;
@@ -78,7 +73,6 @@ public class TagMappingRowView : Border
         var delBtn = GlassTheme.IconButton("\u2715", AppFontSizes.ButtonMedium, AppLayout.ButtonHeightSmall);
         delBtn.Clicked += async (_, _) =>
         {
-            // Deleting used to be a single tap with no undo (UX-05).
             if (await ConfirmDeleteAsync(JpKey, _logger)) OnDelete?.Invoke(JpKey);
         };
         SemanticProperties.SetDescription(delBtn, "Delete mapping");
@@ -103,10 +97,7 @@ public class TagMappingRowView : Border
         this.GlassSoft();
     }
 
-    /// <summary>
-    /// Pushes the bound values into the controls. A recycled view keeps its entry, so the text is only replaced
-    /// when it actually differs - otherwise typing would be interrupted by a rebind.
-    /// </summary>
+    /// <summary>Only replaces entry text that differs, so a rebind doesn't interrupt typing in a recycled row.</summary>
     private void SyncToBindings()
     {
         _jpLabel.Text = JpKey;
@@ -116,9 +107,7 @@ public class TagMappingRowView : Border
             _engEntry.Text = EngValue ?? string.Empty;
     }
 
-    /// <summary>
-    /// Asks before deleting a mapping. Deleting used to be a single tap with no undo (UX-05).
-    /// </summary>
+    /// <summary>Deletion has no undo, so it is confirmed first.</summary>
     private static async Task<bool> ConfirmDeleteAsync(string jpKey, ILogger logger)
     {
         var page = Shell.Current;

@@ -3,8 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// DUP-08: the base-URL rule was written twice — on the connection object and again where file URLs are built —
-/// so the two could disagree about a trailing slash and produce different request paths.
+/// The connection and the file-URL builder share this rule; disagreeing on the trailing slash produced different
+/// request paths.
 /// </summary>
 public sealed class WebDavUrlTests
 {

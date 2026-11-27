@@ -2,10 +2,6 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// PAT-06: the storage-type values were bare string literals in a dozen places, including a <c>Contains</c>
-/// test that matched anything containing the word. These are the comparisons the app now makes.
-/// </summary>
 public sealed class StorageTypesTests
 {
     [Theory]
@@ -27,10 +23,7 @@ public sealed class StorageTypesTests
         Assert.False(StorageTypes.IsWebDav(value));
     }
 
-    /// <summary>
-    /// The regression the old <c>Contains("WebDAV")</c> allowed: a value that merely mentions WebDAV is not a
-    /// WebDAV setting.
-    /// </summary>
+    /// <summary>Regression: the old <c>Contains("WebDAV")</c> check treated any value mentioning WebDAV as WebDAV.</summary>
     [Theory]
     [InlineData("LocalWebDAV")]
     [InlineData("NotWebDAV")]

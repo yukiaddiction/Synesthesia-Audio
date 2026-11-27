@@ -3,13 +3,8 @@ using System.Text;
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Turns a cast/credit string into readable romaji. Kanji is resolved through the name table and
-/// katakana/hiragana through the injected kana romaniser.
-/// <para>
-/// The governing rule is <b>never drop characters</b>. The previous implementation silently deleted
-/// any kanji it did not recognise, which turned 五十嵐 into an empty string and 小鳥遊まこ into
-/// "mako". Anything that cannot be romanised is therefore emitted verbatim instead.
-/// </para>
+/// Romanises cast names: kanji via the name table, kana via the injected romaniser. Anything that cannot be
+/// romanised is emitted verbatim, because dropping it turned 五十嵐 into "" and 小鳥遊まこ into "mako".
 /// </summary>
 public sealed class NameRomanizer
 {
@@ -18,8 +13,7 @@ public sealed class NameRomanizer
     private readonly Func<string, string?>? _unknownKanjiFallback;
 
     /// <param name="unknownKanjiFallback">
-    /// Optional last resort for kanji the table does not know, such as a MeCab/Kawazu reading.
-    /// Returning null leaves the kanji verbatim, which is always preferable to dropping it.
+    /// Optional last resort (e.g. a MeCab/Kawazu reading); returning null keeps the kanji verbatim.
     /// </param>
     public NameRomanizer(NameReadingTable table, Func<string, string> kanaToRomaji, Func<string, string?>? unknownKanjiFallback = null)
     {
@@ -28,7 +22,6 @@ public sealed class NameRomanizer
         _unknownKanjiFallback = unknownKanjiFallback;
     }
 
-    /// <summary>Splits a cast list on the separators DLsite uses and romanises each entry.</summary>
     public string RomanizeCastList(string rawCast)
     {
         if (string.IsNullOrWhiteSpace(rawCast)) return string.Empty;
@@ -45,7 +38,6 @@ public sealed class NameRomanizer
         return string.Join(", ", names);
     }
 
-    /// <summary>Romanises one name, preserving any spacing the source already had.</summary>
     public string RomanizeName(string rawName)
     {
         if (string.IsNullOrWhiteSpace(rawName)) return string.Empty;
@@ -63,7 +55,6 @@ public sealed class NameRomanizer
         return string.Join(" ", words);
     }
 
-    /// <summary>Strips "CV:", "CV.", "CV：" and "CV " markers that DLsite sometimes prefixes.</summary>
     public static string StripCreditPrefix(string text)
     {
         var trimmed = text.Trim();
@@ -119,10 +110,8 @@ public sealed class NameRomanizer
                 }
                 else
                 {
-                    // Consume the whole unknown kanji run, then try the optional fallback once with
-                    // the full span so a parser sees the word in context rather than character by
-                    // character. If it yields nothing, the kanji is kept verbatim — losing the
-                    // character is worse than showing it unromanised.
+                    // Hand the whole unknown run to the fallback at once so it sees the word in context,
+                    // stopping early where the table knows a later kanji.
                     var runStart = i;
                     while (i < word.Length && IsKanji(word[i]))
                     {
@@ -153,8 +142,10 @@ public sealed class NameRomanizer
         return builder.ToString();
     }
 
+    // CJK Unified Ideographs, then Extension A.
     private static bool IsKanji(char c) => c is >= '\u4e00' and <= '\u9fff' or >= '\u3400' and <= '\u4dbf';
 
+    // Hiragana, Katakana, Katakana Phonetic Extensions.
     private static bool IsKana(char c) =>
         c is >= '\u3040' and <= '\u309f' or >= '\u30a0' and <= '\u30ff' or >= '\u31f0' and <= '\u31ff';
 
@@ -169,8 +160,8 @@ public sealed class NameRomanizer
         {
             if (char.IsLetter(c))
             {
-                // Capitalise the start of every word, because a surname/given split can be inserted
-                // inside what was originally a single token.
+                // Every word starts upper-case because a surname/given split may have been inserted
+                // inside what was originally one token.
                 builder.Append(atWordStart ? char.ToUpperInvariant(c) : char.ToLowerInvariant(c));
                 atWordStart = false;
             }

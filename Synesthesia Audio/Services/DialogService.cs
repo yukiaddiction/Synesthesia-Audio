@@ -3,11 +3,9 @@ using Microsoft.Extensions.Logging;
 namespace Synesthesia_Audio.Services;
 
 /// <summary>
-/// The <see cref="IDialogService"/> implementation backed by the current Shell.
-///
-/// Every method degrades to "no answer" when there is no Shell to show: an alert is logged, a confirmation is
-/// declined, and a choice is cancelled. That is deliberate - a background scan finishing while the window is gone
-/// must not throw, and a confirmation that cannot be shown must never be treated as accepted (PAT-04).
+/// Shell-backed dialogs that degrade to "no answer" without a window: alerts are logged, confirmations declined,
+/// choices cancelled. A background scan finishing with no window must not throw, and an unshown confirmation must
+/// never count as accepted.
 /// </summary>
 public sealed class DialogService : IDialogService
 {
@@ -29,7 +27,6 @@ public sealed class DialogService : IDialogService
         }
         catch (Exception ex)
         {
-            // A dialog failing must not take down the operation that wanted to report something.
             _logger.LogDebug(ex, "Showing an alert failed ({Title})", title);
         }
     }

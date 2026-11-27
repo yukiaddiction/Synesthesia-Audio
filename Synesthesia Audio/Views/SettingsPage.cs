@@ -123,9 +123,7 @@ public class SettingsPage : ContentPage
         ApplyGroupVisibility(_scaffold.IsWide);
     }
 
-    /// <summary>
-    /// Compact keeps every group stacked; wide shows only the group picked on the rail.
-    /// </summary>
+    /// <summary>Compact keeps every group stacked; wide shows only the group picked on the rail.</summary>
     private void ApplyGroupVisibility(bool wide)
     {
         var groups = new[] { _libraryGroup, _appearanceGroup, _diagnosticsGroup };
@@ -242,8 +240,7 @@ public class SettingsPage : ContentPage
                     {
                         CreateFormLabel("Base Audio Folder Path"),
 
-                        // Star column for the field, auto for the button: the path field shrinks to fit a
-                        // phone instead of pushing the button off the edge (UX-09).
+                        // Star field, auto button: the path field shrinks on a phone instead of pushing the button off-screen.
                         new Grid
                         {
                             ColumnDefinitions =
@@ -362,7 +359,6 @@ public class SettingsPage : ContentPage
                                 GlassTheme.FormEntry(placeholder: "e.g. https://api-free.deepl.com")
                                     .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationCustomBaseUrl)),
 
-                                // These two were configurable in the service but unreachable from the UI (OVR-04).
                                 CreateFormLabel("Auth Header Name"),
                                 GlassTheme.FormEntry(placeholder: "Authorization")
                                     .Bind(Entry.TextProperty, nameof(SettingsViewModel.TranslationCustomAuthHeader)),
@@ -387,7 +383,7 @@ public class SettingsPage : ContentPage
                     .Bind(Button.IsEnabledProperty, nameof(SettingsViewModel.IsTestingTranslation), converter: new Converters.InvertedBoolConverter())
                     .Invoke(b => b.HorizontalOptions = LayoutOptions.Start),
 
-                // The result text said "Testing…" but nothing else moved, so a slow provider looked frozen (UX-05).
+                // Without visible motion a slow provider looks frozen.
                 new ActivityIndicator { HeightRequest = 20, WidthRequest = 20 }
                     .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
                     .Bind(ActivityIndicator.IsRunningProperty, nameof(SettingsViewModel.IsTestingTranslation))
@@ -450,7 +446,7 @@ public class SettingsPage : ContentPage
                             {
                                 try
                                 {
-                                    // Guarded: a double click used to push the page twice.
+                                    // Guarded so a double click doesn't push the page twice.
                                     await NavigationGuard.RunAsync(() =>
                                         Shell.Current.Navigation.PushAsync(new TagMappingPage(_tagMappingViewModel, _loggerFactory.CreateLogger<TagMappingPage>())));
                                 }
@@ -568,7 +564,7 @@ public class SettingsPage : ContentPage
                     {
                         GlassTheme.PillButton("View Logs", AppFontSizes.ButtonMedium, accent: true, height: AppLayout.ButtonHeightCompact)
                             .Bind(Button.CommandProperty, nameof(SettingsViewModel.ViewLogsCommand))
-                            // No fixed width: the button fills its column so a narrow layout shrinks it (UX-09).
+                            // Fills its column rather than a fixed width so it shrinks on narrow layouts.
                             .Invoke(b => b.HorizontalOptions = LayoutOptions.Fill),
 
                         GlassTheme.PillButton("Copy Logs", AppFontSizes.ButtonMedium, height: AppLayout.ButtonHeightCompact)
@@ -587,8 +583,7 @@ public class SettingsPage : ContentPage
         return true;
     }
 
-    // Static on purpose: the handler that calls this must not depend on the page still being alive, so the
-    // logger is passed in rather than read from a field (PAT-01).
+    // Static so the fire-and-forget back navigation doesn't depend on the page still being alive.
     private static async Task GoBackAsync(ILogger logger)
     {
         try

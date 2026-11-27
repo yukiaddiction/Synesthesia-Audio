@@ -2,7 +2,6 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>The whole-tree listing, the subtree reuse a rescan relies on, and the loop guard.</summary>
 public class ScanListingTreeTests
 {
     private static bool IsAudio(string path) => path.EndsWith(".mp3") || path.EndsWith(".mp4");

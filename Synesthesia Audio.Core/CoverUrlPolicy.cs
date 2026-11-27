@@ -1,22 +1,16 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Rules for cover images fetched during a scan.
-///
-/// The URL comes out of a scraped page, so it is attacker-influenced input: a page could point the app at any
-/// host, any scheme, or a body far larger than an image. Downloads are therefore restricted to DLsite's own
-/// image hosts over https, capped in size, and required to be an image content type.
+/// The cover URL comes from a scraped page, so it is untrusted: only https DLsite image hosts, image content types
+/// and bounded sizes are accepted.
 /// </summary>
 public static class CoverUrlPolicy
 {
-    /// <summary>Ten megabytes; a DLsite cover is tens of kilobytes.</summary>
+    /// <summary>A DLsite cover is tens of kilobytes; this is a generous ceiling.</summary>
     public const long MaxCoverBytes = 10 * 1024 * 1024;
 
     private static readonly string[] AllowedDomains = { "dlsite.com", "dlsite.jp", "format.co.jp" };
 
-    /// <summary>
-    /// True when <paramref name="url"/> is https and served from a DLsite domain (or a subdomain of one).
-    /// </summary>
     public static bool IsAllowed(string? url)
     {
         if (string.IsNullOrWhiteSpace(url)) return false;
@@ -33,7 +27,6 @@ public static class CoverUrlPolicy
         return false;
     }
 
-    /// <summary>A cover response must actually be an image.</summary>
     public static bool IsAcceptableContentType(string? mediaType)
     {
         if (string.IsNullOrWhiteSpace(mediaType)) return false;

@@ -3,9 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// BUG-m-18: the Android folder picker returns a Storage Access Framework URI, not a filesystem path. Only
-/// one of the two pickers converted it, so a folder chosen in Settings was stored as a raw tree URI and every
-/// later scan reported it missing.
+/// The Android folder picker returns a Storage Access Framework URI; stored unconverted, every later scan
+/// reported the folder missing.
 /// </summary>
 public sealed class AndroidStoragePathTests
 {
@@ -17,7 +16,6 @@ public sealed class AndroidStoragePathTests
         Assert.Equal("/storage/emulated/0/Music/Synesthesia", result);
     }
 
-    /// <summary>The document id repeats the tree id; only the relative folder should survive.</summary>
     [Fact]
     public void The_repeated_document_id_is_stripped()
     {
@@ -30,7 +28,6 @@ public sealed class AndroidStoragePathTests
     [Fact]
     public void A_percent_encoded_content_uri_is_decoded_first()
     {
-        // content://com.android.externalstorage.documents/tree/primary%3AMusic
         var result = AndroidStoragePath.ToFileSystemPath(
             "content://com.android.externalstorage.documents/tree/primary%3AMusic");
 
@@ -50,10 +47,7 @@ public sealed class AndroidStoragePathTests
         Assert.Equal("/storage/emulated/0/Music", AndroidStoragePath.ToFileSystemPath("/tree/primary:Music/"));
     }
 
-    /// <summary>
-    /// Desktop paths, and any tree URI for a volume this mapping does not know, must pass through untouched —
-    /// the helper is called on every platform.
-    /// </summary>
+    /// <summary>The helper runs on every platform, so anything it does not recognise must pass through untouched.</summary>
     [Theory]
     [InlineData(@"C:\Music\Synesthesia")]
     [InlineData("/home/user/Music")]

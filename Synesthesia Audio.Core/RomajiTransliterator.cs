@@ -4,16 +4,12 @@ using System.Text.RegularExpressions;
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Kana to romaji. This runs locally and is deliberately not a translation provider: voice actor and circle
-/// names must be romanised here, never sent to a machine-translation API.
-///
-/// Beyond the plain syllable table it handles the three things a naive kana-by-kana walk gets wrong:
-/// the sokuon (<c>ッ</c>, which doubles the next consonant, so ニッタ is "Nitta" not "Nita"), the
-/// prolonged sound mark (<c>ー</c>, which repeats the previous vowel), and small-kana combos
-/// (<c>ファ</c>, <c>ティ</c>, …) which are two characters but one syllable.
+/// Local kana-to-romaji, so cast and circle names are never sent to a translation API. Beyond the syllable table it
+/// handles sokuon (ッ doubles the next consonant), the prolonged mark (ー repeats the vowel) and small-kana combos.
 /// </summary>
 public static class RomajiTransliterator
 {
+    // One hiragana/katakana char (U+3040-30FF) or CJK ideograph (Ext. A U+3400-4DBF, Unified U+4E00-9FFF).
     private static readonly Regex JapaneseTextRegex =
         new(@"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]", RegexOptions.Compiled);
 
@@ -23,46 +19,35 @@ public static class RomajiTransliterator
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            // Vowels
             { "あ", "a" }, { "い", "i" }, { "う", "u" }, { "え", "e" }, { "お", "o" },
             { "ア", "a" }, { "イ", "i" }, { "ウ", "u" }, { "エ", "e" }, { "オ", "o" },
 
-            // K
             { "か", "ka" }, { "き", "ki" }, { "く", "ku" }, { "け", "ke" }, { "こ", "ko" },
             { "カ", "ka" }, { "キ", "ki" }, { "ク", "ku" }, { "ケ", "ke" }, { "コ", "ko" },
 
-            // S
             { "さ", "sa" }, { "し", "shi" }, { "す", "su" }, { "せ", "se" }, { "そ", "so" },
             { "サ", "sa" }, { "シ", "shi" }, { "ス", "su" }, { "セ", "se" }, { "ソ", "so" },
 
-            // T
             { "た", "ta" }, { "ち", "chi" }, { "つ", "tsu" }, { "て", "te" }, { "と", "to" },
             { "タ", "ta" }, { "チ", "chi" }, { "ツ", "tsu" }, { "テ", "te" }, { "ト", "to" },
 
-            // N
             { "な", "na" }, { "に", "ni" }, { "ぬ", "nu" }, { "ね", "ne" }, { "の", "no" }, { "ん", "n" },
             { "ナ", "na" }, { "ニ", "ni" }, { "ヌ", "nu" }, { "ネ", "ne" }, { "ノ", "no" }, { "ン", "n" },
 
-            // H
             { "は", "ha" }, { "ひ", "hi" }, { "ふ", "fu" }, { "へ", "he" }, { "ほ", "ho" },
             { "ハ", "ha" }, { "ヒ", "hi" }, { "フ", "fu" }, { "ヘ", "he" }, { "ホ", "ho" },
 
-            // M
             { "ま", "ma" }, { "み", "mi" }, { "む", "mu" }, { "め", "me" }, { "も", "mo" },
             { "マ", "ma" }, { "ミ", "mi" }, { "ム", "mu" }, { "メ", "me" }, { "モ", "mo" },
 
-            // Y
             { "や", "ya" }, { "ゆ", "yu" }, { "よ", "yo" },
             { "ヤ", "ya" }, { "ユ", "yu" }, { "ヨ", "yo" },
 
-            // R
             { "ら", "ra" }, { "り", "ri" }, { "る", "ru" }, { "れ", "re" }, { "ろ", "ro" },
             { "ラ", "ra" }, { "リ", "ri" }, { "ル", "ru" }, { "レ", "re" }, { "ロ", "ro" },
 
-            // W
             { "わ", "wa" }, { "を", "wo" }, { "ワ", "wa" }, { "ヲ", "wo" },
 
-            // Voiced
             { "が", "ga" }, { "ぎ", "gi" }, { "ぐ", "gu" }, { "げ", "ge" }, { "ご", "go" },
             { "ガ", "ga" }, { "ギ", "gi" }, { "グ", "gu" }, { "ゲ", "ge" }, { "ゴ", "go" },
             { "ざ", "za" }, { "じ", "ji" }, { "ず", "zu" }, { "ぜ", "ze" }, { "ぞ", "zo" },
@@ -75,7 +60,6 @@ public static class RomajiTransliterator
             { "パ", "pa" }, { "ピ", "pi" }, { "プ", "pu" }, { "ペ", "pe" }, { "ポ", "po" },
             { "ゔ", "vu" }, { "ヴ", "vu" },
 
-            // Digraphs with small ya/yu/yo
             { "きゃ", "kya" }, { "きゅ", "kyu" }, { "きょ", "kyo" },
             { "しゃ", "sha" }, { "しゅ", "shu" }, { "しょ", "sho" },
             { "ちゃ", "cha" }, { "ちゅ", "chu" }, { "ちょ", "cho" },
@@ -99,7 +83,6 @@ public static class RomajiTransliterator
             { "ビャ", "bya" }, { "ビュ", "byu" }, { "ビョ", "byo" },
             { "ピャ", "pya" }, { "ピュ", "pyu" }, { "ピョ", "pyo" },
 
-            // Foreign-sound combos with small vowels (ファ, ティ, シェ, …)
             { "ふぁ", "fa" }, { "ふぃ", "fi" }, { "ふぇ", "fe" }, { "ふぉ", "fo" },
             { "ファ", "fa" }, { "フィ", "fi" }, { "フェ", "fe" }, { "フォ", "fo" },
             { "てぃ", "ti" }, { "てゅ", "tyu" }, { "でぃ", "di" }, { "でゅ", "dyu" },
@@ -120,7 +103,7 @@ public static class RomajiTransliterator
             { "すぃ", "si" }, { "ずぃ", "zi" }, { "スィ", "si" }, { "ズィ", "zi" },
             { "いぇ", "ye" }, { "イェ", "ye" },
 
-            // A small kana that is not part of a combo still has a reading of its own.
+            // Small kana outside a combo still has a reading of its own.
             { "ぁ", "a" }, { "ぃ", "i" }, { "ぅ", "u" }, { "ぇ", "e" }, { "ぉ", "o" },
             { "ゃ", "ya" }, { "ゅ", "yu" }, { "ょ", "yo" }, { "ゎ", "wa" },
             { "ァ", "a" }, { "ィ", "i" }, { "ゥ", "u" }, { "ェ", "e" }, { "ォ", "o" },
@@ -134,7 +117,7 @@ public static class RomajiTransliterator
     {
         if (string.IsNullOrWhiteSpace(japaneseText)) return string.Empty;
 
-        // Nothing Japanese (a name already in latin script): leave it exactly as written.
+        // Already latin script: leave it exactly as written.
         if (!JapaneseTextRegex.IsMatch(japaneseText)) return japaneseText;
 
         var builder = new StringBuilder(japaneseText.Length);
@@ -145,21 +128,19 @@ public static class RomajiTransliterator
         {
             var character = japaneseText[index];
 
-            // Sokuon: the following consonant is doubled instead of the mark having a sound of its own.
             if (character is 'っ' or 'ッ')
             {
                 doubleNextConsonant = true;
                 continue;
             }
 
-            // Prolonged sound mark: lengthen the vowel that came before it.
             if (character is 'ー' or 'ｰ' or '〜')
             {
                 if (lastVowel != '\0') builder.Append(lastVowel);
                 continue;
             }
 
-            // The interpunct separates the halves of a joint credit, so it must not be swallowed.
+            // The interpunct separates the halves of a joint credit, so it must survive.
             if (character is '・' or '･')
             {
                 builder.Append(character);
@@ -170,7 +151,7 @@ public static class RomajiTransliterator
             var romaji = Lookup(japaneseText, index, out var consumed);
             if (romaji is null)
             {
-                // Kanji are dropped, as before; anything that is not Japanese is preserved.
+                // Unmapped Japanese (kanji) is dropped; non-Japanese characters are kept.
                 if (!JapaneseTextRegex.IsMatch(character.ToString())) builder.Append(character);
                 lastVowel = '\0';
                 continue;
@@ -181,8 +162,7 @@ public static class RomajiTransliterator
                 doubleNextConsonant = false;
                 if (romaji.Length > 0 && !IsVowel(romaji[0]))
                 {
-                    // Hepburn spells the doubled chi/tsu with a t: マッチ is "matchi", not "macchi".
-                    // Every other consonant simply doubles itself.
+                    // Hepburn doubles chi with a t: マッチ is "matchi", not "macchi".
                     builder.Append(romaji.StartsWith("ch", StringComparison.Ordinal) ? 't' : romaji[0]);
                 }
             }

@@ -3,19 +3,14 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Services;
 
 /// <summary>
-/// Where a work's cover lives on disk and which local file is the best candidate.
-///
-/// These two decisions used to sit inside <see cref="ScanFolderService"/>, which meant the scan pipeline and the
-/// cover rules were the same 1000-line class; the audit asks for a CoverResolver for exactly that reason (PAT-09).
-/// The ranking itself is <see cref="LocalCoverFinder"/> in Core, which is where it can be tested.
+/// Where a work's cover lives on disk and which local file is the best candidate. The ranking rule itself is
+/// <see cref="LocalCoverFinder"/> in Core, where it can be tested.
 /// </summary>
 public static class CoverResolver
 {
     /// <summary>
-    /// The cached cover path for a work, keyed by product id when there is one.
-    ///
-    /// Covers live under AppData rather than Cache: the OS may clear the cache directory at any time, and a cleared
-    /// cover left the cached work with an empty path and no way to fetch it again.
+    /// Under AppData rather than Cache: the OS may clear the cache at any time, leaving a cached work with a dead
+    /// cover path and no reason to fetch it again.
     /// </summary>
     public static string GetCachePath(string workPath, string? productId)
     {
@@ -32,7 +27,6 @@ public static class CoverResolver
         return Path.Combine(coversDirectory, $"cover_{cleanPath}.jpg");
     }
 
-    /// <summary>Best cover image in a local album folder, ranked by <see cref="LocalCoverFinder"/>.</summary>
     public static string? ChooseBestLocal(string folderPath)
     {
         try
@@ -49,7 +43,6 @@ public static class CoverResolver
         }
         catch
         {
-            // An unreadable folder simply has no local cover.
             return null;
         }
     }

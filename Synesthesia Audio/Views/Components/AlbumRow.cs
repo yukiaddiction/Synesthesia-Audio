@@ -3,11 +3,8 @@ using Synesthesia_Audio.Models;
 namespace Synesthesia_Audio.Views.Components;
 
 /// <summary>
-/// One row of the album's track list: a folder header, or a track.
-///
-/// The list is flat rather than a grouped CollectionView: grouping rendered a single group and dropped folders on
-/// Android. Each row says what it is and a template selector picks the header or track template, so the list still
-/// virtualises - a row is only materialised when it is on screen (PERF-07).
+/// A folder header or a track in the album's flat list. Flat rather than a grouped CollectionView, which dropped
+/// folders on Android; a template selector picks per row so the list still virtualises.
 /// </summary>
 public sealed class AlbumRow
 {
@@ -27,10 +24,9 @@ public sealed class AlbumRow
 
     public bool IsExpanded { get; private init; }
 
-    /// <summary>The chevron on a folder header.</summary>
     public string Arrow => IsExpanded ? "\u25BE" : "\u25B8";
 
-    /// <summary>How many tracks the folder holds, so a collapsed folder still says what it contains.</summary>
+    /// <summary>Shown so a collapsed folder still says what it contains.</summary>
     public string TrackCount { get; private init; } = string.Empty;
 
     public static AlbumRow ForHeader(SubAlbum subAlbum)

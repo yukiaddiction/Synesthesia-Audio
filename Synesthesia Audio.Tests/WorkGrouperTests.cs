@@ -3,9 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// The grouping rules behind the library scan. They are pure, which is the point of moving them into Core: a
-/// wrong answer here shows up as tracks in the wrong sub-album or the wrong copy of a duplicate kept, and that is
-/// otherwise only visible by scanning a real library.
+/// A wrong answer here shows up as tracks in the wrong sub-album or the wrong duplicate kept, otherwise visible
+/// only by scanning a real library.
 /// </summary>
 public sealed class WorkGrouperTests
 {
@@ -28,10 +27,7 @@ public sealed class WorkGrouperTests
         Assert.Null(WorkGrouper.GetSubAlbumName(fileDirectory, workPath));
     }
 
-    /// <summary>
-    /// A file outside the work folder must not be given a sub-album - it would attach a stranger's directory to
-    /// this work.
-    /// </summary>
+    /// <summary>Otherwise a stranger's directory would be attached to this work.</summary>
     [Fact]
     public void A_directory_outside_the_work_folder_has_no_subalbum()
     {
@@ -61,8 +57,7 @@ public sealed class WorkGrouperTests
         Assert.Equal(expected, WorkGrouper.GetExtensionPriority(extension));
     }
 
-    /// <summary>Remote paths are normalised to forward slashes, because that is what cloud listings use and
-    /// what the grouping comparisons expect back.</summary>
+    /// <summary>Cloud listings use forward slashes, and the grouping comparisons expect them back.</summary>
     [Theory]
     [InlineData("C:/lib/RJ123456/a/b", "C:/lib/RJ123456/a")]
     [InlineData(@"C:\lib\RJ123456\CD1", "C:/lib/RJ123456")]

@@ -23,8 +23,7 @@ public class ScanStateService : IDisposable
     }
 
     /// <summary>
-    /// Completes once the persisted scan status has been read. Startup awaits this so a scan that was
-    /// running when the app was killed is seen as Interrupted instead of Idle.
+    /// Startup awaits this so a scan that was running when the app was killed is seen as Interrupted, not Idle.
     /// </summary>
     public Task Loaded
     {
@@ -41,8 +40,7 @@ public class ScanStateService : IDisposable
     {
         try
         {
-            // The store replays any status written while this read was in flight, so the value here is
-            // the merged one — never a stale file copy that would rewind a scan that already started.
+            // The store replays writes made during this read, so this never rewinds a scan that already started.
             var persisted = await _store.Loaded.ConfigureAwait(false);
             lock (_lock)
             {
@@ -56,10 +54,7 @@ public class ScanStateService : IDisposable
         }
     }
 
-    /// <summary>
-    /// A copy, built field by field. This used to serialise and deserialise the whole state on every poll -
-    /// four times a second while a scan runs (PERF-12).
-    /// </summary>
+    /// <summary>Copied field by field rather than via JSON round-trip: it is polled four times a second during a scan.</summary>
     public ScanState Snapshot()
     {
         lock (_lock)
@@ -85,8 +80,7 @@ public class ScanStateService : IDisposable
     {
         lock (_lock)
         {
-            // Mutating through the store keeps the persisted document and the in-memory snapshot the
-            // same instance, so a load that finishes later cannot discard this write.
+            // Through the store, so persisted and in-memory state are one instance and a late load can't discard this write.
             _store.Update(state =>
             {
                 mutate(state);
@@ -121,7 +115,7 @@ public class ScanStateService : IDisposable
     {
         s.Status = ScanStatus.Completed;
         s.Progress = 1.0;
-        // A scan that skipped folders used to say only "Completed", so the gaps were invisible (UX-05).
+        // Surface skipped folders; a bare "Completed" would hide the gaps.
         s.ProgressText = failedFolderCount > 0
             ? $"Completed with {failedFolderCount} warning{(failedFolderCount == 1 ? "" : "s")}"
             : string.Empty;
@@ -151,7 +145,7 @@ public class ScanStateService : IDisposable
 
     public void MarkAlertShown() => Update(s => s.AlertShown = true);
 
-    /// <summary>Writes any debounced status change now. Called on window stop/destroy.</summary>
+    /// <summary>Called on window stop/destroy so a debounced change isn't lost.</summary>
     public void FlushPendingSave()
     {
         try

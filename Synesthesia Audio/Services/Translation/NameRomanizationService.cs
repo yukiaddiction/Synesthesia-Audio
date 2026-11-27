@@ -8,26 +8,19 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Services.Translation;
 
 /// <summary>
-/// Loads the name table (bundled copy, plus any refreshed copy from app data) and keeps it current.
-/// <para>
-/// Name data is EDRDG JMnedict, CC BY-SA 4.0, used in modified form. EDRDG treats shipping stale
-/// data as a licence violation, so a refresh runs on first use: it fetches a small manifest, and
-/// only when the published data is newer does it download the table, verify its SHA-256, and swap
-/// it in atomically. Every failure is soft — the bundled copy is always the fallback.
-/// </para>
+/// Loads the name table (bundled, or a refreshed copy in app data) and keeps it current. The data is EDRDG JMnedict,
+/// whose licence forbids shipping stale data, so a refresh runs on first use. Every failure falls back to the bundled copy.
 /// </summary>
 public sealed class NameRomanizationService
 {
-    // Points at this repository's release asset. While the repository is private this returns 404,
-    // which is treated as "no update available"; making the repository public activates it with no
-    // app rebuild.
+    // A 404 (e.g. while the repository is private) just means "no update available".
     private const string MetaUrl = "https://github.com/yukiaddiction/Synesthesia-Audio/releases/download/names-data/name_readings.meta.json";
     private const string DataUrl = "https://github.com/yukiaddiction/Synesthesia-Audio/releases/download/names-data/name_readings.tsv.gz";
 
-    /// <summary>Detached signature over the manifest bytes; absent until a signing key is configured.</summary>
+    // Detached signature over the manifest bytes; absent until a signing key is configured.
     private const string SignatureUrl = "https://github.com/yukiaddiction/Synesthesia-Audio/releases/download/names-data/name_readings.meta.json.sig";
 
-    /// <summary>Optional package asset holding the project's ECDSA public key. Absent = signatures not enforced.</summary>
+    // When the package has no key, signatures are simply not enforced.
     private const string PublicKeyAsset = "names_pubkey.pem";
 
     private readonly ILogger<NameRomanizationService> _logger;
@@ -43,8 +36,7 @@ public sealed class NameRomanizationService
     private bool _publicKeyLoaded;
 
     /// <summary>
-    /// The key the manifest must be signed with, or null when the build ships no key. A null key means
-    /// "signatures are not enforced yet" — it must never be read as "verified".
+    /// Null means "signatures are not enforced yet" and must never be read as "verified".
     /// </summary>
     private async Task<ECDsa?> GetManifestPublicKeyAsync()
     {
@@ -102,7 +94,6 @@ public sealed class NameRomanizationService
         _httpClient = httpClientFactory.CreateClient(HttpClients.NameData);
     }
 
-    /// <summary>Creation date of the name data actually in use.</summary>
     public string? BundledDataCreated { get; private set; }
 
     public async Task<string?> GetBundledDataCreatedAsync()
@@ -137,7 +128,7 @@ public sealed class NameRomanizationService
 
     private static string CachedDataPath => Path.Combine(FileSystem.AppDataDirectory, "name_readings.tsv.gz");
 
-    /// <summary>Records which published revision the cached table came from, so it is not fetched again.</summary>
+    // Records which published revision the cached table came from, so it is not downloaded again.
     private static string AppliedMetaPath => Path.Combine(FileSystem.AppDataDirectory, "name_readings.applied.json");
 
     private string? _appliedCreated;
@@ -169,7 +160,6 @@ public sealed class NameRomanizationService
         }
         catch (Exception ex)
         {
-            // Only costs a redundant download next time.
             _logger.LogDebug(ex, "Applied name-data revision could not be recorded");
         }
     }
@@ -179,13 +169,13 @@ public sealed class NameRomanizationService
         if (!_refreshStarted)
         {
             _refreshStarted = true;
-            // Deliberately fire-and-forget: refreshing must never delay or block playback.
+            // Fire-and-forget: refreshing must never delay playback.
             _ = RefreshAsync();
         }
 
         NameReadingTable table;
 
-        // Gzip decompression is synchronous and runs before the first await; keep it off the caller (PERF-12).
+        // Gzip decompression is synchronous, so keep it off the caller.
         var cached = await Task.Run(TryGetCachedTable).ConfigureAwait(false);
         table = cached ?? await LoadBundledTableAsync().ConfigureAwait(false);
 
@@ -193,9 +183,8 @@ public sealed class NameRomanizationService
         if (meta is { } bundledMeta && bundledMeta.TryGetProperty("created", out var created))
             BundledDataCreated = created.GetString();
 
-        // The date the About page shows must be the data actually in use. When the refreshed table is the
-        // one loaded, that is the revision we last applied, not the bundled one.
         _appliedCreated = TryReadAppliedCreated();
+        // The About page must show the revision actually in use, which for a refreshed table is the applied one.
         if (cached != null)
         {
             BundledDataCreated = _appliedCreated ?? BundledDataCreated;
@@ -205,8 +194,7 @@ public sealed class NameRomanizationService
             _appliedCreated = null;
         }
 
-        // Warm the optional MeCab dictionary in the background; until it exists the fallback simply
-        // returns null and unknown kanji stay verbatim.
+        // Until the dictionary arrives the Kawazu fallback returns null and unknown kanji stay verbatim.
         _ = _kawazu.WarmUpAsync();
 
         try
@@ -258,8 +246,8 @@ public sealed class NameRomanizationService
     }
 
     /// <summary>
-    /// Fetches the manifest and downloads newer data. Treated as completely optional: a private
-    /// repository, no network, or a bad hash all simply leave the bundled copy in place.
+    /// Downloads newer name data when the manifest advertises it. Optional by design: no network, a private repo or a
+    /// bad hash all leave the current table in place.
     /// </summary>
     public async Task RefreshAsync()
     {
@@ -276,9 +264,8 @@ public sealed class NameRomanizationService
             var metaBytes = await metaResponse.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
             var metaJson = Encoding.UTF8.GetString(metaBytes);
 
-            // When the build carries a public key, the manifest must prove it came from this project before any
-            // of its hashes are trusted. Without the key the app keeps today's hash-only behaviour, so the
-            // scheduled refresh keeps working until a key exists.
+            // With a bundled key the manifest must prove its origin before its hashes are trusted; without one the
+            // refresh falls back to hash-only checking.
             var publicKey = await GetManifestPublicKeyAsync().ConfigureAwait(false);
             if (publicKey != null)
             {
@@ -296,7 +283,7 @@ public sealed class NameRomanizationService
             var expectedSha = root.TryGetProperty("sha256", out var sha) ? sha.GetString() : null;
             if (string.IsNullOrEmpty(publishedCreated) || string.IsNullOrEmpty(expectedSha)) return;
 
-            // Compare against the revision in use, never the bundled one (BUG-m-01).
+            // Compare against the revision in use, never the bundled one.
             var appliedCreated = _appliedCreated ?? (_appliedCreated = TryReadAppliedCreated());
             if (!NameDataFreshness.IsNewRevision(publishedCreated, appliedCreated))
             {
@@ -314,7 +301,7 @@ public sealed class NameRomanizationService
                 return;
             }
 
-            // Write beside the target then move, so an interrupted download cannot corrupt the cache.
+            // Write then move, so an interrupted download cannot corrupt the cache.
             var temporary = CachedDataPath + ".tmp";
             await File.WriteAllBytesAsync(temporary, bytes).ConfigureAwait(false);
             File.Move(temporary, CachedDataPath, overwrite: true);

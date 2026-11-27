@@ -7,12 +7,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Services.Translation;
 
 /// <summary>
-/// A DeepL-API endpoint, also used for "Custom" so a user can point at their own DeepL-compatible
-/// server (or any paid API that speaks the same JSON contract) without new code.
-/// <para>
-/// DeepL rejects a bare "EN" target, so EN-US is used. Authentication is the Authorization header
-/// only — query-string auth_key was deprecated in March 2025 and removed by January 2026.
-/// </para>
+/// Speaks the DeepL v2 JSON contract; also backs "Custom" so any DeepL-compatible server works without new code.
+/// Auth goes in a header only, since DeepL removed query-string auth_key.
 /// </summary>
 public sealed class DeepLProvider : ITranslationProvider
 {
@@ -27,7 +23,7 @@ public sealed class DeepLProvider : ITranslationProvider
 
     public string Name { get; }
 
-    /// <summary>Raised to the last Retry-After seen, so the shared cooldown can honour it.</summary>
+    /// <summary>Last Retry-After seen, so the shared cooldown can honour it.</summary>
     public TimeSpan? LastRetryAfter { get; private set; }
 
     public DeepLProvider(
@@ -45,8 +41,7 @@ public sealed class DeepLProvider : ITranslationProvider
         _apiKey = apiKey;
 
         var defaultBaseUrl = DefaultBaseUrlFor(apiKey);
-        // A custom endpoint receives the API key in a header, so an http:// base URL would leak it in the
-        // clear. Only localhost may use http (SEC-m-04).
+        // The API key travels in a header, so plain http is only allowed to localhost.
         if (!EndpointUrl.IsSecureOrLocal(baseUrl) && !string.IsNullOrWhiteSpace(baseUrl))
         {
             _logger.LogWarning("{Provider} base URL is not https and was ignored; using {Default}", name, defaultBaseUrl);
@@ -57,6 +52,7 @@ public sealed class DeepLProvider : ITranslationProvider
         _authScheme = string.IsNullOrWhiteSpace(authScheme) ? "DeepL-Auth-Key" : authScheme;
     }
 
+    // Free-tier DeepL keys end in ":fx" and only work against the free endpoint.
     public static string DefaultBaseUrlFor(string apiKey) =>
         apiKey.EndsWith(":fx", StringComparison.OrdinalIgnoreCase)
             ? "https://api-free.deepl.com"
@@ -104,6 +100,7 @@ public sealed class DeepLProvider : ITranslationProvider
         {
             text = texts,
             source_lang = "JA",
+            // DeepL rejects a bare "EN" target.
             target_lang = "EN-US"
         });
 

@@ -5,9 +5,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Services.Translation;
 
 /// <summary>
-/// The free translation chain, wrapped by GTranslate's AggregateTranslator: Google, then Google's
-/// second endpoint, then Bing. Microsoft and Yandex are left out because they need account
-/// credentials, which would turn an anonymous fallback into a signup requirement.
+/// Free fallback chain: Google, Google's second endpoint, then Bing. Translators that need account
+/// credentials are left out so the fallback stays anonymous.
 /// </summary>
 public sealed class GTranslateProvider : ITranslationProvider
 {
@@ -42,8 +41,8 @@ public sealed class GTranslateProvider : ITranslationProvider
         {
             _retryAfterState.Reset();
 
-            // Join on newlines so a list of tags costs one request instead of one per tag. Inputs are
-            // flattened first: a string that itself contains a newline would otherwise fake an extra item.
+            // One newline-joined request instead of one per string; inputs are flattened first so an embedded
+            // newline cannot fake an extra item.
             var sanitized = texts.Select(BatchTranslationSplitter.SanitizeInput).ToList();
             var combined = string.Join("\n", sanitized);
 
@@ -52,8 +51,7 @@ public sealed class GTranslateProvider : ITranslationProvider
                 .WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            // Exact-count alignment only: anything else falls back, because a misaligned reply would put one
-            // work's tag on another work.
+            // Only an exact line count is trusted; a misaligned reply would attach one work's tag to another.
             var lines = BatchTranslationSplitter.TrySplit(result.Translation, texts.Count);
 
             if (lines != null) return lines.ToList();

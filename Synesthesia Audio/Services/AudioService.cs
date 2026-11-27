@@ -29,14 +29,11 @@ public partial class AudioService : ObservableObject, IDisposable
     private double _restorePositionSeconds;
     private int _sourceGeneration;
 
-    /// <summary>Consecutive MediaFailed events. Reset whenever a track opens successfully.</summary>
     private int _consecutiveFailures;
     private const int MaxConsecutivePlaybackFailures = 3;
 
-    /// <summary>
-    /// Completed when the element first reports a non-zero duration for the current source. Used instead
-    /// of polling, which could wait up to 9.5 s and therefore pause a track the user had since started.
-    /// </summary>
+    // Signalled on the first non-zero duration; replaces polling, which could wait long enough to pause a
+    // track the user had since started.
     private TaskCompletionSource<bool> _durationObserved = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private void ResetDurationObservation() =>
@@ -53,7 +50,7 @@ public partial class AudioService : ObservableObject, IDisposable
         _dialog = dialogService;
         _logger = logger;
 
-        // Set the backing field rather than the property so startup does not re-persist it.
+        // The backing field, so startup doesn't re-persist the value it just read.
         _volume = Preferences.Get("PlayerVolume", 0.8d);
     }
 
@@ -68,10 +65,7 @@ public partial class AudioService : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsVideoOverlayVisible))]
     private bool _isPlaying;
 
-    /// <summary>
-    /// Screen-reader label for the play/pause control. Binding the description to this keeps it true to the
-    /// current state instead of announcing "Play Pause" whatever is playing (UX-07).
-    /// </summary>
+    /// <summary>Screen-reader label that follows the state rather than always announcing "Play Pause".</summary>
     public string PlayPauseAccessibleName => IsPlaying ? "Pause" : "Play";
 
     partial void OnIsPlayingChanged(bool value) => OnPropertyChanged(nameof(PlayPauseAccessibleName));
@@ -113,7 +107,7 @@ public partial class AudioService : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isFullScreen;
 
-    /// <summary>Playback volume, 0..1. Persisted so the transport dock keeps its level.</summary>
+    /// <summary>0..1.</summary>
     [ObservableProperty]
     private double _volume = 0.8;
 
@@ -121,7 +115,7 @@ public partial class AudioService : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(VolumeIcon))]
     private bool _isMuted;
 
-    /// <summary>Glyph for the desktop dock's mute button.</summary>
+    // Muted speaker vs. speaker emoji; near-zero volume counts as muted.
     public string VolumeIcon => IsMuted || Volume <= 0.001 ? "\uD83D\uDD07" : "\uD83D\uDD0A";
 
     private Timer? _volumeSaveTimer;
@@ -131,8 +125,7 @@ public partial class AudioService : ObservableObject, IDisposable
     {
         ApplyVolume();
 
-        // A slider drag raises this per pixel. Writing the preference on each one hammered storage for no
-        // benefit, so the write is debounced and the last value wins (PERF-12).
+        // A slider drag raises this per pixel, so the preference write is debounced.
         lock (_volumeSaveLock)
         {
             _volumeSaveTimer ??= new Timer(_ => PersistVolume(), null, Timeout.Infinite, Timeout.Infinite);
@@ -156,15 +149,11 @@ public partial class AudioService : ObservableObject, IDisposable
 
     partial void OnIsMutedChanged(bool value) => ApplyVolume();
 
-    /// <summary>Volume factor applied while the OS asked us to duck under another app.</summary>
     private const double DuckingVolumeFactor = 0.2;
     private bool _isDucked;
 
-    /// <summary>
-    /// True when the current pause was caused by losing audio focus, so a later focus gain may resume it.
-    /// Cleared on every manual play/pause — otherwise a call ending would restart playback the user had
-    /// deliberately stopped.
-    /// </summary>
+    // Only a focus-caused pause may be resumed by focus gain; cleared on manual play/pause so a call ending
+    // doesn't restart playback the user stopped.
     private bool _pausedByFocusLoss;
 
     private void ApplyVolume()
@@ -176,7 +165,6 @@ public partial class AudioService : ObservableObject, IDisposable
         _mediaElement.ShouldMute = IsMuted;
     }
 
-    /// <summary>Lowers playback volume while another app holds transient focus.</summary>
     public void SetDucked(bool ducked)
     {
         if (_isDucked == ducked) return;
@@ -184,10 +172,7 @@ public partial class AudioService : ObservableObject, IDisposable
         ApplyVolume();
     }
 
-    /// <summary>
-    /// Pauses because the OS took audio focus away, and remembers why. Distinct from <see cref="Pause"/>
-    /// so that only a focus-caused pause can be resumed by a focus gain.
-    /// </summary>
+    /// <summary>Separate from <see cref="Pause"/> so only a focus-caused pause is resumed by focus gain.</summary>
     public void PauseForFocusLoss()
     {
         _pausedByFocusLoss = true;
@@ -198,7 +183,6 @@ public partial class AudioService : ObservableObject, IDisposable
         SaveSession();
     }
 
-    /// <summary>Restores the volume, and resumes playback only if losing focus is what paused it.</summary>
     public void ResumeAfterFocusGain()
     {
         SetDucked(false);
@@ -217,10 +201,6 @@ public partial class AudioService : ObservableObject, IDisposable
     [RelayCommand]
     private void ToggleMute() => IsMuted = !IsMuted;
 
-    /// <summary>
-    /// Seeks by a relative offset, clamped to the track bounds. Used by the desktop keyboard
-    /// shortcuts so they share the same path as the seek slider.
-    /// </summary>
     public void SeekBy(TimeSpan delta)
     {
         var me = _mediaElement;
@@ -288,14 +268,13 @@ public partial class AudioService : ObservableObject, IDisposable
         var me = _mediaElement;
         try
         {
-            // No duration yet means nothing to seek to, but IsSeeking must still be cleared — leaving it
-            // set made every later seek request a no-op.
+            // Returning still reaches the finally: a stuck IsSeeking would turn every later seek into a no-op.
             if (me == null || Duration.TotalSeconds <= 0) return;
 
             var wasPlaying = IsPlaying;
             await me.SeekTo(SeekPosition);
 
-            // Play only after the seek has completed, otherwise playback resumes at the old position.
+            // Only after the seek completes, or playback resumes at the old position.
             if (wasPlaying) me.Play();
         }
         catch (Exception ex)
@@ -336,10 +315,8 @@ public partial class AudioService : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Detaches the UI element when its window goes away and resets playback state, without disposing
-    /// this singleton. The process outlives the window on Android, so a re-created window gets the same
-    /// instance back; disposing it here used to leave the play gate dead and every later play silently
-    /// failed with <see cref="ObjectDisposedException"/>.
+    /// Resets state without disposing: on Android the process outlives the window and a re-created window reuses
+    /// this singleton, so disposing would break every later play.
     /// </summary>
     public void DetachMediaElement()
     {
@@ -372,7 +349,6 @@ public partial class AudioService : ObservableObject, IDisposable
             _logger.LogWarning(ex, "Resetting platform playback state during detach failed");
         }
 
-        // Session reset and URI revocation are platform concerns; see AndroidAudioPlatformService (PAT-10).
         try
         {
             _platformService.OnMediaDetached();
@@ -382,7 +358,7 @@ public partial class AudioService : ObservableObject, IDisposable
             _logger.LogWarning(ex, "Releasing platform media state during detach failed");
         }
 
-        // Remember where we were so reopening the window can offer to resume.
+        // So reopening the window can resume where we were.
         SaveSession();
     }
 
@@ -396,13 +372,11 @@ public partial class AudioService : ObservableObject, IDisposable
 
         var sessionTrack = session.Playlist[session.CurrentTrackIndex];
 
-        // A remote path never exists on the local disk, so this check must only apply to local storage.
-        // Running it first made WebDAV session restore dead code.
+        // A remote path never exists locally, so the file check applies to local storage only.
         var isCloudSession = IsCloudLibrary();
         if (!isCloudSession && !File.Exists(sessionTrack.FilePath)) return;
 
         Track track;
-        // rebuild playlist from session DTOs
         lock (_playlistLock)
         {
             _playlist = session.Playlist.Select(ToTrack).ToList();
@@ -479,8 +453,7 @@ PlayTrackInternalAsync(track).FireAndForget(ex => _logger.LogWarning(ex, "Backgr
 
         var isCloud = IsCloudLibrary();
 
-        // Validate before touching any state. A missing file used to become CurrentTrack, get written to
-        // the saved session, and leave the buffering spinner turning forever.
+        // Validate before touching state, or a missing file becomes the saved CurrentTrack with an endless spinner.
         if (!isCloud && !File.Exists(track.FilePath))
         {
             _logger.LogError("Track file not found: {Path}", track.FilePath);
@@ -523,12 +496,11 @@ PlayTrackInternalAsync(track).FireAndForget(ex => _logger.LogWarning(ex, "Backgr
             {
                 try
                 {
-                    // Which URI form is publishable, and any grant it needs, is a platform concern (PAT-10).
                     me.MetadataArtworkUrl = _platformService.PublishArtwork(track.CoverImagePath);
                 }
                 catch (Exception ex)
                 {
-                    // Previously an empty catch: a FileProvider path misconfiguration silently produced no artwork.
+                    // Logged because a FileProvider misconfiguration otherwise just yields no artwork.
                     _logger.LogWarning(ex, "Artwork could not be published to the lock screen");
                     me.MetadataArtworkUrl = string.Empty;
                 }
@@ -555,21 +527,18 @@ PlayTrackInternalAsync(track).FireAndForget(ex => _logger.LogWarning(ex, "Backgr
                     return;
                 }
 
-                // The URL carries the per-run proxy token, so it is never written to the log.
+                // The URL carries the per-run proxy token, so it is never logged.
                 _logger.LogInformation("Cloud stream prepared through the loopback proxy");
                 me.Source = MediaSource.FromUri(streamUrl);
             }
             else
             {
-                // File name only at Information: the full path discloses the library layout, and the log is a file
-                // users attach to bug reports (SEC-m-02).
+                // Full path only at Debug: users attach the log to bug reports and it reveals the library layout.
                 _logger.LogInformation("Using local file: {File}", Synesthesia_Audio.Core.LogRedactor.FileName(track.FilePath));
                 _logger.LogDebug("Local file path: {Path}", track.FilePath);
                 me.Source = MediaSource.FromFile(track.FilePath);
             }
 
-            // Ask for focus before the first sample plays. A refusal means another app owns the audio
-            // output (a call, another player), so we must not start.
             if (!_platformService.RequestAudioFocus())
             {
                 _logger.LogWarning("Playback not started — the OS refused audio focus");
@@ -594,8 +563,7 @@ PlayTrackInternalAsync(track).FireAndForget(ex => _logger.LogWarning(ex, "Backgr
             _playGate.Release();
         }
 
-        // Shown only after the gate has been released. Awaiting a modal dialog while holding it blocked the
-        // next track and the auto-advance path until the user dismissed the message.
+        // Shown outside the gate, or the modal would block the next track until dismissed.
         if (failureMessage != null)
         {
             await ShowPlaybackAlertAsync(failureMessage);
@@ -603,9 +571,7 @@ PlayTrackInternalAsync(track).FireAndForget(ex => _logger.LogWarning(ex, "Backgr
     }
 
     /// <summary>
-    /// One failure path for both an explicit play of an unusable file and a MediaFailed event: clear the
-    /// spinner, tell the user without holding the play gate, and move on — bounded, so a library in which
-    /// nothing is playable cannot be walked forever.
+    /// Auto-advance is capped by consecutive failures, so a library where nothing plays isn't walked forever.
     /// </summary>
     private void ReportPlaybackFailure(string message, bool advance)
     {
@@ -680,9 +646,8 @@ ShowPlaybackAlertAsync(message).FireAndForget(ex => _logger.LogWarning(ex, "Back
 
         if (stopPlayback)
         {
-            // End of the album with repeat off. Pause on the last track and keep the queue: Stop() used to run
-            // here, which cleared the playlist AND deleted the saved session, so the album emptied itself out
-            // from under the UI just because it finished (UX-06).
+            // Album finished with repeat off: pause and keep the queue. Stop() would clear the playlist and
+            // delete the saved session.
             var me = _mediaElement;
             _pausedByFocusLoss = false;
             _isRestoringSession = false;
@@ -700,8 +665,7 @@ ShowPlaybackAlertAsync(message).FireAndForget(ex => _logger.LogWarning(ex, "Back
     {
         if (_mediaElement == null) return;
 
-        // if you hit previous more than 3 seconds into a track, restart it. if you're under 3
-        // seconds, go back to the actual previous track. standard music player behaviour.
+        // Standard player behaviour: past the threshold, "previous" restarts the current track.
         if (Position.TotalSeconds > AppConstants.PreviousTrackRestartThresholdSeconds)
         {
             PlayTrackInternal(CurrentTrack);
@@ -751,22 +715,16 @@ ShowPlaybackAlertAsync(message).FireAndForget(ex => _logger.LogWarning(ex, "Back
         else Play();
     }
 
-    /// <summary>
-    /// Starts playback. Separate from <see cref="TogglePlayPause"/> so a remote "play" command is
-    /// idempotent — pressing play while already playing must not pause.
-    /// </summary>
+    /// <summary>Idempotent, unlike <see cref="TogglePlayPause"/>, so a remote "play" never pauses.</summary>
     [RelayCommand]
     public void Play()
     {
         var me = _mediaElement;
         if (me == null || IsPlaying) return;
 
-        // A deliberate play clears the focus-loss state, so regaining focus later cannot resume something
-        // the user has already restarted themselves.
         _pausedByFocusLoss = false;
 
-        // Any user action ends a pending session restore, so the restore can never pause a track the user
-        // has just started.
+        // Ends any pending restore, so it can't pause a track the user just started.
         _isRestoringSession = false;
 
         if (!_platformService.RequestAudioFocus())
@@ -778,10 +736,7 @@ ShowPlaybackAlertAsync(message).FireAndForget(ex => _logger.LogWarning(ex, "Back
         me.Play();
     }
 
-    /// <summary>
-    /// Pauses playback. Idempotent, which is what a remote "pause" command means: pausing while already
-    /// paused used to start playback again.
-    /// </summary>
+    /// <summary>Idempotent, so a remote "pause" never resumes.</summary>
     [RelayCommand]
     public void Pause()
     {
@@ -820,29 +775,25 @@ _sessionService.ClearAsync().FireAndForget(ex => _logger.LogWarning(ex, "Backgro
         }
     }
 
-    /// <summary>
-    /// The two directions of the Track / PlaybackSessionTrack mapping, in one place: they have to stay in
-    /// step, and a field added to one but not the other silently dropped from the saved session (DUP-08).
-    /// </summary>
-    private static Track ToTrack(PlaybackSessionTrack saved) => new()
-    {
-        Title = saved.Title,
-        TranslatedTitle = saved.TranslatedTitle,
-        FilePath = saved.FilePath,
-        CoverImagePath = saved.CoverImagePath,
-        VoiceActors = saved.VoiceActors
-    };
-
-    private static PlaybackSessionTrack ToSessionTrack(Track track) => new()
-    {
-        Title = track.Title,
-        TranslatedTitle = track.TranslatedTitle,
-        FilePath = track.FilePath,
-        CoverImagePath = track.CoverImagePath,
-        VoiceActors = track.VoiceActors
-    };
-
-    /// <summary>True when the library is streamed from WebDAV rather than read from local disk.</summary>
+    // Both mapping directions sit together: a field added to only one is silently lost from the saved session.
+    private static Track ToTrack(PlaybackSessionTrack saved) => new()
+    {
+        Title = saved.Title,
+        TranslatedTitle = saved.TranslatedTitle,
+        FilePath = saved.FilePath,
+        CoverImagePath = saved.CoverImagePath,
+        VoiceActors = saved.VoiceActors
+    };
+
+    private static PlaybackSessionTrack ToSessionTrack(Track track) => new()
+    {
+        Title = track.Title,
+        TranslatedTitle = track.TranslatedTitle,
+        FilePath = track.FilePath,
+        CoverImagePath = track.CoverImagePath,
+        VoiceActors = track.VoiceActors
+    };
+
     private bool IsCloudLibrary() =>
         Synesthesia_Audio.Core.StorageTypes.IsWebDav(_settingsService.CurrentSettings.StorageType);
 
@@ -850,10 +801,7 @@ _sessionService.ClearAsync().FireAndForget(ex => _logger.LogWarning(ex, "Backgro
     private readonly object _lastSessionLock = new();
 
     /// <summary>
-    /// Saves only the playback position, reusing the playlist structure from the last full save.
-    ///
-    /// The periodic save used to re-serialise the whole playlist every few seconds just to move one number
-    /// (PERF-12). Falls back to a full save when there is no structure yet.
+    /// Reuses the playlist from the last full save so the periodic save doesn't rebuild it just to move the position.
     /// </summary>
     private void SaveSessionPosition()
     {
@@ -912,7 +860,6 @@ _sessionService.SaveAsync(dto).FireAndForget(ex => _logger.LogWarning(ex, "Backg
         }
     }
 
-    /// <summary>Signals that the element has reported a real duration, so a pending restore can seek.</summary>
     private void OnMediaElementPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(MediaElement.Duration)) return;
@@ -924,8 +871,7 @@ _sessionService.SaveAsync(dto).FireAndForget(ex => _logger.LogWarning(ex, "Backg
     }
 
     private void OnMediaFailed(object? sender, MediaFailedEventArgs e)
-    {        // A corrupt file, an unsupported codec or a proxy error used to leave the player stalled forever
-        // with the buffering spinner still turning, because nothing subscribed to this event.
+    {        // Unhandled, a corrupt file, bad codec or proxy error leaves the player stalled with the spinner turning.
         var title = CurrentTrack?.Title ?? "This file";
         _logger.LogError("Playback failed — track: {Title}, error: {Error}", title, e.ErrorMessage);
 
@@ -952,7 +898,6 @@ _sessionService.SaveAsync(dto).FireAndForget(ex => _logger.LogWarning(ex, "Backg
             var me = _mediaElement;
             if (me == null) return;
 
-            // A track that opened proves the pipeline works, so the failure run is over.
             Interlocked.Exchange(ref _consecutiveFailures, 0);
 
             _logger.LogInformation("OnMediaOpened fired — gen: {Gen}, latest: {Latest}, isRestoring: {IsRestoring}",
@@ -964,8 +909,7 @@ _sessionService.SaveAsync(dto).FireAndForget(ex => _logger.LogWarning(ex, "Backg
                 return;
             }
 
-            // Wait for the element to report a duration instead of polling it for up to 9.5 s. The bound
-            // keeps a stream that never reports one from leaving this handler pending forever.
+            // Bounded so a stream that never reports a duration can't leave this handler pending forever.
             if (me.Duration == TimeSpan.Zero)
             {
                 await Task.WhenAny(_durationObserved.Task, Task.Delay(3000));
@@ -982,6 +926,7 @@ _sessionService.SaveAsync(dto).FireAndForget(ex => _logger.LogWarning(ex, "Backg
                 _logger.LogInformation("OnMediaOpened — restoring session, seeking to {Pos}s", _restorePositionSeconds);
                 if (_restorePositionSeconds > 0 && Duration.TotalSeconds > 0)
                 {
+                    // Clamped half a second before the end so the seek always lands inside the media.
                     var seekPos = TimeSpan.FromSeconds(Math.Min(_restorePositionSeconds, Duration.TotalSeconds - 0.5));
                     await me.SeekTo(seekPos);
                     Position = seekPos;
@@ -1045,9 +990,8 @@ _sessionService.SaveAsync(dto).FireAndForget(ex => _logger.LogWarning(ex, "Backg
 
     public void Dispose()
     {
-        // Detach only. This service is a DI singleton that outlives the window: the process stays alive
-        // across an Android activity re-creation, so disposing the semaphore here made every later play
-        // throw ObjectDisposedException. There is no state that genuinely needs releasing at window close.
+        // Detach only: this singleton outlives an Android activity re-creation, so disposing the play gate would
+        // make every later play throw ObjectDisposedException.
         DetachMediaElement();
     }
 }

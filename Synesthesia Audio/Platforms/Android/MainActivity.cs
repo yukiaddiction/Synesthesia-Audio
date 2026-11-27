@@ -23,8 +23,8 @@ public class MainActivity : MauiAppCompatActivity
     }
 
     /// <summary>
-    /// Records the album the intent asked for. The request is held by StartupNavigation, a singleton, because
-    /// static state on an Activity outlives the Activity and a stale path could survive a re-created one (PAT-07).
+    /// The album request goes to the StartupNavigation singleton, because Activity statics outlive the Activity and a
+    /// stale path could survive a re-created one.
     /// </summary>
     private void HandleIntent(Intent? intent)
     {

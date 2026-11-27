@@ -32,8 +32,7 @@ public class TagMappingPage : ContentPage
         Shell.SetNavBarIsVisible(this, false);
 
         _searchBar = new SearchBar { Placeholder = "Search Japanese or English tags...", BackgroundColor = Colors.Transparent };
-        // Debounced: rebuilding every row on each keystroke made typing in the filter crawl on a large
-        // mapping list (PERF-09).
+        // Debounced: refiltering a large mapping list on every keystroke makes typing crawl.
         _searchBar.TextChanged += (s, e) =>
         {
             _searchDebounce ??= new Timer(_ => MainThread.BeginInvokeOnMainThread(() =>
@@ -47,8 +46,6 @@ public class TagMappingPage : ContentPage
             .AppThemeBinding(SearchBar.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
             .AppThemeBinding(SearchBar.PlaceholderColorProperty, AppColors.TextTertiaryLight, AppColors.TextSecondaryDark);
 
-        // No fixed widths: the row is a Grid with star columns now, so it fits a phone instead of
-        // running off the edge (UX-09).
         _jpEntry = GlassTheme.FormEntry(placeholder: "Japanese Tag", fillWidth: true);
         _engEntry = GlassTheme.FormEntry(placeholder: "English Translation", fillWidth: true);
         var addBtn = GlassTheme.PillButton("Add", AppFontSizes.Body, accent: true, height: AppLayout.ButtonHeightCompact);
@@ -92,8 +89,7 @@ public class TagMappingPage : ContentPage
                     new Label { Text = "Add Custom Mapping", FontAttributes = AppFonts.Bold, FontSize = AppFontSizes.Body }
                         .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
 
-                    // Star columns with a minimum width each: the fields share the available width and the
-                    // button keeps its natural size, so nothing overflows on a narrow phone (UX-09).
+                    // Star columns with minimum widths so the fields share the space and nothing overflows a phone.
                     new Grid
                     {
                         ColumnDefinitions =
@@ -127,7 +123,7 @@ public class TagMappingPage : ContentPage
         }
             .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark);
 
-        // The row view is bindable now, so the list can be virtualised instead of rebuilt view by view (PERF-09).
+        // Bindable row view so the list is virtualised instead of rebuilt view by view.
         var listView = new CollectionView
         {
             ItemsSource = _viewModel.Rows,
@@ -186,5 +182,5 @@ public class TagMappingPage : ContentPage
 
 }
 
-/// <summary>One key/value pair in the mapping list, so the CollectionView has an item type to bind to.</summary>
+/// <summary>Gives the CollectionView an item type to bind to.</summary>
 public sealed record TagMappingRow(string Key, string Value);

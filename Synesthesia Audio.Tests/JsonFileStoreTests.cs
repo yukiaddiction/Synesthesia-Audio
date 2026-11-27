@@ -4,10 +4,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// Tests for <see cref="JsonFileStore{T}"/>, the shared persistence primitive. The store is the
-/// mechanism behind BUG-M-03 (a write made while a load is in flight must survive that load) and
-/// BUG-M-12 (concurrent writers must never produce a corrupt document), so these tests use a
-/// path-keyed dictionary to mirror the shape the library cache actually persists.
+/// A write made during a load must survive it, and concurrent writers must never corrupt the file. A path-keyed
+/// dictionary mirrors what the library cache actually persists.
 /// </summary>
 public sealed class JsonFileStoreTests : IDisposable
 {
@@ -42,7 +40,6 @@ public sealed class JsonFileStoreTests : IDisposable
 
     private void WriteRawFile(string json) => File.WriteAllText(_path, json);
 
-    /// <summary>BUG-M-03 done_when: a write issued before the load completes must survive the load.</summary>
     [Fact]
     public async Task Write_before_load_completes_survives_the_load()
     {
@@ -50,8 +47,7 @@ public sealed class JsonFileStoreTests : IDisposable
 
         var store = new JsonFileStore<Dictionary<string, string>>(_path);
 
-        // Deliberately mutate through the store without ever awaiting Loaded first: this is the
-        // startup race where the cache service takes a write while its read is still in flight.
+        // Deliberately not awaiting Loaded: the startup race where the cache takes a write mid-read.
         store.Update(document =>
         {
             document["written-early"] = "kept";
@@ -64,7 +60,6 @@ public sealed class JsonFileStoreTests : IDisposable
         Assert.Equal("kept", loaded["written-early"]);
     }
 
-    /// <summary>BUG-M-03 done_when: after awaiting Loaded, the persisted works are available.</summary>
     [Fact]
     public async Task Loaded_exposes_the_persisted_document()
     {
@@ -107,10 +102,6 @@ public sealed class JsonFileStoreTests : IDisposable
         Assert.Equal("here", reloaded.RootElement.GetProperty("added").GetString());
     }
 
-    /// <summary>
-    /// BUG-M-12 done_when: concurrent writers must always produce a parseable document, and no writer's
-    /// entry may be silently dropped.
-    /// </summary>
     [Fact]
     public async Task Concurrent_updates_produce_a_valid_document()
     {
@@ -139,10 +130,7 @@ public sealed class JsonFileStoreTests : IDisposable
         Assert.Equal(100, parsed!.Count);
     }
 
-    /// <summary>
-    /// BUG-M-12 done_when: an unreadable file is backed up rather than silently replaced, so learned
-    /// mappings stay recoverable.
-    /// </summary>
+    /// <summary>The backup keeps learned mappings recoverable.</summary>
     [Fact]
     public async Task Corrupt_file_is_backed_up_not_silently_replaced()
     {

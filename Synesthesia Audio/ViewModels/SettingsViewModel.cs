@@ -76,18 +76,17 @@ public partial class SettingsViewModel : BaseViewModel
     [ObservableProperty]
     private string _translationStatus = string.Empty;
 
-    /// <summary>True while the probe runs, so the button can show a spinner instead of just text (UX-05).</summary>
     [ObservableProperty]
     private bool _isTestingTranslation;
 
     public string[] TranslationProviderOptions => TranslationProviders.All;
 
-    /// <summary>GTranslate needs no key, so the key and endpoint fields only appear for paid providers.</summary>
+    // GTranslate needs no key, so the key fields only appear for paid providers.
     public bool IsTranslationKeyVisible => TranslationProvider != TranslationProviders.GTranslate;
 
     public bool IsCustomTranslationSelected => TranslationProvider == TranslationProviders.Custom;
 
-    /// <summary>Set when the platform could not persist a secret, so the user is told rather than losing it.</summary>
+    // Tells the user when the platform couldn't persist a secret, instead of losing it silently.
     public string SecureStorageWarning => _settingsService.SecureStoreWarning ?? string.Empty;
 
     public bool IsSecureStorageWarningVisible => !string.IsNullOrEmpty(_settingsService.SecureStoreWarning);
@@ -200,8 +199,7 @@ public partial class SettingsViewModel : BaseViewModel
     }
 
     /// <summary>
-    /// Opens the About &amp; Sources screen. The EDRDG licence requires attribution on a screen
-    /// reachable from a menu, not on a splash page, and it has to show how fresh the name data is.
+    /// The EDRDG licence requires menu-reachable attribution that shows how fresh the name data is.
     /// </summary>
     [RelayCommand]
     private async Task OpenAboutAsync()
@@ -218,14 +216,11 @@ public partial class SettingsViewModel : BaseViewModel
     }
 
     /// <summary>
-    /// Translates one probe string through whatever is typed in the form, then restores the saved
-    /// values — the same swap-test-restore shape the WebDAV connection test already uses.
+    /// Tests the typed (unsaved) config by passing it explicitly, so shared settings never hold an unsaved state.
     /// </summary>
     [RelayCommand]
     private async Task TestTranslationAsync()
     {
-        // The typed values are passed to the probe explicitly. Nothing in the shared settings changes, so a
-        // concurrent reader cannot observe an unsaved configuration and there is nothing to restore (DUP-03).
         var probeConfig = new TranslationConfig(
             TranslationProvider, TranslationApiKey, TranslationCustomBaseUrl,
             TranslationCustomAuthHeader, TranslationCustomAuthScheme);
@@ -304,8 +299,7 @@ public partial class SettingsViewModel : BaseViewModel
 
         if (!await ConfirmInsecureCloudUrlAsync()) return;
 
-        // One atomic update instead of eleven writes followed by a save: a reader can no longer observe a
-        // settings document that is half the old form and half the new one (PAT-03).
+        // One atomic update so no reader sees settings half old, half new.
         _settingsService.UpdateSettings(s =>
         {
             s.BaseAudioFolderPath = BaseAudioFolderPath;
@@ -332,13 +326,11 @@ public partial class SettingsViewModel : BaseViewModel
             await _mainViewModel.InitializeAsync();
             _logger.LogInformation("Library settings saved and library re-initialized");
 
-            // Saving used to be completely silent: the only sign it worked was the library changing behind the
-            // page, so a slow or empty rescan read as "the button does nothing". Say it happened.
+            // Confirm explicitly; a slow or empty rescan otherwise makes Save look like it did nothing.
             await _dialog.AlertAsync("Saved", "Settings saved and the library rescanned.", "OK");
         }
         catch (Exception ex)
         {
-            // A failure here used to vanish into an unobserved task, leaving the button looking dead.
             _logger.LogError(ex, "Saving settings succeeded but the library rescan failed");
             await _dialog.AlertAsync("Saved, but the rescan failed",
                 "Your settings were saved. Rescanning the library failed:\n\n" + ex.Message, "OK");
@@ -346,8 +338,7 @@ public partial class SettingsViewModel : BaseViewModel
     }
 
     /// <summary>
-    /// A WebDAV server reached over <c>http://</c> receives the username and password as Basic auth in
-    /// clear text. Saving such a URL now requires an explicit confirmation rather than happening silently.
+    /// Over http:// the WebDAV credentials go out as clear-text Basic auth, so the user must explicitly accept that.
     /// </summary>
     private async Task<bool> ConfirmInsecureCloudUrlAsync()
     {
@@ -357,7 +348,7 @@ public partial class SettingsViewModel : BaseViewModel
 
         if (!CloudServerUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
         {
-            return true; // Not a URL we can reason about; the connection test will report it.
+            return true; // Unknown scheme; the connection test will report it.
         }
 
         _logger.LogWarning("WebDAV server URL is not using HTTPS — asking the user to confirm");
@@ -385,9 +376,7 @@ public partial class SettingsViewModel : BaseViewModel
     {
         _logger.LogInformation("Browsing cloud folders — server: {ServerUrl}", LogRedactor.Url(CloudServerUrl));
 
-        // Build the connection from the form instead of overwriting the saved settings. The old
-        // swap-then-restore only stayed applied until the picker page was shown, so the first folder tap
-        // in the picker went out with stale credentials and browse failed.
+        // The picker gets its own connection from the form, so it never browses with the saved (possibly stale) credentials.
         var connection = new Services.Cloud.WebDavConnection(CloudServerUrl, CloudUsername, CloudPassword);
 
         try
@@ -420,7 +409,6 @@ public partial class SettingsViewModel : BaseViewModel
     {
         _logger.LogInformation("Testing WebDAV connection — server: {ServerUrl}", LogRedactor.Url(CloudServerUrl));
 
-        // Test exactly what the user has typed, without touching the saved settings.
         var connection = new Services.Cloud.WebDavConnection(CloudServerUrl, CloudUsername, CloudPassword);
 
         try
@@ -469,8 +457,7 @@ public partial class SettingsViewModel : BaseViewModel
             return;
         }
 
-        // The picker returns a SAF tree URI on Android; without this conversion the folder was stored as a
-        // raw "/tree/primary:…" and every later scan reported it missing (BUG-m-18).
+        // Android returns a SAF tree URI ("/tree/primary:…"), which later scans can't open as a folder.
         var folderPath = AndroidStoragePath.ToFileSystemPath(result.Folder.Path);
         BaseAudioFolderPath = folderPath;
         _logger.LogInformation("Local library folder picked: {Path}", LogRedactor.FileName(folderPath));
@@ -567,7 +554,7 @@ public partial class SettingsViewModel : BaseViewModel
             intent.AddFlags(global::Android.Content.ActivityFlags.NewTask);
             context.StartActivity(intent);
 
-            // Re-check after a brief moment
+            // StartActivity returns immediately, so give the system dialog time before re-checking.
             await Task.Delay(2000);
             CheckBatteryStatus();
             _logger.LogInformation("Battery exemption request completed — exempt: {Exempt}", IsBatteryExempt);

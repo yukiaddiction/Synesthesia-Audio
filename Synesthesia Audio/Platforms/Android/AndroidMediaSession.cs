@@ -7,15 +7,8 @@ using Synesthesia_Audio.Services.Logging;
 namespace Synesthesia_Audio.Platforms.Android;
 
 /// <summary>
-/// The app's own Android media session.
-///
-/// This replaces the previous approach, which reflected into CommunityToolkit's MediaElement handler to borrow its
-/// session, wrap its player and steal its transport commands (OVR-03). That version was written against toolkit
-/// 5.0.0 internals - a private media manager field - so it broke silently on any toolkit upgrade that moved them.
-///
-/// The session here is ours: the system binds to it for the lock screen, the notification and headset buttons, and
-/// its callbacks drive <see cref="Services.AudioService"/> directly. Playback itself stays with MediaElement; what
-/// changed is who owns the session.
+/// The app's own media session, so nothing depends on CommunityToolkit's private MediaElement internals. The system
+/// binds to it for the lock screen, notification and headset buttons; playback itself stays with MediaElement.
 /// </summary>
 internal static class AndroidMediaSession
 {
@@ -30,16 +23,9 @@ internal static class AndroidMediaSession
     private static Callback? _callback;
     private static string _lastAlbumFolderPath = string.Empty;
 
-    /// <summary>
-    /// The live session, or null before the first attach. Kept process-wide on purpose: the system holds a
-    /// reference to a media session, so it belongs to the process rather than to a window, and it is released in
-    /// <see cref="Reset"/> when the media element is detached.
-    /// </summary>
+    // Process-wide on purpose: the system holds a reference to the session, so it belongs to the process, not a window.
     internal static MediaSessionCompat? Current => _session;
 
-    /// <summary>
-    /// Creates the session if needed and makes it the active one. Safe to call on every play start.
-    /// </summary>
     internal static MediaSessionCompat EnsureSession()
     {
         if (_session != null) return _session;
@@ -60,10 +46,7 @@ internal static class AndroidMediaSession
         return session;
     }
 
-    /// <summary>
-    /// Publishes the transport actions and the playing/paused state, which is what makes the system show play,
-    /// pause, next and previous rather than a bare notification.
-    /// </summary>
+    // Without the actions the system shows a bare notification instead of transport controls.
     internal static void UpdatePlaybackState(bool playing, long positionMs)
     {
         var session = _session;
@@ -87,7 +70,6 @@ internal static class AndroidMediaSession
         session.SetPlaybackState(playbackState);
     }
 
-    /// <summary>Sets what the lock screen and notification show for the current track.</summary>
     internal static void UpdateMetadata(string? title, string? artist, long durationMs, global::Android.Graphics.Bitmap? artwork)
     {
         var session = _session;
@@ -107,7 +89,6 @@ internal static class AndroidMediaSession
         session.SetMetadata(builder.Build());
     }
 
-    /// <summary>Points the session's "open the app" action at the playing album.</summary>
     internal static void UpdateActivityIntent() =>
         UpdateActivityIntent(_lastAlbumFolderPath);
 
@@ -123,8 +104,8 @@ internal static class AndroidMediaSession
     }
 
     /// <summary>
-    /// Releases the session. The process outlives the window, so a session left behind would be replaced on the
-    /// next attach while the system still pointed at the dead one - which is why detach calls this.
+    /// The process outlives the window, so a session left behind would be replaced on the next attach while the system
+    /// still pointed at the dead one.
     /// </summary>
     internal static void Reset()
     {
@@ -145,10 +126,7 @@ internal static class AndroidMediaSession
         }
     }
 
-    /// <summary>
-    /// Transport callbacks. These drive <see cref="Services.AudioService"/> rather than a player, because the player
-    /// belongs to MediaElement - this session only needs to tell the app what the user pressed.
-    /// </summary>
+    // Drives AudioService rather than a player, because the player belongs to MediaElement.
     private sealed class Callback : MediaSessionCompat.Callback
     {
         private static Services.AudioService? Audio =>
@@ -191,7 +169,7 @@ internal static class AndroidMediaSession
             var audio = Audio;
             if (audio == null) return;
 
-            // The audio service seeks by value then committing; that is the same path the on-screen slider uses.
+            // Same set-then-commit path the on-screen slider uses; ms to seconds.
             audio.SeekProgress = Math.Clamp(positionMs, 0, long.MaxValue) / 1000.0;
             if (audio.EndSeekCommand.CanExecute(null))
                 audio.EndSeekCommand.Execute(null);

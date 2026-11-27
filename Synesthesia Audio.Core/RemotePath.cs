@@ -1,19 +1,12 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Validation for library-relative remote paths (WebDAV).
-///
-/// The dangerous input is a path that climbs out of the configured base folder. <c>..</c> survives
-/// percent-escaping, so simply concatenating a caller's path onto the server URL let a caller read any
-/// file the WebDAV account could see. This lives in Core so the rule is unit-testable.
+/// Validates library-relative WebDAV paths: a <c>..</c> segment, even percent-escaped, would let a caller read any
+/// file the account can see.
 /// </summary>
 public static class RemotePath
 {
-    /// <summary>
-    /// Returns the path with forward slashes and no leading slash, or throws when any segment is — or
-    /// decodes to — <c>.</c> / <c>..</c>. Empty input yields an empty string.
-    /// </summary>
-    /// <exception cref="ArgumentException">A segment could escape the base folder.</exception>
+    /// <exception cref="ArgumentException">A segment is, or decodes to, <c>.</c> or <c>..</c>.</exception>
     public static string NormalizeRelative(string? path)
     {
         var cleanPath = (path ?? string.Empty).Replace('\\', '/').TrimStart('/');
@@ -47,7 +40,6 @@ public static class RemotePath
         return string.Join("/", safeSegments);
     }
 
-    /// <summary>True when <paramref name="path"/> stays inside <paramref name="baseFolder"/>.</summary>
     public static bool IsInsideBase(string? path, string? baseFolder)
     {
         var candidate = ScanListing.NormalizePath(path);

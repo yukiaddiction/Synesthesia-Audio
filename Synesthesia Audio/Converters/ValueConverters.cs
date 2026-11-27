@@ -85,14 +85,10 @@ public class PlayPauseTextConverter : IValueConverter
 }
 
 /// <summary>
-/// Swaps a cover path for its downscaled copy when one exists.
-///
-/// Cards, the preview pane and the dock were all decoding full-size artwork (PERF-08). The fallback keeps this
-/// safe: a cover with no thumbnail generated yet still shows, just at full size.
+/// Avoids decoding full-size artwork for small surfaces; falls back to the original until a thumbnail exists.
 /// </summary>
 public sealed class CoverThumbnailConverter : IValueConverter
 {
-    /// <summary>Which thumbnail size this surface wants.</summary>
     public int Edge { get; init; } = Synesthesia_Audio.Core.CoverThumbnails.CardEdge;
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -109,10 +105,9 @@ public sealed class CoverThumbnailConverter : IValueConverter
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();
 }
-/// <summary>Expansion arrow for a sub-album row.</summary>
 public sealed class BoolToArrowConverter : IValueConverter
 {
-    /// <summary>One shared instance: bindings do not need a new converter object per row (PAT-10).</summary>
+    // Shared so bindings don't allocate a converter per row.
     public static readonly BoolToArrowConverter Instance = new();
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>

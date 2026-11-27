@@ -7,12 +7,10 @@ using Microsoft.Maui.Graphics;
 namespace Synesthesia_Audio.Styles;
 
 /// <summary>
-/// Shared glassmorphism treatments. Every colour here comes from <see cref="AppColors"/>,
-/// so the glass layer never introduces a hue that is not already in the app palette.
+/// Glass treatments draw only from <see cref="AppColors"/> so they never add a hue outside the palette.
 /// </summary>
 public static class GlassTheme
 {
-    /// <summary>Ambient lift used by floating glass surfaces (bar, player, sheet, hero card).</summary>
     public static Shadow Elevation(double offsetY = 10, float radius = 24f, float opacity = 0.35f)
     {
         var shadow = new Shadow
@@ -30,7 +28,6 @@ public static class GlassTheme
         return shadow;
     }
 
-    /// <summary>Uppercase section heading that replaces hard dividers between card groups.</summary>
     public static Label SectionLabel(string text)
     {
         return new Label
@@ -46,11 +43,7 @@ public static class GlassTheme
     }
 
     /// <summary>
-    /// A form text field with the theme colours applied.
-    ///
-    /// Nine fields across the settings and edit pages spelled out the same two AppThemeBinding calls after the
-    /// Entry, so a new form field could easily ship with default (unreadable in dark mode) colours by forgetting
-    /// them (DUP-07).
+    /// Use for every form field so none ships with default colours, which are unreadable in dark mode.
     /// </summary>
     public static Entry FormEntry(string? text = null, string? placeholder = null,
         bool isPassword = false, bool isReadOnly = false, bool fillWidth = false)
@@ -70,16 +63,10 @@ public static class GlassTheme
         return entry;
     }
 
-    /// <summary>
-    /// A form field label.
-    ///
-    /// There were two versions of this — one regular weight, one bold with a slightly different dark colour — so
-    /// the same kind of label looked different depending on which page it was on (DUP-07). This is the bold form.
-    /// </summary>
+    /// <summary>The single form-label style, so labels look the same on every page.</summary>
     public static Label FormLabel(string text) =>
         new Label { Text = text, FontSize = AppFontSizes.BodyBold, FontAttributes = AppFonts.Bold }
             .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark);
-    /// <summary>A translucent chip used for genres and metadata pills.</summary>
     public static Border Chip(View content)
     {
         return new Border
@@ -91,7 +78,6 @@ public static class GlassTheme
         }.GlassSoft();
     }
 
-    /// <summary>Square glass icon button (app bar affordances).</summary>
     public static Button IconButton(string glyph, double fontSize = 15, double size = AppLayout.GlassBarButtonSize)
     {
         var button = new Button
@@ -107,9 +93,7 @@ public static class GlassTheme
         return button.GlassPill();
     }
 
-    /// <summary>
-    /// Themes a switch so its track uses the brand colour instead of the platform default blue.
-    /// </summary>
+    /// <summary>Replaces the platform's default blue track with the brand colour.</summary>
     public static TSwitch GlassSwitch<TSwitch>(this TSwitch toggle) where TSwitch : Switch
     {
         toggle.AppThemeBinding(Switch.OnColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark);
@@ -117,7 +101,6 @@ public static class GlassTheme
         return toggle;
     }
 
-    /// <summary>Rounded glass text button used for actions inside cards and sheets.</summary>
     public static Button PillButton(string text, double fontSize, bool accent = false, double height = AppLayout.GlassBarButtonSize)
     {
         var button = new Button
@@ -135,7 +118,6 @@ public static class GlassTheme
 
 public static class GlassExtensions
 {
-    /// <summary>Standard frosted panel: translucent fill plus a light edge stroke.</summary>
     public static TBorder Glass<TBorder>(this TBorder border, bool strong = false, bool elevated = false)
         where TBorder : Border
     {
@@ -157,7 +139,7 @@ public static class GlassExtensions
         return border;
     }
 
-    /// <summary>Lighter glass used for nested elements that sit on top of another glass panel.</summary>
+    /// <summary>For elements nested on another glass panel.</summary>
     public static TBorder GlassSoft<TBorder>(this TBorder border, bool elevated = false)
         where TBorder : Border
     {
@@ -179,7 +161,7 @@ public static class GlassExtensions
         return border;
     }
 
-    /// <summary>Deep glass used by the log terminal where text contrast matters most.</summary>
+    /// <summary>Near-opaque glass for the log terminal, where text contrast matters most.</summary>
     public static TBorder GlassDeep<TBorder>(this TBorder border) where TBorder : Border
     {
         border.StrokeThickness = 1;
@@ -197,7 +179,6 @@ public static class GlassExtensions
         return border;
     }
 
-    /// <summary>Brand tint marking the active navigation item or the playing track.</summary>
     public static TBorder GlassTint<TBorder>(this TBorder border) where TBorder : Border
     {
         border.AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassTintLight, AppColors.GlassTintDark);
@@ -205,8 +186,7 @@ public static class GlassExtensions
     }
 
     /// <summary>
-    /// Glass button. <paramref name="accent"/> marks primary actions; the dark-mode accent
-    /// uses dark text on the light brand colour so contrast stays readable.
+    /// <paramref name="accent"/> marks primary actions; in dark mode it uses dark text, since the brand colour there is light.
     /// </summary>
     public static TButton GlassPill<TButton>(this TButton button, bool accent = false)
         where TButton : Button

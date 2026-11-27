@@ -44,14 +44,13 @@ public class NameRomanizerTests
         Assert.Equal("Takanashi Mako", Create().RomanizeName("小鳥遊 まこ"));
     }
 
-    /// <summary>Japanese names often omit the space; the surname/given boundary is still recovered.</summary>
+    /// <summary>Japanese names often omit the space between surname and given name.</summary>
     [Fact]
     public void MissingSpaceBetweenSurnameAndGivenIsRecovered()
     {
         Assert.Equal("Takanashi Mako", Create().RomanizeName("小鳥遊まこ"));
     }
 
-    /// <summary>Kana in the middle of a surname must not be split into separate words.</summary>
     [Fact]
     public void KanaInsideASurnameIsNotSplit()
     {
@@ -64,10 +63,7 @@ public class NameRomanizerTests
         Assert.Equal("Ichinose", Create().RomanizeName("一ノ瀬"));
     }
 
-    /// <summary>
-    /// The regression this whole feature exists for: unknown kanji must be preserved, never deleted.
-    /// The old table turned 五十嵐 into an empty string.
-    /// </summary>
+    /// <summary>Regression: the old table turned 五十嵐 into an empty string.</summary>
     [Fact]
     public void UnknownKanjiIsPreservedNotDropped()
     {
@@ -118,10 +114,7 @@ public class NameRomanizerTests
         Assert.Equal("五十嵐", romanizer.RomanizeName("五十嵐"));
     }
 
-    /// <summary>
-    /// The Kawazu fallback receives the whole unknown kanji run, not one character at a time, so a
-    /// parser can read it in context.
-    /// </summary>
+    /// <summary>The Kawazu fallback needs the whole kanji run so its parser can read it in context.</summary>
     [Fact]
     public void UnknownKanjiFallsBackWithTheWholeRun()
     {
@@ -136,7 +129,6 @@ public class NameRomanizerTests
         Assert.Equal(new[] { "五十嵐" }, seen);
     }
 
-    /// <summary>A fallback that returns nothing must still leave the text intact.</summary>
     [Fact]
     public void FallbackReturningNullKeepsTheKanji()
     {
@@ -145,7 +137,6 @@ public class NameRomanizerTests
         Assert.Equal("五十嵐", romanizer.RomanizeName("五十嵐"));
     }
 
-    /// <summary>Table hits must not consult the fallback at all.</summary>
     [Fact]
     public void FallbackIsNotUsedWhenTheTableMatches()
     {

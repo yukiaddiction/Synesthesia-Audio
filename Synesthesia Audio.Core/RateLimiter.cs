@@ -1,12 +1,8 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// One place that owns "we are being rate limited": the cooldown clock, how many limits arrived in a row, and
-/// the delay each one earns.
-///
-/// This replaced two separate pieces of state — a <c>RateLimitCooldown</c> for the clock and a bare counter for
-/// the backoff step — which had to be updated together and could drift apart (OVR-04). It is deliberately not
-/// translation-specific so a second remote service (DLsite) can use the same policy instead of growing its own.
+/// Owns the cooldown clock and the consecutive-limit count together so they cannot drift apart. Not
+/// translation-specific, so other remote services can share the policy.
 /// </summary>
 public sealed class RateLimiter
 {
@@ -26,7 +22,6 @@ public sealed class RateLimiter
         _maxDelay = maxDelay;
     }
 
-    /// <summary>How many rate limits have arrived since the last success.</summary>
     public int ConsecutiveLimits
     {
         get { lock (_lock) return _consecutiveLimits; }
@@ -51,10 +46,8 @@ public sealed class RateLimiter
     }
 
     /// <summary>
-    /// Records a rate limit and returns the cooldown it earned: the server's own Retry-After when there is one,
-    /// otherwise exponential backoff from the base delay, capped at the maximum.
-    ///
-    /// A later expiry always wins; an earlier one never shortens a cooldown another request already paid for.
+    /// Uses the server's Retry-After when given, else capped exponential backoff. A later expiry always wins, so an
+    /// earlier one never shortens a cooldown another request already paid for.
     /// </summary>
     public TimeSpan RecordRateLimit(DateTimeOffset now, TimeSpan? serverRetryAfter)
     {
@@ -62,8 +55,7 @@ public sealed class RateLimiter
 
         lock (_lock)
         {
-            // Counted inside the lock: two concurrent limits used to read the same count and so advanced to the
-            // same backoff step.
+            // Incremented under the lock so two concurrent limits cannot read the same count and share a backoff step.
             _consecutiveLimits++;
 
             delay = TranslationBackoff.Next(_consecutiveLimits, serverRetryAfter, _baseDelay, _maxDelay);
@@ -78,7 +70,6 @@ public sealed class RateLimiter
         return delay;
     }
 
-    /// <summary>Resets the count. A success means the next limit earns the shortest backoff again.</summary>
     public void RecordSuccess()
     {
         lock (_lock) _consecutiveLimits = 0;

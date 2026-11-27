@@ -2,10 +2,7 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// PERF-11: the log viewer now reads only the end of the file, so the rules for which lines those are need to be
-/// exact - a seek starts mid-line, and a trailing newline is not a line.
-/// </summary>
+/// <summary>The viewer reads only the file's tail: a seek starts mid-line, and a trailing newline is not a line.</summary>
 public sealed class LogTailTests
 {
     [Fact]
@@ -40,7 +37,6 @@ public sealed class LogTailTests
         Assert.Equal(["two", "three"], result);
     }
 
-    /// <summary>A seek starts mid-file, so the first line is very likely cut in half.</summary>
     [Fact]
     public void A_partial_first_line_is_dropped_when_reading_from_a_seek()
     {

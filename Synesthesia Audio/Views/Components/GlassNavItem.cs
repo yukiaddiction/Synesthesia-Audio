@@ -7,10 +7,7 @@ using static CommunityToolkit.Maui.Markup.GridRowsColumns;
 
 namespace Synesthesia_Audio.Views.Components;
 
-/// <summary>
-/// One navigation row: a rounded pill with a left accent bar that appears when active.
-/// Shared by the desktop sidebar and the compact flyout so both stay identical.
-/// </summary>
+/// <summary>Shared by the desktop sidebar and the compact flyout so both stay identical.</summary>
 public sealed class GlassNavItem : Border
 {
     private readonly Label _label;
@@ -70,10 +67,7 @@ public sealed class GlassNavItem : Border
 
     public bool IsActive { get; private set; }
 
-    /// <summary>
-    /// Applies the active look through <c>AppThemeBinding</c> so colours follow the theme without
-    /// reading <c>RequestedTheme</c> (which can lag the theme-changed notification).
-    /// </summary>
+    /// <summary>Uses AppThemeBinding because reading RequestedTheme can lag the theme-changed notification.</summary>
     public void SetActive(bool isActive)
     {
         IsActive = isActive;

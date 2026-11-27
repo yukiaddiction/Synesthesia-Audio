@@ -2,10 +2,7 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// DUP-04: cover discovery used "the first jpg/png the directory returned", which could pick a screenshot
-/// instead of the cover. This is the ranking that replaces it.
-/// </summary>
+/// <summary>Taking the first image the directory returned could pick a screenshot instead of the cover.</summary>
 public sealed class LocalCoverFinderTests
 {
     [Fact]
@@ -66,7 +63,7 @@ public sealed class LocalCoverFinderTests
         Assert.Equal("/a/cover.jpg", LocalCoverFinder.SelectBest([("", 9), ("/a/cover.jpg", 1)]));
     }
 
-    /// <summary>Same rank and size must not depend on enumeration order, or the cover could change between runs.</summary>
+    /// <summary>Enumeration order must not decide a tie, or the cover could change between runs.</summary>
     [Fact]
     public void A_tie_is_broken_deterministically()
     {

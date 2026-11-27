@@ -8,9 +8,7 @@ public class GeneralSettings
     public bool IsDarkMode { get; set; } = true;
 
     /// <summary>
-    /// Opt-in: when enabled, Japanese tags that are not in the local mapping are machine-translated during
-    /// a scan, which sends them to a third-party translation service. Off by default so a fresh install
-    /// uploads nothing from the user's library until they ask for it.
+    /// Off by default: translating unmapped tags sends them to a third-party service, which must be the user's choice.
     /// </summary>
     public bool TranslateDlsiteTags { get; set; }
 
@@ -18,15 +16,15 @@ public class GeneralSettings
     public string CloudServerUrl { get; set; } = string.Empty;
     public string CloudUsername { get; set; } = string.Empty;
 
-    // Translation provider. "GTranslate" is the free chain; "DeepL" and "Custom" use the user's own
-    // paid key. The key itself is never serialized here — it lives in ISecureStore.
+    // "GTranslate" is the free chain; "DeepL" and "Custom" need the user's own key.
     public string TranslationProvider { get; set; } = "GTranslate";
     public string TranslationCustomBaseUrl { get; set; } = string.Empty;
     public string TranslationCustomAuthHeader { get; set; } = "Authorization";
 
-    /// <summary>The scheme prefixed to the key, e.g. "Bearer". Editable because providers disagree.</summary>
+    // Editable because providers disagree on the scheme.
     public string TranslationCustomAuthScheme { get; set; } = "Bearer";
 
+    // Secrets are never serialized here; they live in ISecureStore.
     [JsonIgnore]
     public string TranslationApiKey { get; set; } = string.Empty;
 

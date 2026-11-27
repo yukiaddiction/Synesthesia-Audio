@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Synesthesia_Audio.Platforms.Android;
 
 
-/// <summary>One resolved logger for this file (framework-created classes cannot take a dependency) — PAT-01.</summary>
+// Framework-created classes cannot take an injected logger, so the file shares one resolved instance.
 internal static class FileLog31288
 {
     internal static readonly ILogger<MediaPlaybackForegroundService> Logger = Synesthesia_Audio.Services.Logging.AppLog.Get<MediaPlaybackForegroundService>();
@@ -49,7 +49,7 @@ public class MediaPlaybackForegroundService : Service
             {
                 if (intent.GetBooleanExtra("UpdateSessionOnly", false))
                 {
-                    // Just update the session using cached title/artist
+                    // Refresh only: keep the cached title, artist and album.
                 }
                 else
                 {
@@ -110,9 +110,8 @@ public class MediaPlaybackForegroundService : Service
             FileLog31288.Logger.LogError(ex, "ForegroundService: OnStartCommand failed");
             try
             {
-                // This service is started with startForegroundService, so Android requires a startForeground()
-                // call even on the failure path. Stopping without it raises RemoteServiceException — an app
-                // crash instead of a quiet stop (BUG-m-23).
+                // Started via startForegroundService, so Android demands startForeground() even on failure; stopping without
+                // it crashes the app with RemoteServiceException.
                 StartForeground(NOTIFICATION_ID, BuildFallbackNotification());
                 StopSelf();
             }
@@ -147,10 +146,6 @@ public class MediaPlaybackForegroundService : Service
         base.OnDestroy();
     }
 
-    /// <summary>
-    /// The bare minimum notification Android requires when a startForegroundService() service has to stop
-    /// from its own failure path.
-    /// </summary>
     private Notification BuildFallbackNotification() =>
         new NotificationCompat.Builder(this, CHANNEL_ID)
             .SetContentTitle("Synesthesia Audio")
@@ -164,15 +159,6 @@ public class MediaPlaybackForegroundService : Service
         AndroidNotificationHelper.CreateChannel(
             this, CHANNEL_ID, "Media Playback", "Ongoing playback service to keep audio playing in background");
 
-    /// <summary>
-    /// Drops the service out of the foreground while keeping its notification, which makes the notification
-    /// dismissible.
-    ///
-    /// Android marks a foreground notification as ongoing, so a paused player kept an unremovable entry in the
-    /// shade for as long as the window lived (UX-06). Detaching leaves it visible but swipeable; resuming
-    /// promotes it again.
-    /// </summary>
-    /// <summary>Puts a demoted notification back in the foreground, with its content intact.</summary>
     private void PromoteFromBackground()
     {
         var context = global::Android.App.Application.Context;
@@ -207,6 +193,10 @@ public class MediaPlaybackForegroundService : Service
         StartForeground(NOTIFICATION_ID, builder.Build());
     }
 
+    /// <summary>
+    /// Android forces a foreground notification to be ongoing, so a paused player would keep an unremovable entry.
+    /// Detaching keeps it visible but swipeable; <see cref="PromoteToForeground"/> restores it on resume.
+    /// </summary>
     public static void DemoteToBackground()
     {
         try
@@ -228,7 +218,6 @@ public class MediaPlaybackForegroundService : Service
         }
     }
 
-    /// <summary>Puts a demoted service back in the foreground when playback actually resumes.</summary>
     public static void PromoteToForeground()
     {
         try
@@ -281,23 +270,16 @@ public class MediaPlaybackForegroundService : Service
 
     public static void UpdateNotification()
     {
-        // One decode per track change, not three: this used to decode the same full-resolution cover
-        // immediately and again at 500 ms and 1200 ms.
         SetArtworkOnMediaSession();
     }
 
-    /// <summary>The running service, so the platform layer can demote or promote it (UX-06).</summary>
     internal static MediaPlaybackForegroundService? Current { get; private set; }
 
     private static readonly object _artworkLock = new();
     private static string _cachedArtworkPath = string.Empty;
     private static global::Android.Graphics.Bitmap? _cachedArtwork;
 
-    /// <summary>
-    /// Decodes a cover at a bounded size for the notification, cacheing it for the current track.
-    /// Decoding at full resolution on the UI thread caused jank, and a bitmap over the binder limit threw
-    /// <c>TransactionTooLargeException</c> — which the caller swallowed, so no artwork appeared at all.
-    /// </summary>
+    // Cached per track so repeated notification updates do not decode the cover again.
     internal static global::Android.Graphics.Bitmap? LoadArtworkBitmap(string? path, int maxPixels = 512)
     {
         if (string.IsNullOrEmpty(path)) return null;
@@ -311,8 +293,6 @@ public class MediaPlaybackForegroundService : Service
             }
         }
 
-        // Bounded decode lives in AndroidNotificationHelper so the media session cannot decode a full-size
-        // cover and blow the binder limit (DUP-05).
         var bitmap = AndroidNotificationHelper.DecodeArtwork(path, maxPixels);
         if (bitmap == null) return null;
 
@@ -336,7 +316,7 @@ public class MediaPlaybackForegroundService : Service
             var coverPath = audioService?.CurrentTrack?.CoverImagePath;
             if (string.IsNullOrEmpty(coverPath)) return;
 
-            // Decoding happens off the UI thread; InSampleSize keeps the bitmap small enough for the binder.
+            // Decode off the UI thread; full-resolution decodes there caused jank.
             var bitmap = await Task.Run(() => LoadArtworkBitmap(coverPath)).ConfigureAwait(false);
             if (bitmap == null) return;
 
@@ -351,7 +331,6 @@ public class MediaPlaybackForegroundService : Service
         }
         catch (System.Exception ex)
         {
-            // Previously an empty catch: a failure left the notification with no artwork and no trace.
             FileLog31288.Logger
                 .LogWarning(ex, "Media session artwork update failed");
         }

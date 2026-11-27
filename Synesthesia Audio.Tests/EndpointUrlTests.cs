@@ -2,10 +2,7 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// SEC-m-04: a custom translation endpoint receives the API key in a request header, so plain http would leak it
-/// in the clear. Only the local machine may use http.
-/// </summary>
+/// <summary>A custom endpoint receives the API key in a header, so plain http is allowed only to the local machine.</summary>
 public sealed class EndpointUrlTests
 {
     [Theory]
@@ -26,7 +23,6 @@ public sealed class EndpointUrlTests
         Assert.True(EndpointUrl.IsSecureOrLocal(url));
     }
 
-    /// <summary>The finding itself: a remote http endpoint must not be used.</summary>
     [Theory]
     [InlineData("http://api.deepl.com")]
     [InlineData("http://translate.example.com")]

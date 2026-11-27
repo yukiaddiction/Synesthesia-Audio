@@ -3,13 +3,11 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// BUG-m-20: the kana romaniser dropped the sokuon, the prolonged sound mark and small-kana combos.
-/// Voice actor and circle names are romanised locally and never sent to a translation service, so these
-/// readings are what the user actually sees in the library.
+/// Voice actor and circle names are romanised locally, never translated, so these readings are exactly what the
+/// library shows.
 /// </summary>
 public sealed class RomajiTransliteratorTests
 {
-    /// <summary>The audit's own acceptance case.</summary>
     [Fact]
     public void Sokuon_doubles_the_next_consonant()
     {
@@ -33,7 +31,7 @@ public sealed class RomajiTransliteratorTests
         Assert.Equal("Kitte", RomajiTransliterator.ToRomaji("きって"));
     }
 
-    /// <summary>Before the fix the mark was simply dropped, so コーヒー became "Kohi".</summary>
+    /// <summary>Regression: the mark used to be dropped, so コーヒー became "Kohi".</summary>
     [Fact]
     public void Prolonged_sound_mark_repeats_the_previous_vowel()
     {
@@ -51,7 +49,6 @@ public sealed class RomajiTransliteratorTests
         Assert.Equal(expected, RomajiTransliterator.ToRomaji(input));
     }
 
-    /// <summary>A mark with no preceding vowel has nothing to lengthen, so it must not emit anything.</summary>
     [Fact]
     public void A_leading_prolonged_mark_is_ignored()
     {
@@ -84,8 +81,7 @@ public sealed class RomajiTransliteratorTests
     [Fact]
     public void A_realistic_voice_actor_name_is_readable()
     {
-        // ミナト・リョウ. The interpunct is kept (it separates the halves of a joint credit) and, as before,
-        // only the first letter of the whole result is capitalised.
+        // The interpunct separates the halves of a joint credit, so it is kept; only the first letter is capitalised.
         Assert.Equal("Minato・ryou", RomajiTransliterator.ToRomaji("ミナト・リョウ"));
     }
 
@@ -102,11 +98,10 @@ public sealed class RomajiTransliteratorTests
         Assert.Equal(string.Empty, RomajiTransliterator.ToRomaji("   "));
     }
 
-    /// <summary>Kanji have no reading here, so they are dropped rather than guessed — unchanged behaviour.</summary>
+    /// <summary>Kanji have no reading here, so they are dropped rather than guessed.</summary>
     [Fact]
     public void Kanji_are_dropped_and_the_rest_is_romanised()
     {
-        // Text that is entirely kanji reduces to nothing; kana around it is still romanised.
         Assert.Equal(string.Empty, RomajiTransliterator.ToRomaji("凛"));
         Assert.Equal("Rin", RomajiTransliterator.ToRomaji("凛リン"));
     }

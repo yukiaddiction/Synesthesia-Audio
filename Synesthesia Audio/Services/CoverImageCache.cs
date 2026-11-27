@@ -2,6 +2,7 @@ using Microsoft.Maui.Controls;
 
 namespace Synesthesia_Audio.Services;
 
+/// <summary>Small LRU of cover ImageSources so scrolling lists don't re-decode the same artwork.</summary>
 public class CoverImageCache
 {
     private readonly Dictionary<string, ImageSource> _cache = new(StringComparer.OrdinalIgnoreCase);
@@ -35,8 +36,7 @@ public class CoverImageCache
             if (_cache.TryGetValue(path, out var existing))
                 return existing;
 
-            // Bound the eviction on the access-order list, not on the dictionary count. If the two ever
-            // disagreed, `last == null` left this loop spinning forever on the UI thread (BUG-m-23).
+            // Guarded on the access list too: if it ever disagrees with the dictionary, this must not spin forever on the UI thread.
             while (_cache.Count >= MaxCacheSize && _accessOrder.Last != null)
             {
                 var last = _accessOrder.Last;
@@ -44,7 +44,6 @@ public class CoverImageCache
                 _accessOrder.RemoveLast();
             }
 
-            // Last resort: if they still disagree, drop everything rather than spin.
             if (_cache.Count >= MaxCacheSize)
             {
                 _cache.Clear();

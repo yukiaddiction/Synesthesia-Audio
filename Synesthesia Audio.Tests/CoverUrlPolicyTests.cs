@@ -3,8 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// SEC-m-05: cover URLs come out of a scraped page, so they are attacker-influenced input. A page could point
-/// the app at another host, a non-https scheme, or a body far larger than an image.
+/// Cover URLs come from a scraped page, so a page could point the app at another host, a non-https scheme, or a
+/// body far larger than an image.
 /// </summary>
 public sealed class CoverUrlPolicyTests
 {

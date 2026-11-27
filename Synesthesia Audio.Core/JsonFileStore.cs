@@ -3,20 +3,10 @@ using System.Text.Json;
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// A single JSON document backed by one file, with the guarantees every settings-like store in this
-/// app needs:
-/// <list type="bullet">
-///   <item>Nothing is read in the constructor. <see cref="Loaded"/> starts the (single) read on first
-///   access, so a caller can never observe a half-initialised store.</item>
-///   <item>Mutations made before the read finishes are recorded and replayed on top of the loaded
-///   document instead of being discarded, so an early write is never lost to a late load.</item>
-///   <item>Writes are debounced, serialised through a semaphore, written to a temporary file and then
-///   moved over the target, so a crash or a parallel writer cannot leave half a document behind.</item>
-///   <item>A document that cannot be parsed is moved aside to <c>.bak</c> rather than silently replaced,
-///   so the user's data is recoverable.</item>
-/// </list>
+/// One JSON document in one file. Loading is lazy and single; writes made before the load finishes are replayed on
+/// top of it rather than lost; saves are debounced, serialised, and written via temp-file-then-move so a crash cannot
+/// leave half a document; an unparsable file is moved to <c>.bak</c> instead of being silently replaced.
 /// </summary>
-/// <typeparam name="T">The document type. Must be constructible so a missing file yields a usable value.</typeparam>
 public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
 {
     private readonly string _path;
@@ -34,13 +24,9 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
     private bool _disposed;
     private Timer? _saveTimer;
 
-    /// <param name="path">Absolute path of the JSON document.</param>
-    /// <param name="options">Serializer options; defaults to compact output.</param>
     /// <param name="onBeforeSave">
-    /// Optional transform applied to a copy of the document immediately before serialising, for types
-    /// that must not persist some fields (secrets, derived data). Never mutates the live document.
+    /// Transforms a copy just before serialising, for fields that must not persist (secrets, derived data).
     /// </param>
-    /// <param name="saveDebounceMs">Quiet period before a debounced write happens.</param>
     public JsonFileStore(string path, JsonSerializerOptions? options = null, Func<T, T>? onBeforeSave = null, int saveDebounceMs = 400)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("A file path is required.", nameof(path));
@@ -53,16 +39,12 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
 
     public string Path => _path;
 
-    /// <summary>Raised when a load failed and the file had to be moved aside.</summary>
     public event Action<Exception>? LoadFailed;
 
-    /// <summary>Raised when a save could not be completed. The in-memory document is still intact.</summary>
+    /// <summary>The in-memory document is still intact when this fires.</summary>
     public event Action<Exception>? SaveFailed;
 
-    /// <summary>
-    /// Completes with the document once it has been read and every mutation queued beforehand has been
-    /// replayed. Callers that need the persisted state must await this (or <see cref="FlushAsync"/>).
-    /// </summary>
+    /// <summary>Completes only after mutations queued before the read have been replayed.</summary>
     public Task<T> Loaded
     {
         get
@@ -75,7 +57,7 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
         }
     }
 
-    /// <summary>Reads the live document. The callback runs under the store lock, so keep it short.</summary>
+    /// <summary>The callback runs under the store lock, so keep it short.</summary>
     public TResult Read<TResult>(Func<T, TResult> read)
     {
         if (read == null) throw new ArgumentNullException(nameof(read));
@@ -86,9 +68,8 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
     }
 
     /// <summary>
-    /// Applies a mutation. The callback receives the current document and returns the document that
-    /// replaces it (usually the same instance, mutated in place). Before the load finishes the
-    /// mutation is also queued for replay, so it survives the load instead of being overwritten.
+    /// The callback returns the replacement document (usually the same instance mutated in place). Before the load
+    /// finishes the mutation is also queued for replay, so the load cannot overwrite it.
     /// </summary>
     public T Update(Func<T, T> mutate)
     {
@@ -109,10 +90,7 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
         return result;
     }
 
-    /// <summary>
-    /// Replaces the whole document. Any mutation still queued is dropped, because a full replacement is
-    /// by definition authoritative.
-    /// </summary>
+    /// <summary>Drops queued mutations, since a full replacement is authoritative.</summary>
     public void Replace(T value)
     {
         var replacement = value ?? new T();
@@ -132,12 +110,9 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
         if (scheduleSave) ScheduleSave();
     }
 
-    /// <summary>
-    /// Ensures the document has been loaded, then writes any pending change immediately.
-    /// </summary>
     public async Task FlushAsync()
     {
-        // Awaiting the load first guarantees queued mutations have been replayed before we serialise.
+        // Awaiting the load guarantees queued mutations are replayed before serialising.
         await Loaded.ConfigureAwait(false);
 
         bool hadPending;
@@ -152,7 +127,6 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
         await WriteCoreAsync().ConfigureAwait(false);
     }
 
-    /// <summary>Writes the current document regardless of the dirty flag. Used by explicit save paths.</summary>
     public async Task SaveNowAsync()
     {
         await Loaded.ConfigureAwait(false);
@@ -161,9 +135,7 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
     }
 
     /// <summary>
-    /// Resets the document to a fresh value and cancels every queued write without touching the file.
-    /// Used when the caller is about to delete the file: a debounced save that fired afterwards would
-    /// otherwise resurrect it.
+    /// For callers about to delete the file: a debounced save firing afterwards would otherwise resurrect it.
     /// </summary>
     public void ResetWithoutSaving()
     {
@@ -194,8 +166,7 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
             }
             catch (Exception ex)
             {
-                // Never start clean over a file we merely failed to understand: keep it aside so the
-                // data can be recovered, and report the failure to whoever wired logging.
+                // Never start clean over a file we merely failed to understand: keep it aside so it can be recovered.
                 BackupUnreadableFile(ex);
             }
         }
@@ -203,8 +174,7 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
         bool needsSave;
         lock (_stateLock)
         {
-            // Replay anything written while the read was in flight. This is the property that stops a
-            // late load from clobbering newer state.
+            // Replay writes made while the read was in flight, so a late load cannot clobber newer state.
             foreach (var mutate in _pendingMutations)
             {
                 loaded = mutate(loaded) ?? loaded;
@@ -228,7 +198,7 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
         }
         catch
         {
-            // Leaving the file in place is the safer failure: we still report the cause below.
+            // Leaving the file in place is the safer failure; the cause is still reported.
         }
 
         LoadFailed?.Invoke(cause);
@@ -247,7 +217,7 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
 
     private void SaveFromTimer()
     {
-        // The timer contract cannot await; route failures to the SaveFailed event.
+        // Timer callbacks cannot await; observe the fault so it does not go unobserved (write errors raise SaveFailed).
         _ = FlushAsync().ContinueWith(
             static t => _ = t.Exception,
             CancellationToken.None,
@@ -268,9 +238,8 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
 
         try
         {
-            // Serialise under the state lock. Documents are mutated in place, so letting a parallel
-            // Update run while the serializer enumerates the live instance would either throw or
-            // persist a torn document — the exact corruption this store exists to prevent.
+            // Serialise under the state lock: documents are mutated in place, so a parallel Update during
+            // enumeration would throw or persist a torn document.
             string json;
             lock (_stateLock)
             {
@@ -281,8 +250,7 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
             var directory = System.IO.Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
-            // Write beside the target and move over it: an interrupted write can then never leave a
-            // truncated document where the real one used to be.
+            // Write beside the target and move over it, so an interrupted write never leaves a truncated document.
             var temporary = _path + ".tmp";
             await File.WriteAllTextAsync(temporary, json).ConfigureAwait(false);
             File.Move(temporary, _path, overwrite: true);
@@ -299,8 +267,7 @@ public sealed class JsonFileStore<T> : IAsyncDisposable where T : class, new()
 
     public async ValueTask DisposeAsync()
     {
-        // Persist anything still pending before the writer is torn down, so disposing a store at
-        // shutdown never loses the last write.
+        // Flush before tearing down the writer so shutdown never loses the last write.
         try
         {
             await FlushAsync().ConfigureAwait(false);

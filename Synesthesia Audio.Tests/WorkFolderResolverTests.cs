@@ -3,11 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// BUG-m-03 / BUG-m-07: which folder counts as "the work".
-///
-/// A work split across disc folders (CD1, CD2, Disc 2, Vol3) or format folders (mp3, wav, flac) must
-/// resolve to the one folder above them, otherwise the library shows a two-disc album as two works with
-/// half its tracks each. A trailing separator in the configured base path must also be harmless.
+/// Disc and format folders must resolve to the folder above them, or a two-disc album shows as two works with
+/// half the tracks each.
 /// </summary>
 public sealed class WorkFolderResolverTests
 {
@@ -15,7 +12,6 @@ public sealed class WorkFolderResolverTests
 
     private static string Cloud(string file) => WorkFolderResolver.Resolve(file, Base, isCloud: true);
 
-    /// <summary>BUG-m-03 done_when: each of these resolves to the work folder itself.</summary>
     [Theory]
     [InlineData("/music/WorkA/CD1/01.mp3")]
     [InlineData("/music/WorkA/CD2/01.mp3")]
@@ -47,17 +43,13 @@ public sealed class WorkFolderResolverTests
         Assert.Equal(Base, Cloud("/music/01.mp3"));
     }
 
-    /// <summary>A product-id folder is the work, so "RJ123456 disc1" style names land on the work.</summary>
     [Fact]
     public void A_product_id_folder_is_preferred()
     {
         Assert.Equal("/music/Some Title RJ123456", Cloud("/music/Some Title RJ123456/disc1/01.mp3"));
     }
 
-    /// <summary>
-    /// DLsite's own sub-folders repeat the code. The outermost RJ folder is the work; taking the deepest one split a
-    /// work into one album per format folder, each showing a single folder.
-    /// </summary>
+    /// <summary>DLsite sub-folders repeat the code; taking the deepest one split a work into one album per format folder.</summary>
     [Theory]
     [InlineData("/music/RJ01234567 Title/RJ01234567_mp3/01.mp3")]
     [InlineData("/music/RJ01234567 Title/RJ01234567_wav/01.wav")]
@@ -84,7 +76,6 @@ public sealed class WorkFolderResolverTests
         Assert.Equal("RJ01234567", result);
     }
 
-    /// <summary>BUG-m-07: a trailing separator on the base path must not change the answer or throw.</summary>
     [Theory]
     [InlineData("/music/")]
     [InlineData("/music//")]
@@ -103,7 +94,7 @@ public sealed class WorkFolderResolverTests
         Assert.Equal("/music", result);
     }
 
-    /// <summary>Windows paths keep backslashes, because the answer is used as a cache key.</summary>
+    /// <summary>The answer is used as a cache key, so it must keep the native separator.</summary>
     [Fact]
     public void Local_paths_keep_the_native_separator()
     {
@@ -148,7 +139,6 @@ public sealed class WorkFolderResolverTests
         Assert.Equal(expected, WorkFolderResolver.IsFormatFolder(name));
     }
 
-    /// <summary>Every alternative the old per-branch regexes carried must still be recognised.</summary>
     [Theory]
     [InlineData("disc")]
     [InlineData("cd")]
@@ -166,10 +156,8 @@ public sealed class WorkFolderResolverTests
         Assert.True(WorkFolderResolver.IsDiscFolder(name), $"'{name}' must still be treated as a part folder");
     }
     /// <summary>
-    /// Real library layout, seen on a pCloud library: the work lives under .../RJ01510352/RJ01510352/mp3,
-    /// and inside it some tracks are loose files while others sit in per-track folders named "01_…", "04_…".
-    /// Those folder names match no disc or format pattern, so they used to resolve to works of their own -
-    /// which is why such a work appeared as several albums of one folder each.
+    /// Real pCloud layout: per-track folders ("01_…", "04_…") match no disc or format pattern, so each used to
+    /// become an album of its own.
     /// </summary>
     [Theory]
     [InlineData("/lib/Voice Work/SFW/Other/RJ01510352/RJ01510352/mp3/01_1週間で好感度MAX/x.mp3")]

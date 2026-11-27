@@ -13,14 +13,9 @@ public partial class LogViewerViewModel : BaseViewModel
     private bool _showingAll;
     private string _logContent = string.Empty;
 
-    /// <summary>
-    /// The lines on screen. Bound to a CollectionView, which virtualises them: the page used to render the whole
-    /// log as one Label inside a ScrollView, so "show all" on a long-running install laid out every line in one
-    /// pass on the UI thread (PERF-11).
-    /// </summary>
+    /// <summary>Split into lines so a virtualised CollectionView can show a huge log without laying it all out at once.</summary>
     public ObservableCollection<string> LogLines { get; } = new();
 
-    /// <summary>The whole text, which copy and open-file still need in string form.</summary>
     public string LogContent => _logContent;
 
     [ObservableProperty]
@@ -33,7 +28,7 @@ public partial class LogViewerViewModel : BaseViewModel
         Title = "Application Logs";
     }
 
-    /// <summary>Replaces the text and the virtualised line list together, so they cannot disagree.</summary>
+    // Updates text and lines together so they can never disagree.
     private void SetLogContent(string content)
     {
         _logContent = content ?? string.Empty;

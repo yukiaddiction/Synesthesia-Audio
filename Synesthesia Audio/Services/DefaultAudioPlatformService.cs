@@ -10,11 +10,11 @@ public class DefaultAudioPlatformService : IAudioPlatformService
     public void OnMediaOpened(string? trackTitle, string albumFolderPath) { }
     public void OnPlaybackStopped() { }
 
-    // Desktop and Apple platforms hand focus out implicitly with the audio session, so nothing to ask.
+    // Desktop and Apple platforms grant focus implicitly with the audio session.
     public bool RequestAudioFocus() => true;
     public void AbandonAudioFocus() { }
 
-    // A plain file URI is enough where the OS reads artwork directly from the file system.
+    // These OSes read artwork straight from the file system, so a file URI is enough.
     public string PublishArtwork(string coverPath) => new Uri(System.IO.Path.GetFullPath(coverPath)).AbsoluteUri;
 
     public void OnMediaDetached() { }

@@ -3,9 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// DUP-08: the work-number comparison was inlined three times in the JSON parser, as
-/// <c>Regex.Replace(value, "\D", "")</c>. A work number that matched in one path but not another made the same
-/// request succeed or fail depending on which shape the response happened to have.
+/// Every JSON shape must compare work numbers the same way, or the same request succeeds or fails depending on
+/// which shape the response has.
 /// </summary>
 public sealed class DlsiteWorkNumberTests
 {
@@ -30,7 +29,6 @@ public sealed class DlsiteWorkNumberTests
         Assert.False(DlsiteWorkNumber.RefersToSameWork(value, expected));
     }
 
-    /// <summary>Leading zeros are part of the number: 0123456 is not 123456.</summary>
     [Fact]
     public void Leading_zeros_are_significant()
     {

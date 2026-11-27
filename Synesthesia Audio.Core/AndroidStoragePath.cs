@@ -1,12 +1,8 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Turns what the Android folder picker returns into a real filesystem path.
-///
-/// The picker hands back a Storage Access Framework URI (<c>/tree/primary:Music/document/primary:Music</c>,
-/// sometimes still percent-encoded inside a <c>content://</c> URL). Only the folder chosen in Settings went
-/// through a conversion — the one chosen from the library screen did not — so a folder picked in Settings was
-/// stored as a raw tree URI, and every later scan reported it missing.
+/// Converts the SAF tree URI the Android folder picker returns (<c>/tree/primary:Music/document/...</c>) into a
+/// real path; a stored raw URI made every later scan report the folder missing.
 /// </summary>
 public static class AndroidStoragePath
 {
@@ -14,10 +10,7 @@ public static class AndroidStoragePath
     private const string DocumentMarker = "/document/";
     private const string PrimaryRoot = "/storage/emulated/0";
 
-    /// <summary>
-    /// Returns a filesystem path for <paramref name="pickedPath"/>. Anything that is not the primary-volume
-    /// tree URI is returned unchanged, so this is safe to call on every platform.
-    /// </summary>
+    /// <summary>Anything other than a primary-volume tree URI passes through unchanged, so this is safe on every platform.</summary>
     public static string ToFileSystemPath(string? pickedPath)
     {
         if (string.IsNullOrWhiteSpace(pickedPath)) return string.Empty;

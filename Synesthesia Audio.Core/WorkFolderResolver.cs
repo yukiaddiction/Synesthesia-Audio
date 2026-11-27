@@ -3,27 +3,20 @@ using System.Text.RegularExpressions;
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Decides which folder is "the work" for a track.
-///
-/// A work is not always one flat folder: it may be split across disc folders (<c>CD1</c>, <c>Disc 2</c>,
-/// <c>Vol3</c>) or across format folders (<c>mp3</c>, <c>wav</c>, <c>flac</c>). Those sub-folders belong to
-/// the work above them, so they must resolve to that parent instead of becoming works of their own — which
-/// is what made a two-disc album show up as two entries with half its tracks each.
+/// Decides which folder is "the work" for a track. Disc folders (<c>CD1</c>, <c>Disc 2</c>) and format folders
+/// (<c>mp3</c>, <c>wav</c>) resolve to the work above them, so a two-disc album is one entry, not two halves.
 /// </summary>
 public static class WorkFolderResolver
 {
-    /// <summary>A DLsite product id, anywhere in a folder name.</summary>
+    // "RJ" plus 6-8 digits anywhere in the name, e.g. "RJ01234567"; case-insensitive.
     public static readonly Regex ProductIdPattern = new(@"RJ\d{6,8}", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    /// <summary>
-    /// Disc, volume and side folders that hold one part of a single work. Every alternative the old
-    /// per-branch regexes recognised is kept here, plus <c>disk</c>, and an optional separator and number.
-    /// </summary>
+    // Whole name is a part keyword, optionally followed by spaces/_/- and a number: "CD1", "Disc 2", "vol_3", "bonus".
     private static readonly Regex DiscFolderPattern = new(
         @"^(disc|cd|vol|volume|disk|bonus|track|side|part|effect|se)([\s_\-]*\d+)?$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    /// <summary>Folders named after the audio format whose contents are the same work in another container.</summary>
+    // Whole name is exactly an audio format: the same work in another container.
     private static readonly Regex FormatFolderPattern = new(
         @"^(mp3|wav|flac|ogg|opus|m4a|mp4|aac)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -34,22 +27,16 @@ public static class WorkFolderResolver
     public static bool IsFormatFolder(string? folderName) =>
         !string.IsNullOrWhiteSpace(folderName) && FormatFolderPattern.IsMatch(folderName.Trim());
 
-    /// <summary>True when the folder is a sub-part of the work rather than the work itself.</summary>
     public static bool IsPartFolder(string? folderName) => IsDiscFolder(folderName) || IsFormatFolder(folderName);
 
     public static bool ContainsProductId(string? folderName) =>
         !string.IsNullOrEmpty(folderName) && ProductIdPattern.IsMatch(folderName);
 
-    /// <summary>
-    /// Resolves the work folder for <paramref name="filePath"/>. Cloud paths use <c>/</c>; local paths keep
-    /// the separator the caller used. A trailing separator on <paramref name="basePath"/> is tolerated.
-    /// </summary>
+    /// <summary>Cloud paths use <c>/</c>; local paths keep the caller's separator.</summary>
     public static string Resolve(string filePath, string basePath, bool isCloud) =>
         ResolveAll(new[] { filePath }, basePath, isCloud)[filePath];
 
-    /// <summary>
-    /// Folder names that only ever sort works (age rating, "other"), never a work of their own.
-    /// </summary>
+    // Whole name is a sorting label, never a work: SFW/NSFW, R18/R-18, R15, "All Ages"/"all_age", adult, 全年齢, 成人向(け).
     private static readonly Regex CategoryFolderPattern = new(
         @"^(n?sfw|r-?18|r-?15|all[\s_\-]*ages?|adult|全年齢|成人向け?)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -58,13 +45,9 @@ public static class WorkFolderResolver
         !string.IsNullOrWhiteSpace(folderName) && CategoryFolderPattern.IsMatch(folderName.Trim());
 
     /// <summary>
-    /// Resolves every file at once, because which folder is a work depends on its neighbours.
-    ///
-    /// The outermost folder carrying a product id is the work: "WorkA RJ123456/disc1" lands on the work, and so do
-    /// DLsite's own sub-folders that repeat the code ("RJ123456/RJ123456_mp3"). Every folder that holds such a work
-    /// (directly or deeper) is a category, as are folders named like one (SFW, NSFW, R18). A work without a product
-    /// id is the first folder below the deepest category above it, so "SFW/Other/Some Work/本編/01.mp3" is the work
-    /// "Some Work" with a section "本編", instead of every non-DLsite work in SFW becoming one album.
+    /// Resolves all files at once because which folder is a work depends on its neighbours. The outermost folder with a
+    /// product id is the work, and every folder above one is a category. A work without an id is the first folder below
+    /// the deepest category, so "SFW/Other/Some Work/本編/01.mp3" is work "Some Work" with section "本編".
     /// </summary>
     public static Dictionary<string, string> ResolveAll(IEnumerable<string> filePaths, string basePath, bool isCloud)
     {
@@ -72,7 +55,7 @@ public static class WorkFolderResolver
         var files = filePaths.Distinct(StringComparer.Ordinal).ToList();
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        // Pass 1: product-id works, and the folders above them.
+        // Pass 1 resolves product-id works and records the folders above them as categories.
         var containers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var plain = new List<(string File, string Directory, string Base)>();
         var sharedParents = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -109,7 +92,7 @@ public static class WorkFolderResolver
             plain.Add((file, directory, normalizedBase));
         }
 
-        // Pass 2: everything else, now that the categories are known.
+        // Pass 2 resolves the rest, now that the categories are known.
         foreach (var (file, directory, normalizedBase) in plain)
         {
             if (IsSame(directory, normalizedBase) || !IsUnder(directory, normalizedBase))
@@ -118,7 +101,6 @@ public static class WorkFolderResolver
                 continue;
             }
 
-            // The chain of folders from just below the base down to the file's own folder.
             var chain = new List<string>();
             for (var current = directory; IsStrictlyUnder(current, normalizedBase); current = GetDirectory(current))
             {
@@ -135,9 +117,8 @@ public static class WorkFolderResolver
     }
 
     /// <summary>
-    /// "Some Title/RJ123456_mp3" next to "Some Title/RJ123456_wav": the code sits only on the format folders, so each
-    /// would be an album of one folder. When the parent holds two or more folders with the same code (and is neither
-    /// the library nor a category), the parent is the work and those folders are its sections.
+    /// "Title/RJ123456_mp3" beside "Title/RJ123456_wav" would each be a one-folder album; when a parent (not the
+    /// library, not a category) holds two or more folders with the same code, the parent is the work.
     /// </summary>
     private static string? SharedParentOfFormatCopies(string productFolder, string normalizedBase, IReadOnlyList<string> files)
     {
@@ -181,9 +162,8 @@ public static class WorkFolderResolver
         !string.IsNullOrEmpty(path) && path != "/" && !IsSame(path, normalizedBase) && IsUnder(path, normalizedBase);
 
     /// <summary>
-    /// The folder picker stores "/Voice Work" while a WebDAV listing answers "Voice Work/…". Without lining the two
-    /// up nothing looked like it was inside the library, no product-id folder was found, and every leaf folder
-    /// became a work of its own.
+    /// The folder picker stores "/Voice Work" while WebDAV answers "Voice Work/…"; unaligned, nothing appeared inside
+    /// the library and every leaf folder became its own work.
     /// </summary>
     private static string AlignBase(string normalizedBase, string normalizedFile)
     {

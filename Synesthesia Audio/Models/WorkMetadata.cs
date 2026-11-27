@@ -15,37 +15,27 @@ public class WorkMetadata
     public string AgeRating { get; set; } = Synesthesia_Audio.Core.AgeRatings.Sfw;
     public bool IsDlsiteWork => !string.IsNullOrEmpty(ProductId);
 
-    // A null AgeRating in an older cache file used to throw here, which broke the library filter.
+    // Goes through AgeRatings because older cache files can hold a null AgeRating.
     public bool IsNsfw => Synesthesia_Audio.Core.AgeRatings.IsNsfw(AgeRating);
     public bool IsSfw => Synesthesia_Audio.Core.AgeRatings.IsSfw(AgeRating);
 
-    /// <summary>True when the rating could not be determined, so the work must not be shown as all-ages.</summary>
     public bool IsAgeRatingUnknown => Synesthesia_Audio.Core.AgeRatings.IsUnknown(AgeRating);
     public string FolderPath { get; set; } = string.Empty;
     public ObservableCollection<SubAlbum> SubAlbums { get; set; } = new();
 
-    /// <summary>
-    /// Set when the last metadata fetch failed, so the next scan retries instead of keeping a
-    /// folder-name-only work forever.
-    /// </summary>
+    /// <summary>Set when the last fetch failed, so the next scan retries instead of keeping a folder-name-only work forever.</summary>
     public bool NeedsMetadataRefresh { get; set; }
 
-    /// <summary>
-    /// The remote cover URL, persisted so a deleted or cache-cleared cover can be downloaded again without
-    /// scraping the page.
-    /// </summary>
+    /// <summary>Persisted so a lost cover can be re-downloaded without scraping the page again.</summary>
     public string CoverUrl { get; set; } = string.Empty;
 
     /// <summary>
-    /// The cloud server's change tag for <see cref="FolderPath"/> at the last scan. On a server that changes a folder's
-    /// tag whenever anything beneath it changes, an unchanged tag lets the next scan reuse
-    /// <see cref="SourceFiles"/> instead of listing the folder again.
+    /// The folder's cloud ETag at the last scan; if unchanged, the next scan reuses <see cref="SourceFiles"/> instead of listing again.
     /// </summary>
     public string SourceETag { get; set; } = string.Empty;
 
     /// <summary>
-    /// Every audio file beneath <see cref="FolderPath"/> at the last scan, duplicates in other formats included
-    /// (the tracks keep only the best copy, so they cannot stand in for this).
+    /// Every audio file at the last scan, including other-format duplicates, which the deduplicated tracks can't stand in for.
     /// </summary>
     public List<string> SourceFiles { get; set; } = new();
 }

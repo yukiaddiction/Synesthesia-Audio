@@ -1,11 +1,8 @@
 namespace Synesthesia_Audio.Core;
 
 /// <summary>
-/// Checks whether an endpoint URL is safe to send credentials to.
-///
-/// A user-supplied translation base URL is used with an API key in a request header. Allowing plain
-/// <c>http://</c> there meant a typo — or a typo'd hostname — silently shipped the key in the clear. Only the
-/// local machine may be addressed over http, which keeps a local proxy or mock server usable.
+/// A user-supplied translation endpoint receives the API key, so plain http is allowed only for loopback
+/// (a local proxy or mock); anything else would ship the key in the clear.
 /// </summary>
 public static class EndpointUrl
 {
@@ -20,11 +17,7 @@ public static class EndpointUrl
         return uri.IsLoopback;
     }
 
-    /// <summary>
-    /// Returns <paramref name="candidate"/> when it is acceptable, otherwise <paramref name="fallback"/>.
-    /// The fallback is used rather than throwing so a bad setting degrades to the official endpoint instead of
-    /// breaking translation entirely.
-    /// </summary>
+    /// <summary>Falls back instead of throwing so a bad setting degrades to the official endpoint rather than breaking translation.</summary>
     public static string UseOrFallback(string? candidate, string fallback) =>
         IsSecureOrLocal(candidate) ? candidate!.Trim().TrimEnd('/') : fallback;
 }

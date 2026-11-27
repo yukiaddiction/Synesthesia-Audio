@@ -20,10 +20,7 @@ public partial class ScanFolderService : IDisposable
     private readonly CoverThumbnailer _thumbnailer;
     private readonly ILogger<ScanFolderService> _logger;
 
-    /// <summary>
-    /// Compiled once per app rather than rebuilt on every call, with a timeout so a pathological folder name
-    /// cannot hang a scan (PAT-10).
-    /// </summary>
+    // A DLsite product code: "RJ" followed by 6-8 digits, anywhere in the name (case-insensitive).
     [System.Text.RegularExpressions.GeneratedRegex(@"(RJ\d{6,8})",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 200)]
@@ -41,9 +38,6 @@ public partial class ScanFolderService : IDisposable
         _thumbnailer = thumbnailer;
     }
 
-    /// <summary>
-    /// Lightweight fetch for a single new work 窶・used during quick background checks.
-    /// </summary>
     public async Task<(string? Title, string? TranslatedTitle, string? Circle, string? VA, string? AgeRating, string? Genre, string? CoverImagePath)>
         FetchDlsiteMetadataAsync(string rjCode, string folderPath)
     {
@@ -59,12 +53,11 @@ public partial class ScanFolderService : IDisposable
             }
             else if (CoverUrlPolicy.IsAllowed(meta.CoverUrl))
             {
-                // The image itself was fine, only the download failed, so the remote URL is still usable.
+                // Only the download failed; the remote URL is still usable.
                 coverPath = meta.CoverUrl;
             }
         }
 
-        // Fallback: local cover image
         if (string.IsNullOrEmpty(coverPath) && !string.IsNullOrEmpty(folderPath) && !Synesthesia_Audio.Core.StorageTypes.IsWebDav(_settingsService.CurrentSettings.StorageType))
         {
             try
@@ -77,10 +70,7 @@ public partial class ScanFolderService : IDisposable
         return (meta.Title, meta.TranslatedTitle, meta.Circle, meta.VA, meta.AgeRating, meta.Genre, coverPath);
     }
 
-    /// <summary>
-    /// Quick top-level folder check for new works not yet in cache.
-    /// Handles both local and cloud modes. Returns newly discovered works.
-    /// </summary>
+    /// <summary>Quick top-level check for folders not yet in the cache, without a full rescan.</summary>
     public async Task<List<WorkMetadata>> CheckForNewWorksAsync(string basePath, IEnumerable<string> cachedPaths)
     {
         var settings = _settingsService.CurrentSettings;
@@ -88,13 +78,13 @@ public partial class ScanFolderService : IDisposable
         _logger.LogInformation("Checking for new works — isCloud: {IsCloud}", isCloud);
         var newWorks = new List<WorkMetadata>();
 
-        // Same trimming as the full scan, so the work paths both produce compare equal.
+        // Same trimming as the full scan, so both produce comparable work paths.
         basePath = NormalizeBasePath(basePath, isCloud);
 
         var cachedPathList = cachedPaths.Where(p => !string.IsNullOrEmpty(p)).ToList();
 
-        // With nothing cached every folder looks new, so this would be a second full scan - and it ran alongside the
-        // real one right after a library was picked, adding a duplicate of every work once that scan had finished.
+        // With nothing cached every folder looks new: this would become a second full scan racing the real one
+        // and duplicating every work.
         if (cachedPathList.Count == 0 || IsScanRunning())
         {
             _logger.LogInformation("Check for new works skipped — {Reason}",
@@ -130,8 +120,7 @@ public partial class ScanFolderService : IDisposable
                 .ToList();
         }
 
-        // A folder is known when it is a cached work or holds one: RJ works filed under a circle folder are cached by
-        // their own path, and treating the circle folder as new made it a second work holding all of them.
+        // A folder that merely contains cached works (e.g. a circle folder of RJ works) is not new either.
         var newFolders = folders
             .Where(f => !cachedPathList.Any(cached => ScanListing.IsUnderOrEqual(cached, f.Path)))
             .ToList();
@@ -140,12 +129,11 @@ public partial class ScanFolderService : IDisposable
 
         foreach (var (path, eTag) in newFolders)
         {
-            // One unreadable folder must not abandon the rest of the check (BUG-m-06).
             try
             {
                 var works = await CreateWorksFromFolderAsync(path, eTag, basePath, isCloud).ConfigureAwait(false);
 
-                // A full scan that started meanwhile owns the cache; anything written now would be a duplicate.
+                // A full scan that started meanwhile owns the cache; writing now would duplicate.
                 if (IsScanRunning())
                 {
                     _logger.LogInformation("Check for new works abandoned — a full scan started");
@@ -169,17 +157,15 @@ public partial class ScanFolderService : IDisposable
     }
 
     /// <summary>
-    /// Builds cacheable works for one newly seen top-level folder, with the same rules as the full scan: the work is
-    /// the RJ folder (or, without a code, the top-level folder), and every folder beneath it is a section. Empty when
-    /// the folder holds no audio anywhere beneath it.
+    /// Same rules as the full scan: the work is the RJ folder (or the top-level folder without a code) and every
+    /// folder beneath it is a section.
     /// </summary>
     private async Task<List<WorkMetadata>> CreateWorksFromFolderAsync(string path, string? folderETag, string basePath, bool isCloud)
     {
         var works = new List<WorkMetadata>();
 
-        // Audio is established *before* the metadata request. A work whose files live in CD1/ has no
-        // top-level audio, so the old order spent a DLsite request on it and then skipped caching it — which
-        // meant the same work was fetched again on every launch, forever (BUG-m-06).
+        // List audio recursively before any DLsite request, so a work whose files live only in subfolders (CD1/)
+        // isn't fetched and then dropped on every launch.
         var listing = await ListAudioFilesRecursiveAsync(path, isCloud).ConfigureAwait(false);
         var audioFiles = listing.AudioFiles;
         if (audioFiles.Count == 0) return works;
@@ -232,8 +218,7 @@ public partial class ScanFolderService : IDisposable
                     work.Genre = meta.Genre ?? "";
                     work.CoverImagePath = meta.CoverImagePath ?? "";
 
-                    // A failed fetch must be retried later instead of being frozen into the cache under the
-                    // folder name forever.
+                    // Retry a failed fetch later instead of freezing the folder name into the cache.
                     work.NeedsMetadataRefresh = string.IsNullOrEmpty(meta.Title);
                 }
             }
@@ -262,23 +247,17 @@ public partial class ScanFolderService : IDisposable
 
     public async Task<ScanResult> ScanLibraryAsync(string basePath, IProgress<(double, string)>? progress = null, CancellationToken cancellationToken = default)
     {
-        // The cache reads lazily; finish that read before deciding which works are stale or new.
+        // The cache must be fully read before deciding which works are stale or new.
         await _cacheService.Loaded.ConfigureAwait(false);
 
-        // Trim a trailing separator once, up front. Leaving it made every relative-path comparison below
-        // wrong and could make the old substring maths throw on cloud paths (BUG-m-07). A lone separator
-        // (the cloud root) is kept as-is.
-        // Local, not a field: two scans overlapping used to share (and clobber) this list (BUG-m-02).
+        // Local, not a field, so overlapping scans can't clobber each other's list.
         var failedFolders = new List<string>();
         var settings = _settingsService.CurrentSettings;
         bool isCloud = Synesthesia_Audio.Core.StorageTypes.IsWebDav(settings.StorageType);
         basePath = NormalizeBasePath(basePath, isCloud);
         _logger.LogInformation("Library scan started — isCloud: {IsCloud}, path: {BasePath}", isCloud, basePath);
-        // One phrasing for every stage: the status line used to mix "Scan Library Found 0 Work" with
-        // "scan: fetching metadata" and "scan: done" (UX-05).
         _scanStateService.MarkRunning("Scanning — 0 works, 0 audio files");
 
-        // One detailed scraper warning per scan instead of one per work.
         DLsiteService.ResetScanDiagnostics();
 
         void Report(double pct, string msg)
@@ -304,8 +283,7 @@ public partial class ScanFolderService : IDisposable
             return new ScanResult();
         }
 
-        // One walk for both storage types: the failures it records are what stops a partial listing
-        // from being written back as "the whole library".
+        // The failures this walk records are what stop a partial listing being saved as the whole library.
         IScanFileSource fileSource = isCloud
             ? new CloudScanFileSource(_cloudProvider)
             : new LocalScanFileSource();
@@ -314,6 +292,7 @@ public partial class ScanFolderService : IDisposable
         ScanListingResult listing;
         try
         {
+            // Discovery fills the first 15% of the bar, saturating at 500 files since the total is unknown yet.
             listing = await ScanListing.CollectAudioFilesAsync(
                 fileSource,
                 basePath,
@@ -326,7 +305,7 @@ public partial class ScanFolderService : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // A cancelled scan must never publish a partial library over a good cache.
+            // Never publish a partial library over a good cache.
             _logger.LogInformation("Library scan cancelled during discovery");
             _scanStateService.MarkInterrupted("Scan cancelled.");
             return new ScanResult();
@@ -339,7 +318,7 @@ public partial class ScanFolderService : IDisposable
 
         if (listing.RootFailed)
         {
-            // Nothing is known about the library, so the cache must not be touched at all.
+            // Nothing is known about the library, so leave the cache untouched.
             var reason = $"The library folder could not be read: {basePath}. Your library was left unchanged.";
             _logger.LogError("Scan aborted — root listing failed for {BasePath}", basePath);
             _scanStateService.MarkFailed(reason, listing.FailedPaths.Count, listing.FailedPaths);
@@ -364,9 +343,8 @@ public partial class ScanFolderService : IDisposable
         Report(0.15, $"Scanning — {totalFoundWorks} work{(totalFoundWorks == 1 ? "" : "s")}, {totalFoundFiles} audio file{(totalFoundFiles == 1 ? "" : "s")}");
         _logger.LogInformation("Scan discovery complete — {Folders} folders, {Files} files", totalFoundWorks, totalFoundFiles);
 
-        // Snapshot the translations the cache already holds. A metadata refresh rebuilds each work from
-        // scratch and calls UpdateWork before the track loop runs, so reading the cache afterwards found the
-        // freshly written (untranslated) work and every translated title was lost (BUG-m-05).
+        // Taken now because metadata refresh overwrites cached works with untranslated copies before the
+        // track loop reads them.
         var previousTranslations = SnapshotCachedTranslations();
 
         var pendingWorks = new List<(WorkMetadata Work, string WorkPath, string? RjCode, List<string> Files)>();
@@ -404,8 +382,7 @@ public partial class ScanFolderService : IDisposable
 
             var cachedWork = _cacheService.GetWork(workPath);
 
-            // A failed fetch must not be frozen into the cache, and entries already carrying the
-            // old placeholder titles are treated as stale so existing libraries heal by themselves.
+            // Stale entries (failed fetches, placeholder titles) are refetched so libraries heal themselves.
             if (cachedWork != null && IsStaleCachedWork(cachedWork))
                 cachedWork = null;
 
@@ -439,8 +416,6 @@ public partial class ScanFolderService : IDisposable
             }
             else
             {
-                // No RJ code in the folder path means there is nothing to look up, which is a
-                // legitimate reason for empty metadata - say so instead of failing silently.
                 _logger.LogInformation("Work has no RJ code and cannot be scraped: {Folder}", folderName);
                 readyWorks.Add((work, files));
             }
@@ -458,15 +433,13 @@ public partial class ScanFolderService : IDisposable
                 await semaphore.WaitAsync();
                 try
                 {
-                    // Honoured before each work so cancelling stops new DLsite requests promptly without
-                    // threading a token through every scraper call.
+                    // Checked per work so cancel stops new requests without threading a token through the scraper.
                     if (cancellationToken.IsCancellationRequested) return;
                     var (work, workPath, rjCode, _) = pw;
 
                     try
                     {
-                        // Assume failure until a validated title comes back, so an outage is
-                        // retried on the next scan instead of being cached forever.
+                        // Assume failure until a title comes back, so an outage is retried next scan.
                         work.NeedsMetadataRefresh = true;
                         var meta = await _dlsiteService.GetWorkMetadataAsync(rjCode!);
                         if (!string.IsNullOrEmpty(meta.Title))
@@ -481,7 +454,7 @@ public partial class ScanFolderService : IDisposable
 
                             if (!string.IsNullOrEmpty(meta.CoverUrl))
                             {
-                                // Remembered so the cover can be re-downloaded later without scraping again.
+                                // Kept so the cover can be re-downloaded without scraping again.
                                 work.CoverUrl = meta.CoverUrl;
 
                                 var localCoverPath = GetLocalCoverCachePath(workPath, rjCode!);
@@ -491,7 +464,6 @@ public partial class ScanFolderService : IDisposable
                                 }
                                 else if (CoverUrlPolicy.IsAllowed(meta.CoverUrl))
                                 {
-                                    // Only the download failed; the URL itself passed the policy.
                                     work.CoverImagePath = meta.CoverUrl;
                                 }
                             }
@@ -513,6 +485,7 @@ public partial class ScanFolderService : IDisposable
                         Interlocked.Increment(ref failedMetadata);
 
                     var done = Interlocked.Increment(ref completedMeta);
+                    // Metadata spans 15%..95% of the bar.
                     Report(0.15 + 0.80 * done / totalMeta, $"Fetching metadata — {done}/{totalMeta}");
                 }
                 finally
@@ -530,7 +503,6 @@ public partial class ScanFolderService : IDisposable
                     failedMetadata, pendingWorks.Count);
             }
 
-            // Move pending works to ready
             foreach (var pw in pendingWorks)
             {
                 readyWorks.Add((pw.Work, pw.Files));
@@ -541,7 +513,7 @@ public partial class ScanFolderService : IDisposable
 
         foreach (var (work, files) in readyWorks)
         {
-            // Checked per work: this loop is the long tail of a scan and is where a cancel has to land.
+            // This loop is the long tail of a scan, so a cancel has to land here.
             if (cancellationToken.IsCancellationRequested)
             {
                 _logger.LogInformation("Library scan cancelled before writing results");
@@ -556,7 +528,7 @@ public partial class ScanFolderService : IDisposable
 
             var previous = previousTranslations.TryGetValue(workPath, out var snapshot) ? snapshot : null;
 
-            // A refreshed work comes back with no translated title when the fetch only produced the original.
+            // A refetch that only produced the original title must not wipe the earlier translation.
             if (string.IsNullOrEmpty(work.TranslatedTitle) && !string.IsNullOrEmpty(previous?.WorkTranslatedTitle))
             {
                 work.TranslatedTitle = previous.WorkTranslatedTitle!;
@@ -565,8 +537,7 @@ public partial class ScanFolderService : IDisposable
             foreach (var subAlbum in BuildSubAlbums(files, workPath, isCloud, cachedWork, previous))
                 work.SubAlbums.Add(subAlbum);
 
-            // One line per album, so a log shows which folders became sections - and which files were dropped as
-            // another format of the same track.
+            // Shows in the log which folders became sections and which files were dropped as duplicate formats.
             var shown = work.SubAlbums.Sum(sa => sa.Tracks.Count);
             _logger.LogInformation("Album {Work}: {Files} file(s), {Tracks} track(s) shown in {Count} section(s): {Sections}",
                 workPath, files.Count, shown, work.SubAlbums.Count,
@@ -576,15 +547,12 @@ public partial class ScanFolderService : IDisposable
 
             if (work.SubAlbums.Any())
             {
-                // A unit whose cover file was deleted (or cleared by the OS) gets it back here, without a
-                // full "Reset RJ cache" and without re-scraping the page.
                 if (await TryRestoreCachedCoverAsync(work, workPath))
                 {
                     _logger.LogInformation("Restored missing cover for {Title}", work.Title);
                 }
 
-                // No per-work write here: ReplaceAll below persists the whole list, so this only added a
-                // full-file rewrite per work (PERF-05).
+                // No per-work cache write: ReplaceAll below persists the whole list once.
                 finalWorks.Add(work);
             }
         }
@@ -595,9 +563,8 @@ public partial class ScanFolderService : IDisposable
         }
         else
         {
-            // Part of the library could not be listed. Keep the cached works that live under those
-            // folders: they are probably still on disk, and replacing the cache wholesale would throw
-            // away their metadata, covers and translations.
+            // Keep cached works under unreadable folders: they are probably still there, and a wholesale replace
+            // would lose their metadata, covers and translations.
             var merged = LibraryCacheMergePolicy.Merge(
                 finalWorks,
                 _cacheService.GetAllWorks(),
@@ -634,7 +601,7 @@ public partial class ScanFolderService : IDisposable
             try
             {
                 var folderFiles = await _cloudProvider.ListFilesAsync(workPath);
-                // Ranked the same way as a local folder: a "cover.jpg" beats a bigger screenshot (DUP-04).
+                // Same ranking as a local folder, so "cover.jpg" beats a bigger screenshot.
                 var remotePath = LocalCoverFinder.SelectBest(folderFiles
                     .Where(f => !f.IsDirectory)
                     .Select(f => (f.Path, f.Size)));
@@ -659,10 +626,8 @@ public partial class ScanFolderService : IDisposable
     }
 
     /// <summary>
-    /// The work's sections and tracks. Sections come from Core: one per folder, keyed by its path relative to the
-    /// work, with files directly in the work forming the main section (verified by SectionBuilderTests). Within a
-    /// folder, the same track in several formats keeps only the best copy. Used by the full scan and by the quick
-    /// new-works check, which used to group files its own way.
+    /// One section per folder (rules tested in Core's SectionBuilder); within a section, a track present in several
+    /// formats keeps only the preferred copy. Shared by the full scan and the quick check so both group alike.
     /// </summary>
     private static List<SubAlbum> BuildSubAlbums(
         IEnumerable<string> files,
@@ -708,9 +673,8 @@ public partial class ScanFolderService : IDisposable
     }
 
     /// <summary>
-    /// Remembers the work folder's change tag and every audio file beneath it, so the next scan can skip the folder
-    /// when the tag has not moved. Files of a work nested inside this folder are included: skipping the folder skips
-    /// them too. The library root is never skipped, so nothing is stored for it.
+    /// Stores the folder's ETag and every audio file beneath it so the next scan can skip an unchanged folder.
+    /// Nested works' files are included since skipping the folder skips them too; the root is never skipped.
     /// </summary>
     private static void RememberSource(
         WorkMetadata work,
@@ -730,9 +694,8 @@ public partial class ScanFolderService : IDisposable
     }
 
     /// <summary>
-    /// Lets the walk skip a cached work folder whose change tag has not moved since the last scan. Only trusted on
-    /// servers that change a folder's tag when anything beneath it changes (Nextcloud, ownCloud, oCIS); elsewhere a
-    /// tag only covers the folder's direct children, so every folder is still listed.
+    /// Only trusted on servers whose folder ETag changes when anything beneath it does (Nextcloud, ownCloud, oCIS);
+    /// elsewhere an ETag covers direct children only, so every folder is still listed.
     /// </summary>
     private Func<ScanEntry, IReadOnlyList<string>?> BuildSubtreeReuse()
     {
@@ -757,7 +720,6 @@ public partial class ScanFolderService : IDisposable
         };
     }
 
-    /// <summary>Translations recovered from the cache before a scan overwrites it.</summary>
     private sealed class CachedTranslations
     {
         public string? WorkTranslatedTitle { get; init; }
@@ -772,6 +734,7 @@ public partial class ScanFolderService : IDisposable
         public string? GetTrackTranslation(string subAlbumTitle, string trackTitle) =>
             _tracks.TryGetValue(Key(subAlbumTitle, trackTitle), out var value) ? value : null;
 
+        // A control-character separator that won't appear in real titles keeps the composite key unambiguous.
         private static string Key(string subAlbumTitle, string trackTitle) =>
             subAlbumTitle + "\u0001" + trackTitle;
     }
@@ -806,8 +769,8 @@ public partial class ScanFolderService : IDisposable
     private static string GetCloudFileName(string path) => WorkGrouper.GetRemoteFileName(path);
 
     /// <summary>
-    /// A cached work is stale when its last fetch failed, or when it still carries a title that
-    /// only a non-product page could have produced (the site name, or the parser's placeholder).
+    /// Stale when the last fetch failed, or the title is one only a non-product page could produce (the site name,
+    /// the parser's placeholder).
     /// </summary>
     private static bool IsStaleCachedWork(WorkMetadata work) =>
         work.NeedsMetadataRefresh ||
@@ -815,14 +778,8 @@ public partial class ScanFolderService : IDisposable
         string.Equals(work.Title, "Unknown Title", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Which folder counts as "the work" for this track. Delegated to Core so the disc/format folder rules
-    /// (CD1, Disc 2, Vol3, mp3, wav, …) are covered by tests instead of only by scanning real libraries.
-    /// </summary>
-
-    /// <summary>
-    /// One spelling of the library folder. A trailing separator made every relative-path comparison wrong (BUG-m-07).
-    /// A WebDAV listing answers paths without a leading "/", while the folder picker stores one ("/Voice Work"), so
-    /// for the cloud both ends are trimmed; the server root becomes "".
+    /// A trailing separator breaks relative-path comparisons. WebDAV listings have no leading "/" but the picker
+    /// stores one, so cloud paths are trimmed at both ends (the server root becomes "").
     /// </summary>
     private static string NormalizeBasePath(string basePath, bool isCloud)
     {
@@ -839,9 +796,8 @@ public partial class ScanFolderService : IDisposable
     private static int GetExtensionPriority(string ext) => WorkGrouper.GetExtensionPriority(ext);
 
     /// <summary>
-    /// Downloads a cover subject to the SEC-m-05 rules: https from a DLsite image host, an image content type,
-    /// and a size cap. The URL comes out of a scraped page, so it is attacker-influenced input. Writes to a
-    /// temporary file first so a rejected or truncated body never becomes the cached cover.
+    /// The URL comes from a scraped page, so it is untrusted: https DLsite image host, image content type and a size
+    /// cap are enforced, and a temp file keeps a rejected or truncated body from becoming the cover.
     /// </summary>
     private async Task<bool> TryDownloadCoverAsync(string? coverUrl, string localCoverPath)
     {
@@ -876,7 +832,7 @@ public partial class ScanFolderService : IDisposable
                 await response.Content.CopyToAsync(file).ConfigureAwait(false);
             }
 
-            // A chunked response declares no length, so the cap is enforced on what actually arrived.
+            // A chunked response declares no length, so enforce the cap on what actually arrived.
             var downloaded = new FileInfo(temporaryPath).Length;
             if (downloaded == 0 || downloaded > CoverUrlPolicy.MaxCoverBytes)
             {
@@ -887,7 +843,7 @@ public partial class ScanFolderService : IDisposable
 
             File.Move(temporaryPath, localCoverPath, overwrite: true);
 
-            // Downscaled copies are written now, once, rather than every time a view asks for the cover (PERF-08).
+            // Thumbnail once here rather than every time a view asks for the cover.
             _thumbnailer.EnsureThumbnails(localCoverPath);
             return true;
         }
@@ -900,14 +856,13 @@ public partial class ScanFolderService : IDisposable
             }
             catch
             {
-                // Best effort; a stray .part file is harmless.
+                // A stray .part file is harmless.
             }
             return false;
         }
     }
 
-    /// <summary>Walks a folder on the local disk. Listing failures surface as exceptions and are
-    /// recorded by <see cref="ScanListing"/>.</summary>
+    /// <summary>Lets exceptions escape: <see cref="ScanListing"/> records them as failed folders.</summary>
     private sealed class LocalScanFileSource : IScanFileSource
     {
         public Task<IReadOnlyList<ScanEntry>> ListAsync(string path, CancellationToken cancellationToken = default)
@@ -928,10 +883,7 @@ public partial class ScanFolderService : IDisposable
         }
     }
 
-    /// <summary>
-    /// Walks a WebDAV folder through the configured cloud provider. Asks for the whole tree in one request first;
-    /// the walk lists folder by folder only when the server refuses that.
-    /// </summary>
+    /// <summary>Tries the whole WebDAV tree in one request; folder-by-folder only if the server refuses.</summary>
     private sealed class CloudScanFileSource : ITreeScanFileSource
     {
         private readonly Services.Cloud.ICloudProvider _cloudProvider;
@@ -966,16 +918,15 @@ public partial class ScanFolderService : IDisposable
         CoverResolver.GetCachePath(workPath, productId);
 
     /// <summary>
-    /// Re-downloads the cover of an already-cached work whose image file has gone. Only the cover is
-    /// refetched — the metadata is kept and the page is not scraped again — so this costs one request and
-    /// needs no DLsite access.
+    /// Re-downloads a cached work's cover file that was deleted or cleared by the OS, from the stored URL: one
+    /// request, no re-scrape, no "Reset RJ cache" needed.
     /// </summary>
     private async Task<bool> TryRestoreCachedCoverAsync(WorkMetadata work, string workPath)
     {
         if (!string.IsNullOrEmpty(work.CoverImagePath) && File.Exists(work.CoverImagePath))
             return false;
 
-        // A remote URL in CoverImagePath is still usable; only a missing local file is a problem.
+        // A remote URL is still usable; only a missing local file needs restoring.
         if (!string.IsNullOrEmpty(work.CoverImagePath) &&
             work.CoverImagePath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
         {
@@ -996,11 +947,7 @@ public partial class ScanFolderService : IDisposable
         return true;
     }
 
-    /// <summary>
-    /// Does not dispose the HTTP client: it comes from <c>IHttpClientFactory</c>, which owns its lifetime, and
-    /// disposing a factory client here would leave this singleton holding a disposed one for the rest of the
-    /// process (DUP-02).
-    /// </summary>
+    /// <summary>The HTTP client is left alone: <c>IHttpClientFactory</c> owns its lifetime.</summary>
     public void Dispose()
     {
     }

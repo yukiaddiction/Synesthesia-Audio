@@ -3,9 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// Whole-library resolution, on the layout of a real pCloud library: Voice Work/{SFW,NSFW}/[Other/]RJ…/RJ…/…, plus works
-/// from other sites without a product id. The folder picker stores the library as "/Voice Work" while the server lists
-/// "Voice Work/…"; that mismatch made every leaf folder (本編, おまけ, 02_mp3版) a work of its own.
+/// Mirrors a real pCloud library (Voice Work/{SFW,NSFW}/[Other/]RJ…/RJ…/…). The picker stores "/Voice Work" while the
+/// server lists "Voice Work/…", and that mismatch made every leaf folder (本編, おまけ, 02_mp3版) a work of its own.
 /// </summary>
 public sealed class WorkFolderResolverLibraryTests
 {

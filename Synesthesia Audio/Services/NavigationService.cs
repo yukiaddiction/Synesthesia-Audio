@@ -3,10 +3,8 @@ using Microsoft.Extensions.Logging;
 namespace Synesthesia_Audio.Services;
 
 /// <summary>
-/// The <see cref="INavigationService"/> implementation over the current Shell.
-///
-/// Every method degrades to doing nothing when there is no window: a background operation that finishes after the
-/// window closed must not throw, and "go back" with nothing to go back to is not an error (PAT-04).
+/// Shell-backed navigation that does nothing without a window, so a background operation finishing after the
+/// window closed never throws.
 /// </summary>
 public sealed class NavigationService : INavigationService
 {

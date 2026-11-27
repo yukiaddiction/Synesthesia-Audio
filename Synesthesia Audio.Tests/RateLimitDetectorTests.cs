@@ -29,8 +29,8 @@ public class RateLimitDetectorTests
         Assert.False(RateLimitDetector.IsRateLimit(WithStatus(HttpStatusCode.InternalServerError)));
 
     /// <summary>
-    /// This is the shape GTranslate actually produces: an AggregateException whose inner list holds
-    /// the 429 plus the JsonReaderException from parsing the error body.
+    /// The shape GTranslate actually throws: the 429 aggregated with a JsonReaderException from parsing the
+    /// error body.
     /// </summary>
     [Fact]
     public void AggregateWrappingA429IsARateLimit()

@@ -6,16 +6,9 @@ using Synesthesia_Audio.Styles;
 namespace Synesthesia_Audio.Views.Components;
 
 /// <summary>
-/// Full-bleed "aurora" backdrop: a flat palette base with soft radial blobs painted over it.
-/// The blobs are gradients rather than blurred shapes, so the frost reads correctly without a
-/// backdrop-blur primitive (which MAUI does not expose).
+/// Aurora backdrop of soft radial gradient blobs, which fake frosted glass since MAUI has no backdrop blur.
+/// Theme arrives through a bound <see cref="IsDark"/>: subscribing to RequestedThemeChanged would leak transient pages.
 /// </summary>
-/// <remarks>
-/// <see cref="IsDark"/> is a bindable property bound through <c>AppThemeBinding</c> by the owner,
-/// so MAUI updates it when the user switches theme and the repaint happens in
-/// <see cref="OnIsDarkChanged"/>. Subscribing to <c>Application.RequestedThemeChanged</c> directly
-/// would leak, because transient pages are never unsubscribed.
-/// </remarks>
 public sealed class GlassBackdrop : GraphicsView
 {
     public static readonly BindableProperty IsDarkProperty = BindableProperty.Create(
@@ -33,7 +26,6 @@ public sealed class GlassBackdrop : GraphicsView
         Loaded += (_, _) => Invalidate();
     }
 
-    /// <summary>True when the dark palette is in effect.</summary>
     public bool IsDark
     {
         get => (bool)GetValue(IsDarkProperty);
@@ -47,10 +39,9 @@ public sealed class GlassBackdrop : GraphicsView
     }
 }
 
-/// <summary>Paints the palette-derived aurora blobs behind the glass panels.</summary>
 internal sealed class AuroraDrawable : IDrawable
 {
-    // Normalised blob centres and diameters (fraction of the view's shorter side).
+    // Centres as fractions of width/height; diameters as fractions of the shorter side so blobs stay round.
     private static readonly (double X, double Y, double Size)[] BlobLayout =
     {
         (0.06, -0.04, 1.20),
@@ -62,11 +53,7 @@ internal sealed class AuroraDrawable : IDrawable
 
     private readonly GlassBackdrop _owner;
 
-    /// <summary>
-    /// Gradient paints are immutable and independent of the blob bounds (those are passed to
-    /// SetFillPaint separately), so five of them are built once per theme instead of on every
-    /// repaint - the backdrop repaints on every resize (PERF-10).
-    /// </summary>
+    // Built once per theme, not per repaint: paints don't depend on blob bounds and the backdrop repaints on every resize.
     private static readonly RadialGradientPaint[] LightPaints = BuildPaints(LightBlobs());
     private static readonly RadialGradientPaint[] DarkPaints = BuildPaints(DarkBlobs());
 
@@ -115,8 +102,7 @@ internal sealed class AuroraDrawable : IDrawable
             var centreX = dirtyRect.X + (dirtyRect.Width * (float)normalizedX);
             var centreY = dirtyRect.Y + (dirtyRect.Height * (float)normalizedY);
             var blob = new RectF(centreX - (size / 2f), centreY - (size / 2f), size, size);
-            // The gradient is fitted to the blob's own bounds, so it stays smooth and correctly scaled
-            // whatever the platform does with gradient normalisation.
+            // Fitted to the blob's own bounds so scaling doesn't depend on the platform's gradient normalisation.
             canvas.SetFillPaint(paints[i], blob);
 
             canvas.FillEllipse(blob.X, blob.Y, blob.Width, blob.Height);

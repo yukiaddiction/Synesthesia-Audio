@@ -2,11 +2,7 @@ using Synesthesia_Audio.Core;
 
 namespace Synesthesia_Audio.Tests;
 
-/// <summary>
-/// Tests for the library walk and the cache-merge decision. BUG-M-01 is the finding that a failed
-/// listing could wipe the whole library cache, so these tests are written against a fake file source
-/// that throws on demand — exactly the acceptance check the audit asks for.
-/// </summary>
+/// <summary>A failed listing must never wipe the library cache, so the fake source can throw on demand.</summary>
 public sealed class ScanListingTests
 {
     private sealed class FakeFileSource : IScanFileSource
@@ -36,7 +32,6 @@ public sealed class ScanListingTests
         path.Contains("__MACOSX", StringComparison.OrdinalIgnoreCase) ||
         System.IO.Path.GetFileName(path).StartsWith("._", StringComparison.Ordinal);
 
-    /// <summary>BUG-M-01: a root listing failure must be reported as such, so the cache is left alone.</summary>
     [Fact]
     public async Task Root_failure_is_reported_and_forbids_replacing_the_cache()
     {
@@ -65,10 +60,6 @@ public sealed class ScanListingTests
         Assert.Single(listing.AudioFiles);
     }
 
-    /// <summary>
-    /// BUG-M-01 done_when: when one subfolder cannot be listed, cached works under that folder must be
-    /// retained instead of being dropped by the replacement list.
-    /// </summary>
     [Fact]
     public async Task Works_under_a_failed_subfolder_are_retained()
     {
@@ -124,7 +115,6 @@ public sealed class ScanListingTests
         Assert.Equal("/music/RJ000001/01.mp3", listing.AudioFiles[0]);
     }
 
-    /// <summary>BUG-m-07: a trailing slash on the base path must not change or break the walk.</summary>
     [Fact]
     public async Task Trailing_slash_on_the_root_is_tolerated()
     {

@@ -3,9 +3,8 @@ using Synesthesia_Audio.Core;
 namespace Synesthesia_Audio.Tests;
 
 /// <summary>
-/// BUG-M-13: metadata that could not be read must not be reported as all-ages. A work whose rating is
-/// unknown has to be distinguishable from a work known to be SFW, because the library filter relies on
-/// that difference to keep R-18 works out of the All-Age list.
+/// Unreadable metadata must stay Unknown rather than SFW, because the All-Age filter relies on that difference
+/// to keep R-18 works out.
 /// </summary>
 public sealed class AgeRatingTests
 {
@@ -45,10 +44,7 @@ public sealed class AgeRatingTests
         Assert.False(AgeRatings.IsSfw(value));
     }
 
-    /// <summary>
-    /// A page with a rating row still resolves normally, so the change only affects pages where the row
-    /// is genuinely absent rather than every page.
-    /// </summary>
+    /// <summary>Guards against the Unknown fallback also catching pages that do carry a rating row.</summary>
     [Fact]
     public void A_page_with_an_all_ages_row_still_reports_sfw()
     {
@@ -64,7 +60,7 @@ public sealed class AgeRatingTests
         Assert.Equal(AgeRatings.Sfw, result.AgeRating);
     }
 
-    /// <summary>The R-18 marker must still be detected, otherwise the safety fix would hide R-18 works.</summary>
+    /// <summary>Guards that the Unknown fallback did not swallow R-18 detection.</summary>
     [Fact]
     public void A_page_with_an_r18_row_reports_nsfw()
     {
@@ -80,7 +76,7 @@ public sealed class AgeRatingTests
         Assert.Equal(AgeRatings.Nsfw, result.AgeRating);
     }
 
-    /// <summary>A page with no age row at all is not a readable product page, so the rating stays unknown.</summary>
+    /// <summary>No age row means this is not a readable product page, so nothing is known about the rating.</summary>
     [Fact]
     public void A_page_without_an_age_row_reports_unknown()
     {

@@ -5,7 +5,6 @@ namespace Synesthesia_Audio.Styles;
 
 public static class AppLayout
 {
-    // Paddings
     public static readonly Thickness PagePadding = new Thickness(20, 20, 20, 110);
     public static readonly Thickness StandardPadding = new Thickness(20);
     public static readonly Thickness PathHeaderPadding = new Thickness(15, 10);
@@ -16,7 +15,6 @@ public static class AppLayout
     public static readonly Thickness MainHeaderPadding = new Thickness(15, 10, 15, 5);
     public static readonly Thickness MainScrollPadding = new Thickness(15, 5, 15, 20);
 
-    // Margins
     public static readonly Thickness FloatingPlayerMargin = new Thickness(15, 10, 15, 15);
     public static readonly Thickness FloatingPlayerSliderMargin = new Thickness(-15, 8, -15, -12);
     public static readonly Thickness HeaderImageNegativeMargin = new Thickness(-20, -20, -20, 20);
@@ -27,7 +25,6 @@ public static class AppLayout
     public static readonly Thickness LibraryScanMargin = new Thickness(0, 0, 0, 90);
     public static readonly Thickness CollectionViewMargin = new Thickness(0, 0, 0, 95);
     
-    // Spacings
     public const double SpacingNone = 0;
     public const double SpacingExtraSmall = 2;
     public const double SpacingSmall = 4;
@@ -37,13 +34,11 @@ public static class AppLayout
     public const double SpacingSection = 15;
     public const double SpacingPage = 20;
 
-    // Corner Radii
     public static readonly CornerRadius CardCornerRadius = new CornerRadius(14);
     public static readonly CornerRadius ButtonCornerRadius = new CornerRadius(10);
     public static readonly CornerRadius ChipCornerRadius = new CornerRadius(6);
     public static readonly CornerRadius FloatingPlayerCornerRadius = new CornerRadius(16);
 
-    // Dimensions
     public const double ButtonHeightDefault = 45;
     public const double ButtonHeightCompact = 38;
     public const double ButtonHeightSmall = 30;
@@ -53,7 +48,6 @@ public static class AppLayout
     public const double VideoInlineHeight = 250;
     public const double VideoInlineBottomMargin = 120;
 
-    // ── Glassmorphism metrics ──
     public static readonly CornerRadius GlassBarRadius = new CornerRadius(20);
     public static readonly CornerRadius GlassSheetRadius = new CornerRadius(28);
     public static readonly CornerRadius GlassCardRadius = new CornerRadius(22);
