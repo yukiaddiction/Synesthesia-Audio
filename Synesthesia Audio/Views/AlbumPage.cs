@@ -17,6 +17,7 @@ namespace Synesthesia_Audio.Views;
 public class AlbumPage : ContentPage
 {
     private readonly LibraryCacheService _cacheService;
+    private readonly ObservableCollection<AlbumRow> _rows = new();
 
     public AlbumPage(AlbumViewModel viewModel, AudioService audioService, LibraryCacheService cacheService)
     {
@@ -147,121 +148,15 @@ public class AlbumPage : ContentPage
                 {
                     GlassTheme.SectionLabel("TRACKS"),
 
-                    new VerticalStackLayout
+                    // Virtualised list: folder headers and tracks are rows, so only what is on screen is
+                    // materialised. Grouping was tried first and rendered one group on Android (PERF-07).
+                    new CollectionView
                     {
-                        Spacing = AppLayout.SpacingSection,
-                        HorizontalOptions = LayoutOptions.Fill
+                        ItemsSource = _rows,
+                        SelectionMode = SelectionMode.None,
+                        ItemTemplate = BuildRowSelector(),
+                        Footer = new BoxView { HeightRequest = 96, Color = Colors.Transparent }
                     }
-                    .Bind(BindableLayout.ItemsSourceProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.SubAlbums)}")
-                    .ItemTemplate(new DataTemplate(() =>
-                    {
-                        var subAlbumLayout = new VerticalStackLayout { Spacing = AppLayout.SpacingExtraLarge };
-
-                        var headerGrid = new Grid
-                        {
-                            Padding = AppLayout.PathHeaderPadding,
-                            ColumnDefinitions = Columns.Define(Star, Auto),
-                            Children =
-                            {
-                                new Label { FontSize = AppFontSizes.PathLabel, FontAttributes = AppFonts.Bold, VerticalOptions = LayoutOptions.Center }
-                                    .Column(0)
-                                    .Bind(Label.TextProperty, nameof(SubAlbum.Title))
-                                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
-
-                                new Label { FontSize = AppFontSizes.PathLabel, VerticalOptions = LayoutOptions.Center }
-                                    .Column(1)
-                                    .Bind(Label.TextProperty, nameof(SubAlbum.IsExpanded), converter: BoolToArrowConverter.Instance)
-                                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark)
-                            }
-                        }
-                        .AppThemeBinding(VisualElement.BackgroundColorProperty, AppColors.GlassFillSoftLight, AppColors.GlassFillSoftDark);
-
-                        var tracksLayout = new VerticalStackLayout
-                        {
-                            Spacing = AppLayout.SpacingMedium,
-                            Padding = new Thickness(10, 5)
-                        }
-                        .Bind(BindableLayout.ItemsSourceProperty, nameof(SubAlbum.Tracks));
-
-                        var headerTap = new TapGestureRecognizer();
-                        headerTap.Tapped += async (_, _) =>
-                        {
-                            var subAlbum = (headerGrid.BindingContext as SubAlbum);
-                            if (subAlbum == null) return;
-                            subAlbum.IsExpanded = !subAlbum.IsExpanded;
-                            if (subAlbum.IsExpanded)
-                            {
-                                tracksLayout.IsVisible = true;
-                                await tracksLayout.FadeTo(1, 200, Easing.CubicOut);
-                            }
-                            else
-                            {
-                                await tracksLayout.FadeTo(0, 150, Easing.CubicIn);
-                                tracksLayout.IsVisible = false;
-                            }
-                        };
-                        headerGrid.GestureRecognizers.Add(headerTap);
-                        // Every folder gets a header, including the main one that holds files sitting directly in
-                        // the work folder: the user asked for the main folder to be openable/collapsible like the
-                        // rest, so it is no longer hidden.
-
-                        BindableLayout.SetItemTemplate(tracksLayout, new DataTemplate(() =>
-                        {
-                            var trackTap = new TapGestureRecognizer();
-                            trackTap.SetBinding(TapGestureRecognizer.CommandProperty, new Binding(nameof(AlbumViewModel.PlayTrackCommand), source: BindingContext));
-                            trackTap.SetBinding(TapGestureRecognizer.CommandParameterProperty, ".");
-
-                            var trackGrid = new Grid
-                            {
-                                Padding = new Thickness(10, 12),
-                                ColumnDefinitions = Columns.Define(Auto, Star),
-                                ColumnSpacing = 12,
-                                Children =
-                                {
-                                    new Label { Text = "\u25B6", FontSize = AppFontSizes.ButtonLarge, VerticalOptions = LayoutOptions.Center }
-                        .AppThemeBinding(Label.TextColorProperty, AppColors.SuccessLight, AppColors.SuccessDark)
-                                        .Column(0),
-
-                                    new VerticalStackLayout
-                                    {
-                                        Spacing = AppLayout.SpacingExtraSmall,
-                                        VerticalOptions = LayoutOptions.Center,
-                                        Children =
-                                        {
-                                            new Label { FontSize = AppFontSizes.ButtonLarge, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 1 }
-                                                .Bind(Label.TextProperty, nameof(Track.Title))
-                                                .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
-
-                                            new Label { FontSize = AppFontSizes.Caption }
-                                                .Bind(Label.TextProperty, nameof(Track.TranslatedTitle))
-                                                .Bind(VisualElement.IsVisibleProperty, nameof(Track.TranslatedTitle), converter: new EmptyStringToFalseConverter())
-                                                .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark)
-                                        }
-                                    }
-                                    .Column(1)
-                                }
-                            };
-
-                            // Row hover makes the long desktop track list readable.
-                            // The row is a button in behaviour but announced as loose text (UX-07): name it from
-                            // the track title and say what tapping does.
-                            trackGrid.SetBinding(SemanticProperties.DescriptionProperty, new Binding(nameof(Track.Title)));
-                            SemanticProperties.SetHint(trackGrid, "Double tap to play this track");
-
-                            var pointer = new PointerGestureRecognizer();
-                            pointer.PointerEntered += (_, _) => trackGrid.Opacity = 0.82;
-                            pointer.PointerExited += (_, _) => trackGrid.Opacity = 1;
-                            trackGrid.GestureRecognizers.Add(pointer);
-
-                            trackGrid.GestureRecognizers.Add(trackTap);
-                            return trackGrid;
-                        }));
-
-                        subAlbumLayout.Children.Add(headerGrid);
-                        subAlbumLayout.Children.Add(tracksLayout);
-
-                        return subAlbumLayout;
-                    }))
                 }
             }
         }.Glass(strong: true, elevated: true);
@@ -273,30 +168,104 @@ public class AlbumPage : ContentPage
             Children = { hero, metaSheet }
         };
 
-        // One grid reflows: stacked in compact, two panes above the breakpoint.
-        var contentGrid = new Grid();
-        contentGrid.Children.Add(metaColumn);
-        contentGrid.Children.Add(tracksPanel);
-
-        var scroll = new ScrollView
+        // Two rows, not a ScrollView: the list must be bounded or it is measured with unbounded height and stops
+        // virtualising (that is what the earlier attempts got wrong). The metadata keeps its own scroll so a long
+        // genre list cannot push the tracks off-screen (PERF-07).
+        var metaScroll = new ScrollView
         {
             Content = new VerticalStackLayout
             {
                 Padding = AppLayout.GlassContentPadding,
-                Children = { contentGrid }
+                Children = { metaColumn }
+            },
+            VerticalOptions = LayoutOptions.Fill
+        };
+
+        var body = new Grid
+        {
+            RowDefinitions = Rows.Define(GridLength.Auto, Star),
+            Children =
+            {
+                metaScroll.Row(0),
+                tracksPanel.Row(1)
             }
         };
 
         var scaffold = new GlassScaffold("Album", back: true);
-        scaffold.SetBody(new Grid { Children = { scroll, loading } });
+        scaffold.SetBody(new Grid { Children = { body, loading } });
         scaffold.AddOverlay(new FloatingPlayerBar(audioService, cacheService));
-
-        scaffold.LayoutModeChanged += (_, wide) => ApplyAlbumLayout(contentGrid, metaColumn, tracksPanel, wide);
 
         Content = scaffold;
 
     }
 
+    /// <summary>Header and track templates, chosen per row. No grouping, so nothing is dropped.</summary>
+    private DataTemplate BuildRowSelector() => new RowTemplateSelector
+    {
+        OnToggle = ToggleSection,
+        SectionVisible = () => true,
+        PlayCommand = BindingContext
+    };
+
+    private sealed class RowTemplateSelector : DataTemplateSelector
+    {
+        public Action<AlbumRow>? OnToggle { get; init; }
+        public Func<bool>? SectionVisible { get; init; }
+        public object? PlayCommand { get; init; }
+
+        private DataTemplate? _header;
+        private DataTemplate? _track;
+
+        protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
+        {
+            _header ??= new DataTemplate(() => AlbumRowViews.Header(OnToggle!, SectionVisible ?? (() => true)));
+            _track ??= new DataTemplate(() => AlbumRowViews.Track(PlayCommand));
+
+            return (item as AlbumRow)?.IsHeader == true ? _header : _track;
+        }
+    }
+
+    /// <summary>Rebuilds the flat row list from the album's folders, keeping each folder's expanded state.</summary>
+    private void RebuildRows(AlbumViewModel viewModel)
+    {
+        _rows.Clear();
+
+        if (viewModel.Album?.SubAlbums == null) return;
+
+        foreach (var subAlbum in viewModel.Album.SubAlbums)
+        {
+            // Every folder is listed, including the main one holding files that sit directly in the work.
+            _rows.Add(AlbumRow.ForHeader(subAlbum));
+
+            if (!subAlbum.IsExpanded) continue;
+
+            foreach (var track in subAlbum.Tracks)
+                _rows.Add(AlbumRow.ForTrack(track));
+        }
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AlbumViewModel.Album) && sender is AlbumViewModel viewModel)
+            RebuildRows(viewModel);
+    }
+
+    protected override void OnDisappearing()
+    {
+        if (BindingContext is AlbumViewModel viewModel)
+            viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+
+        base.OnDisappearing();
+    }
+
+    /// <summary>Tapping a folder header folds or unfolds that folder.</summary>
+    private void ToggleSection(AlbumRow row)
+    {
+        if (row.SubAlbum == null || BindingContext is not AlbumViewModel viewModel) return;
+
+        row.SubAlbum.IsExpanded = !row.SubAlbum.IsExpanded;
+        RebuildRows(viewModel);
+    }
     /// <summary>
     /// The hero artwork: the shared cover component plus the two things only the hero has - the scrim that
     /// makes the sheet above it read as depth, and the product-id badge.
@@ -350,34 +319,4 @@ public class AlbumPage : ContentPage
         return cover;
     }
 
-    private static void ApplyAlbumLayout(Grid grid, View metaColumn, View tracksPanel, bool wide)
-    {
-        grid.RowDefinitions.Clear();
-        grid.ColumnDefinitions.Clear();
-
-        if (wide)
-        {
-            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            grid.ColumnDefinitions.Add(new ColumnDefinition(new GridLength(AppBreakpoints.AlbumMetaWidth)));
-            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-            grid.ColumnSpacing = AppLayout.GlassSectionGap;
-
-            Grid.SetRow(metaColumn, 0);
-            Grid.SetColumn(metaColumn, 0);
-            Grid.SetRow(tracksPanel, 0);
-            Grid.SetColumn(tracksPanel, 1);
-        }
-        else
-        {
-            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-            grid.ColumnSpacing = 0;
-
-            Grid.SetRow(metaColumn, 0);
-            Grid.SetColumn(metaColumn, 0);
-            Grid.SetRow(tracksPanel, 1);
-            Grid.SetColumn(tracksPanel, 0);
-        }
-    }
 }
