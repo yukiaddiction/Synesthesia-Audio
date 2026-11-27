@@ -122,19 +122,3 @@ public sealed class BoolToArrowConverter : IValueConverter
         Binding.DoNothing;
 }
 
-/// <summary>Hides the row title for the synthetic container folders that are not real sub-albums.</summary>
-public sealed class NotMainTitleConverter : IValueConverter
-{
-    public static readonly NotMainTitleConverter Instance = new();
-
-    private static readonly HashSet<string> HiddenTitles = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Main", "flac", "mp3", "wav", "m4a", "mp4"
-    };
-
-    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        value is string title && !string.IsNullOrEmpty(title) && !HiddenTitles.Contains(title);
-
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
-        Binding.DoNothing;
-}

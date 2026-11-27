@@ -210,7 +210,7 @@ public partial class ScanFolderService : IDisposable
         foreach (var group in audioFiles.GroupBy(f =>
                  {
                      var fileDir = isCloud ? GetCloudDirectoryName(f) : Path.GetDirectoryName(f);
-                     return GetSubAlbumName(fileDir, path) ?? "Main";
+                     return GetSubAlbumName(fileDir, path) ?? "Main folder";
                  }))
         {
             var subAlbum = new SubAlbum { Title = group.Key, FolderPath = path };
@@ -549,7 +549,7 @@ public partial class ScanFolderService : IDisposable
             var subAlbumGroups = files.GroupBy(f =>
             {
                 var fileDir = isCloud ? GetCloudDirectoryName(f) : Path.GetDirectoryName(f);
-                return GetSubAlbumName(fileDir, workPath) ?? "Main";
+                return GetSubAlbumName(fileDir, workPath) ?? "Main folder";
             });
 
             foreach (var subGroup in subAlbumGroups)
