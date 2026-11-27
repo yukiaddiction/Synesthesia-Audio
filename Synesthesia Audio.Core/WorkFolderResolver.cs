@@ -44,79 +44,157 @@ public static class WorkFolderResolver
     /// Resolves the work folder for <paramref name="filePath"/>. Cloud paths use <c>/</c>; local paths keep
     /// the separator the caller used. A trailing separator on <paramref name="basePath"/> is tolerated.
     /// </summary>
-    public static string Resolve(string filePath, string basePath, bool isCloud)
+    public static string Resolve(string filePath, string basePath, bool isCloud) =>
+        ResolveAll(new[] { filePath }, basePath, isCloud)[filePath];
+
+    /// <summary>
+    /// Folder names that only ever sort works (age rating, "other"), never a work of their own.
+    /// </summary>
+    private static readonly Regex CategoryFolderPattern = new(
+        @"^(n?sfw|r-?18|r-?15|all[\s_\-]*ages?|adult|全年齢|成人向け?)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public static bool IsCategoryFolder(string? folderName) =>
+        !string.IsNullOrWhiteSpace(folderName) && CategoryFolderPattern.IsMatch(folderName.Trim());
+
+    /// <summary>
+    /// Resolves every file at once, because which folder is a work depends on its neighbours.
+    ///
+    /// The outermost folder carrying a product id is the work: "WorkA RJ123456/disc1" lands on the work, and so do
+    /// DLsite's own sub-folders that repeat the code ("RJ123456/RJ123456_mp3"). Every folder that holds such a work
+    /// (directly or deeper) is a category, as are folders named like one (SFW, NSFW, R18). A work without a product
+    /// id is the first folder below the deepest category above it, so "SFW/Other/Some Work/本編/01.mp3" is the work
+    /// "Some Work" with a section "本編", instead of every non-DLsite work in SFW becoming one album.
+    /// </summary>
+    public static Dictionary<string, string> ResolveAll(IEnumerable<string> filePaths, string basePath, bool isCloud)
     {
         var separator = isCloud ? '/' : Path.DirectorySeparatorChar;
+        var files = filePaths.Distinct(StringComparer.Ordinal).ToList();
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        var normalizedBase = Normalize(basePath);
-        var fileNormalized = Normalize(filePath);
-        var directory = GetDirectory(fileNormalized);
+        // Pass 1: product-id works, and the folders above them.
+        var containers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var plain = new List<(string File, string Directory, string Base)>();
+        var sharedParents = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
-        if (string.IsNullOrEmpty(directory)) return basePath;
-
-        // Prefer the deepest folder carrying a product id, so "WorkA RJ123456/disc1" still lands on the work.
-        var current = directory;
-        while (!string.IsNullOrEmpty(current))
+        foreach (var file in files)
         {
-            if (IsSame(current, normalizedBase)) break;
-            if (ContainsProductId(GetLeaf(current))) return ToNative(current, separator);
-            if (!IsUnder(current, normalizedBase)) break;
-            current = GetDirectory(current);
+            var fileNormalized = Normalize(file);
+            var directory = GetDirectory(fileNormalized);
+            var normalizedBase = AlignBase(Normalize(basePath), fileNormalized);
+
+            if (string.IsNullOrEmpty(directory))
+            {
+                result[file] = basePath;
+                continue;
+            }
+
+            var productFolder = OutermostProductFolder(directory, normalizedBase);
+            if (productFolder != null)
+            {
+                if (!sharedParents.TryGetValue(productFolder, out var shared))
+                {
+                    shared = SharedParentOfFormatCopies(productFolder, normalizedBase, files);
+                    sharedParents[productFolder] = shared;
+                }
+                productFolder = shared ?? productFolder;
+                result[file] = ToNative(productFolder, separator);
+                for (var up = GetDirectory(productFolder); IsStrictlyUnder(up, normalizedBase); up = GetDirectory(up))
+                {
+                    if (!containers.Add(up)) break;
+                }
+                continue;
+            }
+
+            plain.Add((file, directory, normalizedBase));
         }
 
-        if (IsSame(directory, normalizedBase)) return ToNative(normalizedBase, separator);
-
-        var parent = GetDirectory(directory);
-        if (string.IsNullOrEmpty(parent) || IsSame(parent, normalizedBase))
+        // Pass 2: everything else, now that the categories are known.
+        foreach (var (file, directory, normalizedBase) in plain)
         {
-            return ToNative(directory, separator);
+            if (IsSame(directory, normalizedBase) || !IsUnder(directory, normalizedBase))
+            {
+                result[file] = ToNative(directory, separator);
+                continue;
+            }
+
+            // The chain of folders from just below the base down to the file's own folder.
+            var chain = new List<string>();
+            for (var current = directory; IsStrictlyUnder(current, normalizedBase); current = GetDirectory(current))
+            {
+                chain.Add(current);
+                if (IsSame(GetDirectory(current), current)) break;
+            }
+            chain.Reverse();
+
+            var work = chain.FirstOrDefault(folder => !containers.Contains(folder) && !IsCategoryFolder(GetLeaf(folder)));
+            result[file] = ToNative(work ?? directory, separator);
         }
 
-        if (IsPartFolder(GetLeaf(directory)))
-        {
-            return ToNative(parent, separator);
-        }
-
-        // Anything deeper than one folder under the library root belongs to that first folder: the library is
-        // base/<work>/<sub-folder>/<file>, so a sub-folder with any other name (a bonus disc, "Scans", "おまけ",
-        // a per-track directory) is a part of the work, not a work of its own. Without this a work whose
-        // sub-folders are not named CD1/mp3/split into several albums, each showing one folder's tracks.
-        var firstLevel = FirstLevelUnder(directory, normalizedBase);
-        if (!string.IsNullOrEmpty(firstLevel)) return ToNative(firstLevel, separator);
-
-        return ToNative(directory, separator);
+        return result;
     }
 
     /// <summary>
-    /// The folder immediately below <paramref name="baseFolder"/> on the way to <paramref name="directory"/>, or null
-    /// when the directory is already at the first level (or not under the base at all).
+    /// "Some Title/RJ123456_mp3" next to "Some Title/RJ123456_wav": the code sits only on the format folders, so each
+    /// would be an album of one folder. When the parent holds two or more folders with the same code (and is neither
+    /// the library nor a category), the parent is the work and those folders are its sections.
     /// </summary>
-    private static string? FirstLevelUnder(string directory, string baseFolder)
+    private static string? SharedParentOfFormatCopies(string productFolder, string normalizedBase, IReadOnlyList<string> files)
     {
-        if (string.IsNullOrEmpty(baseFolder)) return null;
+        var parent = GetDirectory(productFolder);
+        if (!IsStrictlyUnder(parent, normalizedBase) || IsCategoryFolder(GetLeaf(parent))) return null;
+        if (ContainsProductId(GetLeaf(parent))) return null;
 
-        var candidate = directory;
-        string? result = null;
+        var code = ProductIdPattern.Match(GetLeaf(productFolder)).Value;
+        var prefix = parent + "/";
+        var siblings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        while (true)
+        foreach (var file in files)
         {
-            var parent = GetDirectory(candidate);
-            if (string.IsNullOrEmpty(parent)) return result;
+            var normalized = Normalize(file);
+            if (!normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
 
-            if (IsSame(parent, baseFolder))
-            {
-                // candidate is a direct child of the base: that child is the work only if we descended at least once.
-                return IsSame(candidate, directory) ? null : candidate;
-            }
+            var rest = normalized[prefix.Length..];
+            var slash = rest.IndexOf('/');
+            if (slash < 0) continue;
 
-            if (!IsUnder(parent, baseFolder)) return result;
-
-            result = candidate;
-            candidate = parent;
-
-            if (IsSame(candidate, baseFolder)) return result;
+            var child = rest[..slash];
+            if (ProductIdPattern.Match(child).Value.Equals(code, StringComparison.OrdinalIgnoreCase)) siblings.Add(child);
+            if (siblings.Count >= 2) return parent;
         }
+
+        return null;
     }
+
+    private static string? OutermostProductFolder(string directory, string normalizedBase)
+    {
+        string? outermost = null;
+        for (var current = directory; IsStrictlyUnder(current, normalizedBase); current = GetDirectory(current))
+        {
+            if (ContainsProductId(GetLeaf(current))) outermost = current;
+            if (IsSame(GetDirectory(current), current)) break;
+        }
+        return outermost;
+    }
+
+    private static bool IsStrictlyUnder(string? path, string normalizedBase) =>
+        !string.IsNullOrEmpty(path) && path != "/" && !IsSame(path, normalizedBase) && IsUnder(path, normalizedBase);
+
+    /// <summary>
+    /// The folder picker stores "/Voice Work" while a WebDAV listing answers "Voice Work/…". Without lining the two
+    /// up nothing looked like it was inside the library, no product-id folder was found, and every leaf folder
+    /// became a work of its own.
+    /// </summary>
+    private static string AlignBase(string normalizedBase, string normalizedFile)
+    {
+        if (normalizedBase.Length == 0 || normalizedBase == "/") return normalizedFile.StartsWith('/') ? "/" : string.Empty;
+        if (normalizedBase.StartsWith('/') && !normalizedFile.StartsWith('/')) return normalizedBase.TrimStart('/');
+        if (!normalizedBase.StartsWith('/') && normalizedFile.StartsWith('/') && !IsDriveRooted(normalizedBase))
+            return "/" + normalizedBase;
+        return normalizedBase;
+    }
+
+    private static bool IsDriveRooted(string path) => path.Length >= 2 && path[1] == ':';
     private static string Normalize(string? path)
     {
         if (string.IsNullOrEmpty(path)) return string.Empty;

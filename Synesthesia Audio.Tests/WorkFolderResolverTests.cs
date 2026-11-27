@@ -47,11 +47,41 @@ public sealed class WorkFolderResolverTests
         Assert.Equal(Base, Cloud("/music/01.mp3"));
     }
 
-    /// <summary>The deepest product-id folder wins, so "RJ123456 disc1" style names land on the work.</summary>
+    /// <summary>A product-id folder is the work, so "RJ123456 disc1" style names land on the work.</summary>
     [Fact]
     public void A_product_id_folder_is_preferred()
     {
         Assert.Equal("/music/Some Title RJ123456", Cloud("/music/Some Title RJ123456/disc1/01.mp3"));
+    }
+
+    /// <summary>
+    /// DLsite's own sub-folders repeat the code. The outermost RJ folder is the work; taking the deepest one split a
+    /// work into one album per format folder, each showing a single folder.
+    /// </summary>
+    [Theory]
+    [InlineData("/music/RJ01234567 Title/RJ01234567_mp3/01.mp3")]
+    [InlineData("/music/RJ01234567 Title/RJ01234567_wav/01.wav")]
+    [InlineData("/music/RJ01234567 Title/RJ01234567_mp4/本編/01.mp4")]
+    [InlineData("/music/RJ01234567 Title/MP4/本編/おまけ/01.mp4")]
+    public void The_outermost_product_id_folder_is_the_work(string file)
+    {
+        Assert.Equal("/music/RJ01234567 Title", Cloud(file));
+    }
+
+    [Fact]
+    public void A_product_id_folder_inside_a_circle_folder_is_the_work()
+    {
+        Assert.Equal("/music/Circle/RJ01234567", Cloud("/music/Circle/RJ01234567/mp3/01.mp3"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("/")]
+    public void A_library_at_the_server_root_still_finds_the_work(string basePath)
+    {
+        var result = WorkFolderResolver.Resolve("RJ01234567/RJ01234567_mp3/sub/01.mp3", basePath, isCloud: true);
+
+        Assert.Equal("RJ01234567", result);
     }
 
     /// <summary>BUG-m-07: a trailing separator on the base path must not change the answer or throw.</summary>

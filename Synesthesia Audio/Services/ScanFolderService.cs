@@ -20,15 +20,15 @@ public partial class ScanFolderService : IDisposable
     private readonly CoverThumbnailer _thumbnailer;
     private readonly ILogger<ScanFolderService> _logger;
 
-    /// <summary>
-    /// Compiled once per app rather than rebuilt on every call, with a timeout so a pathological folder name
-    /// cannot hang a scan (PAT-10).
-    /// </summary>
-    [System.Text.RegularExpressions.GeneratedRegex(@"(RJ\d{6,8})",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase,
-        matchTimeoutMilliseconds: 200)]
-    private static partial Regex RjCodePattern();
-
+    /// <summary>
+    /// Compiled once per app rather than rebuilt on every call, with a timeout so a pathological folder name
+    /// cannot hang a scan (PAT-10).
+    /// </summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"(RJ\d{6,8})",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 200)]
+    private static partial Regex RjCodePattern();
+
     public ScanFolderService(DLsiteService dlsiteService, LibraryCacheService cacheService, SettingsService settingsService, ScanStateService scanStateService, Services.Cloud.ICloudProvider cloudProvider, IHttpClientFactory httpClientFactory, CoverThumbnailer thumbnailer, ILogger<ScanFolderService> logger)
     {
         _dlsiteService = dlsiteService;
@@ -87,9 +87,22 @@ public partial class ScanFolderService : IDisposable
         bool isCloud = Synesthesia_Audio.Core.StorageTypes.IsWebDav(settings.StorageType);
         _logger.LogInformation("Checking for new works — isCloud: {IsCloud}", isCloud);
         var newWorks = new List<WorkMetadata>();
-        var cachedPathSet = new HashSet<string>(cachedPaths, StringComparer.OrdinalIgnoreCase);
 
-        List<(string Path, string FolderName)> folders;
+        // Same trimming as the full scan, so the work paths both produce compare equal.
+        basePath = NormalizeBasePath(basePath, isCloud);
+
+        var cachedPathList = cachedPaths.Where(p => !string.IsNullOrEmpty(p)).ToList();
+
+        // With nothing cached every folder looks new, so this would be a second full scan - and it ran alongside the
+        // real one right after a library was picked, adding a duplicate of every work once that scan had finished.
+        if (cachedPathList.Count == 0 || IsScanRunning())
+        {
+            _logger.LogInformation("Check for new works skipped — {Reason}",
+                cachedPathList.Count == 0 ? "library not scanned yet" : "a full scan is running");
+            return newWorks;
+        }
+
+        List<(string Path, string? ETag)> folders;
 
         if (isCloud)
         {
@@ -99,13 +112,7 @@ public partial class ScanFolderService : IDisposable
                 var items = await _cloudProvider.ListFilesAsync(basePath);
                 folders = items
                     .Where(i => i.IsDirectory && !AppConstants.IsSystemFileOrDir(i.Path))
-                    .Select(i =>
-                    {
-                        var name = i.Name;
-                        if (string.IsNullOrEmpty(name))
-                            name = i.Path.Replace('\\', '/').TrimEnd('/').Split('/').Last();
-                        return (i.Path, name);
-                    })
+                    .Select(i => (i.Path, i.ETag))
                     .ToList();
             }
             catch (Exception ex)
@@ -118,27 +125,38 @@ public partial class ScanFolderService : IDisposable
         {
             if (!Directory.Exists(basePath)) return newWorks;
             folders = Directory.GetDirectories(basePath)
-                .Select(d => (d, Path.GetFileName(d)))
-                .Where(f => !string.IsNullOrEmpty(f.Item2))
+                .Where(d => !string.IsNullOrEmpty(Path.GetFileName(d)) && !AppConstants.IsSystemFileOrDir(d))
+                .Select(d => (d, (string?)null))
                 .ToList();
         }
 
+        // A folder is known when it is a cached work or holds one: RJ works filed under a circle folder are cached by
+        // their own path, and treating the circle folder as new made it a second work holding all of them.
         var newFolders = folders
-            .Where(f => !cachedPathSet.Contains(f.Path))
+            .Where(f => !cachedPathList.Any(cached => ScanListing.IsUnderOrEqual(cached, f.Path)))
             .ToList();
 
         if (newFolders.Count == 0) return newWorks;
 
-        foreach (var (path, folderName) in newFolders)
+        foreach (var (path, eTag) in newFolders)
         {
             // One unreadable folder must not abandon the rest of the check (BUG-m-06).
             try
             {
-                var work = await TryCreateWorkFromFolderAsync(path, folderName, isCloud).ConfigureAwait(false);
-                if (work == null) continue;
+                var works = await CreateWorksFromFolderAsync(path, eTag, basePath, isCloud).ConfigureAwait(false);
 
-                _cacheService.UpdateWork(work);
-                newWorks.Add(work);
+                // A full scan that started meanwhile owns the cache; anything written now would be a duplicate.
+                if (IsScanRunning())
+                {
+                    _logger.LogInformation("Check for new works abandoned — a full scan started");
+                    return new List<WorkMetadata>();
+                }
+
+                foreach (var work in works)
+                {
+                    _cacheService.UpdateWork(work);
+                    newWorks.Add(work);
+                }
             }
             catch (Exception ex)
             {
@@ -151,98 +169,95 @@ public partial class ScanFolderService : IDisposable
     }
 
     /// <summary>
-    /// Builds a cacheable work for one newly seen folder, or null when the folder holds no audio anywhere
-    /// beneath it.
+    /// Builds cacheable works for one newly seen top-level folder, with the same rules as the full scan: the work is
+    /// the RJ folder (or, without a code, the top-level folder), and every folder beneath it is a section. Empty when
+    /// the folder holds no audio anywhere beneath it.
     /// </summary>
-    private async Task<WorkMetadata?> TryCreateWorkFromFolderAsync(string path, string folderName, bool isCloud)
+    private async Task<List<WorkMetadata>> CreateWorksFromFolderAsync(string path, string? folderETag, string basePath, bool isCloud)
     {
+        var works = new List<WorkMetadata>();
+
         // Audio is established *before* the metadata request. A work whose files live in CD1/ has no
         // top-level audio, so the old order spent a DLsite request on it and then skipped caching it — which
         // meant the same work was fetched again on every launch, forever (BUG-m-06).
-        var audioFiles = await ListAudioFilesRecursiveAsync(path, isCloud).ConfigureAwait(false);
-        if (audioFiles.Count == 0) return null;
+        var listing = await ListAudioFilesRecursiveAsync(path, isCloud).ConfigureAwait(false);
+        var audioFiles = listing.AudioFiles;
+        if (audioFiles.Count == 0) return works;
 
-        var match = RjCodePattern().Match(folderName);
-        string? rjCode = match.Success ? match.Groups[1].Value.ToUpper() : null;
+        var eTags = new Dictionary<string, string>(listing.DirectoryETags, StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrEmpty(folderETag)) eTags[ScanListing.NormalizePath(path)] = folderETag;
 
-        var work = new WorkMetadata
+        var workOf = WorkFolderResolver.ResolveAll(audioFiles, basePath, isCloud);
+        foreach (var group in audioFiles.GroupBy(f => workOf[f], StringComparer.OrdinalIgnoreCase))
         {
-            FolderPath = path,
-            Title = folderName,
-            AgeRating = AgeRatings.Unknown
-        };
+            var workPath = group.Key;
+            var folderName = isCloud ? GetCloudFileName(workPath.TrimEnd('/')) : Path.GetFileName(workPath);
+            if (string.IsNullOrEmpty(folderName)) folderName = workPath;
 
-        if (rjCode != null)
-        {
-            var cachedByRj = _cacheService.GetWorkByProductId(rjCode);
-            if (cachedByRj != null)
+            var match = RjCodePattern().Match(folderName);
+            string? rjCode = match.Success ? match.Groups[1].Value.ToUpper() : null;
+
+            var work = new WorkMetadata
             {
-                work.Title = cachedByRj.Title;
-                work.TranslatedTitle = cachedByRj.TranslatedTitle;
-                work.CoverImagePath = cachedByRj.CoverImagePath;
-                work.Circle = cachedByRj.Circle;
-                work.VA = cachedByRj.VA;
-                work.AgeRating = cachedByRj.AgeRating;
-                work.ProductId = cachedByRj.ProductId;
-                work.Genre = cachedByRj.Genre;
-            }
-            else
+                FolderPath = workPath,
+                Title = folderName,
+                AgeRating = AgeRatings.Unknown
+            };
+
+            if (rjCode != null)
             {
-                work.ProductId = rjCode;
-                var meta = await FetchDlsiteMetadataAsync(rjCode, path).ConfigureAwait(false);
-
-                work.Title = !string.IsNullOrEmpty(meta.Title) ? meta.Title : folderName;
-                work.TranslatedTitle = meta.TranslatedTitle ?? "";
-                work.Circle = meta.Circle ?? "Unknown Circle";
-                work.VA = meta.VA ?? "";
-                work.AgeRating = meta.AgeRating ?? AgeRatings.Unknown;
-                work.Genre = meta.Genre ?? "";
-                work.CoverImagePath = meta.CoverImagePath ?? "";
-
-                // A failed fetch must be retried later instead of being frozen into the cache under the
-                // folder name forever.
-                work.NeedsMetadataRefresh = string.IsNullOrEmpty(meta.Title);
-            }
-        }
-
-        // Sub-folders become sub-albums, so a work split across CD1/CD2 keeps its parts instead of
-        // collapsing them into one flat list.
-        foreach (var group in audioFiles.GroupBy(f =>
-                 {
-                     var fileDir = isCloud ? GetCloudDirectoryName(f) : Path.GetDirectoryName(f);
-                     return GetSubAlbumName(fileDir, path) ?? "Main folder";
-                 }))
-        {
-            var subAlbum = new SubAlbum { Title = group.Key, FolderPath = path };
-
-            foreach (var file in group.OrderBy(f => f))
-            {
-                subAlbum.Tracks.Add(new Track
+                var cachedByRj = _cacheService.GetWorkByProductId(rjCode);
+                if (cachedByRj != null && !IsStaleCachedWork(cachedByRj))
                 {
-                    Title = isCloud
-                        ? Path.GetFileNameWithoutExtension(GetCloudFileName(file))
-                        : Path.GetFileNameWithoutExtension(file),
-                    FilePath = file
-                });
+                    work.Title = cachedByRj.Title;
+                    work.TranslatedTitle = cachedByRj.TranslatedTitle;
+                    work.CoverImagePath = cachedByRj.CoverImagePath;
+                    work.CoverUrl = cachedByRj.CoverUrl;
+                    work.Circle = cachedByRj.Circle;
+                    work.VA = cachedByRj.VA;
+                    work.AgeRating = cachedByRj.AgeRating;
+                    work.ProductId = cachedByRj.ProductId;
+                    work.Genre = cachedByRj.Genre;
+                }
+                else
+                {
+                    work.ProductId = rjCode;
+                    var meta = await FetchDlsiteMetadataAsync(rjCode, workPath).ConfigureAwait(false);
+
+                    work.Title = !string.IsNullOrEmpty(meta.Title) ? meta.Title : folderName;
+                    work.TranslatedTitle = meta.TranslatedTitle ?? "";
+                    work.Circle = meta.Circle ?? "Unknown Circle";
+                    work.VA = meta.VA ?? "";
+                    work.AgeRating = meta.AgeRating ?? AgeRatings.Unknown;
+                    work.Genre = meta.Genre ?? "";
+                    work.CoverImagePath = meta.CoverImagePath ?? "";
+
+                    // A failed fetch must be retried later instead of being frozen into the cache under the
+                    // folder name forever.
+                    work.NeedsMetadataRefresh = string.IsNullOrEmpty(meta.Title);
+                }
             }
 
-            work.SubAlbums.Add(subAlbum);
+            foreach (var subAlbum in BuildSubAlbums(group, workPath, isCloud, cachedWork: null, previous: null))
+                work.SubAlbums.Add(subAlbum);
+
+            if (isCloud) RememberSource(work, workPath, basePath, audioFiles, eTags);
+
+            works.Add(work);
         }
 
-        return work;
+        return works;
     }
 
-    private async Task<List<string>> ListAudioFilesRecursiveAsync(string path, bool isCloud)
+    private async Task<ScanListingResult> ListAudioFilesRecursiveAsync(string path, bool isCloud)
     {
         IScanFileSource source = isCloud
             ? new CloudScanFileSource(_cloudProvider)
             : new LocalScanFileSource();
 
-        var listing = await ScanListing
+        return await ScanListing
             .CollectAudioFilesAsync(source, path, AppConstants.IsMediaFile, AppConstants.IsSystemFileOrDir)
             .ConfigureAwait(false);
-
-        return listing.AudioFiles;
     }
 
     public async Task<ScanResult> ScanLibraryAsync(string basePath, IProgress<(double, string)>? progress = null, CancellationToken cancellationToken = default)
@@ -253,16 +268,11 @@ public partial class ScanFolderService : IDisposable
         // Trim a trailing separator once, up front. Leaving it made every relative-path comparison below
         // wrong and could make the old substring maths throw on cloud paths (BUG-m-07). A lone separator
         // (the cloud root) is kept as-is.
-        if (!string.IsNullOrEmpty(basePath) && basePath.Length > 1)
-        {
-            var trimmed = basePath.TrimEnd('/', '\\');
-            if (trimmed.Length > 0) basePath = trimmed;
-        }
-
         // Local, not a field: two scans overlapping used to share (and clobber) this list (BUG-m-02).
         var failedFolders = new List<string>();
         var settings = _settingsService.CurrentSettings;
         bool isCloud = Synesthesia_Audio.Core.StorageTypes.IsWebDav(settings.StorageType);
+        basePath = NormalizeBasePath(basePath, isCloud);
         _logger.LogInformation("Library scan started — isCloud: {IsCloud}, path: {BasePath}", isCloud, basePath);
         // One phrasing for every stage: the status line used to mix "Scan Library Found 0 Work" with
         // "scan: fetching metadata" and "scan: done" (UX-05).
@@ -300,6 +310,7 @@ public partial class ScanFolderService : IDisposable
             ? new CloudScanFileSource(_cloudProvider)
             : new LocalScanFileSource();
 
+        var discoveryClock = System.Diagnostics.Stopwatch.StartNew();
         ScanListingResult listing;
         try
         {
@@ -310,7 +321,8 @@ public partial class ScanFolderService : IDisposable
                 AppConstants.IsSystemFileOrDir,
                 filesFound => Report(0.15 * Math.Min(1.0, filesFound / 500.0),
                     $"Scanning — {filesFound} audio file{(filesFound == 1 ? "" : "s")}"),
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                reuseSubtree: isCloud ? BuildSubtreeReuse() : null).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -321,6 +333,9 @@ public partial class ScanFolderService : IDisposable
         }
 
         failedFolders = listing.FailedPaths;
+        _logger.LogInformation(
+            "Scan listing took {Seconds:0.0}s — {Requests} request(s), whole tree in one: {Tree}, unchanged folders reused: {Reused}",
+            discoveryClock.Elapsed.TotalSeconds, listing.ListRequests, listing.UsedTreeListing, listing.ReusedFolders);
 
         if (listing.RootFailed)
         {
@@ -332,9 +347,10 @@ public partial class ScanFolderService : IDisposable
         }
 
         allAudioFiles = listing.AudioFiles;
+        var workOf = WorkFolderResolver.ResolveAll(allAudioFiles, basePath, isCloud);
         foreach (var file in allAudioFiles)
         {
-            var workFolder = DetermineWorkFolder(file, basePath, isCloud);
+            var workFolder = workOf[file];
             if (!workGroups.TryGetValue(workFolder, out var fileList))
             {
                 fileList = new List<string>();
@@ -546,47 +562,17 @@ public partial class ScanFolderService : IDisposable
                 work.TranslatedTitle = previous.WorkTranslatedTitle!;
             }
 
-            // Sections come from Core: one per folder, keyed by its path relative to the work, with files
-            // directly in the work forming the main section. The old grouping keyed off a single leaf name and
-            // special-cased some names away, which is how folders went missing (verified by SectionBuilderTests).
-            var sections = Synesthesia_Audio.Core.SectionBuilder.Build(files, workPath);
-
-            foreach (var section in sections)
-            {
-                var subAlbum = new SubAlbum { Title = section.Title, FolderPath = workPath };
-
-                var tracksGrouped = section.Files.GroupBy(f => isCloud ? Path.GetFileNameWithoutExtension(GetCloudFileName(f)) : Path.GetFileNameWithoutExtension(f));
-                foreach (var tg in tracksGrouped)
-                {
-                    var bestFile = tg.OrderBy(f => GetExtensionPriority(Path.GetExtension(f.Replace('\\', '/')))).First();
-                    var trackTitle = isCloud ? Path.GetFileNameWithoutExtension(GetCloudFileName(bestFile)) : Path.GetFileNameWithoutExtension(bestFile);
-
-                    var cachedTrack = cachedWork?.SubAlbums
-                        .FirstOrDefault(sa => sa.Title.Equals(section.Title, StringComparison.OrdinalIgnoreCase))?
-                        .Tracks.FirstOrDefault(t => t.Title.Equals(trackTitle, StringComparison.OrdinalIgnoreCase));
-
-                    var translatedTitle = cachedTrack?.TranslatedTitle ?? string.Empty;
-                    if (translatedTitle.Length == 0 && previous != null)
-                    {
-                        translatedTitle = previous.GetTrackTranslation(section.Title, trackTitle) ?? string.Empty;
-                    }
-
-                    var track = new Track
-                    {
-                        Title = trackTitle,
-                        FilePath = bestFile,
-                        TranslatedTitle = translatedTitle
-                    };
-
-                    subAlbum.Tracks.Add(track);
-                }
-
-                var sortedTracks = subAlbum.Tracks.OrderBy(t => t.Title).ToList();
-                subAlbum.Tracks.Clear();
-                foreach (var t in sortedTracks) subAlbum.Tracks.Add(t);
-
+            foreach (var subAlbum in BuildSubAlbums(files, workPath, isCloud, cachedWork, previous))
                 work.SubAlbums.Add(subAlbum);
-            }
+
+            // One line per album, so a log shows which folders became sections - and which files were dropped as
+            // another format of the same track.
+            var shown = work.SubAlbums.Sum(sa => sa.Tracks.Count);
+            _logger.LogInformation("Album {Work}: {Files} file(s), {Tracks} track(s) shown in {Count} section(s): {Sections}",
+                workPath, files.Count, shown, work.SubAlbums.Count,
+                string.Join(" | ", work.SubAlbums.Select(sa => $"{sa.Title} ({sa.Tracks.Count})")));
+
+            if (isCloud) RememberSource(work, workPath, basePath, allAudioFiles, listing.DirectoryETags);
 
             if (work.SubAlbums.Any())
             {
@@ -672,6 +658,105 @@ public partial class ScanFolderService : IDisposable
         }
     }
 
+    /// <summary>
+    /// The work's sections and tracks. Sections come from Core: one per folder, keyed by its path relative to the
+    /// work, with files directly in the work forming the main section (verified by SectionBuilderTests). Within a
+    /// folder, the same track in several formats keeps only the best copy. Used by the full scan and by the quick
+    /// new-works check, which used to group files its own way.
+    /// </summary>
+    private static List<SubAlbum> BuildSubAlbums(
+        IEnumerable<string> files,
+        string workPath,
+        bool isCloud,
+        WorkMetadata? cachedWork,
+        CachedTranslations? previous)
+    {
+        var result = new List<SubAlbum>();
+
+        foreach (var section in Synesthesia_Audio.Core.SectionBuilder.Build(files, workPath))
+        {
+            var subAlbum = new SubAlbum { Title = section.Title, FolderPath = workPath };
+            var tracks = new List<Track>();
+
+            foreach (var group in section.Files.GroupBy(TitleOf, StringComparer.OrdinalIgnoreCase))
+            {
+                var bestFile = group.OrderBy(f => GetExtensionPriority(Path.GetExtension(f.Replace('\\', '/')))).First();
+                var trackTitle = TitleOf(bestFile);
+
+                var cachedTrack = cachedWork?.SubAlbums
+                    .FirstOrDefault(sa => sa.Title.Equals(section.Title, StringComparison.OrdinalIgnoreCase))?
+                    .Tracks.FirstOrDefault(t => t.Title.Equals(trackTitle, StringComparison.OrdinalIgnoreCase));
+
+                var translatedTitle = cachedTrack?.TranslatedTitle ?? string.Empty;
+                if (translatedTitle.Length == 0 && previous != null)
+                {
+                    translatedTitle = previous.GetTrackTranslation(section.Title, trackTitle) ?? string.Empty;
+                }
+
+                tracks.Add(new Track { Title = trackTitle, FilePath = bestFile, TranslatedTitle = translatedTitle });
+            }
+
+            foreach (var track in tracks.OrderBy(t => t.Title)) subAlbum.Tracks.Add(track);
+            result.Add(subAlbum);
+        }
+
+        return result;
+
+        string TitleOf(string file) => isCloud
+            ? Path.GetFileNameWithoutExtension(GetCloudFileName(file))
+            : Path.GetFileNameWithoutExtension(file);
+    }
+
+    /// <summary>
+    /// Remembers the work folder's change tag and every audio file beneath it, so the next scan can skip the folder
+    /// when the tag has not moved. Files of a work nested inside this folder are included: skipping the folder skips
+    /// them too. The library root is never skipped, so nothing is stored for it.
+    /// </summary>
+    private static void RememberSource(
+        WorkMetadata work,
+        string workPath,
+        string basePath,
+        List<string> allAudioFiles,
+        IReadOnlyDictionary<string, string> directoryETags)
+    {
+        work.SourceETag = string.Empty;
+        work.SourceFiles = new List<string>();
+
+        if (ScanListing.IsSameDirectory(workPath, basePath)) return;
+        if (!directoryETags.TryGetValue(ScanListing.NormalizePath(workPath), out var tag) || string.IsNullOrEmpty(tag)) return;
+
+        work.SourceETag = tag;
+        work.SourceFiles = allAudioFiles.Where(f => ScanListing.IsUnderOrEqual(f, workPath)).ToList();
+    }
+
+    /// <summary>
+    /// Lets the walk skip a cached work folder whose change tag has not moved since the last scan. Only trusted on
+    /// servers that change a folder's tag when anything beneath it changes (Nextcloud, ownCloud, oCIS); elsewhere a
+    /// tag only covers the folder's direct children, so every folder is still listed.
+    /// </summary>
+    private Func<ScanEntry, IReadOnlyList<string>?> BuildSubtreeReuse()
+    {
+        var known = new Dictionary<string, WorkMetadata>(StringComparer.OrdinalIgnoreCase);
+        foreach (var work in _cacheService.GetAllWorks())
+        {
+            if (string.IsNullOrEmpty(work.FolderPath) || string.IsNullOrEmpty(work.SourceETag) ||
+                work.SourceFiles == null || work.SourceFiles.Count == 0)
+            {
+                continue;
+            }
+
+            known[ScanListing.NormalizePath(work.FolderPath)] = work;
+        }
+
+        return entry =>
+        {
+            if (!_cloudProvider.PropagatesFolderETags || string.IsNullOrEmpty(entry.ETag)) return null;
+            if (!known.TryGetValue(ScanListing.NormalizePath(entry.Path), out var work)) return null;
+
+            return string.Equals(work.SourceETag, entry.ETag, StringComparison.Ordinal) ? work.SourceFiles : null;
+        };
+    }
+
     /// <summary>Translations recovered from the cache before a scan overwrites it.</summary>
     private sealed class CachedTranslations
     {
@@ -718,8 +803,6 @@ public partial class ScanFolderService : IDisposable
         return snapshot;
     }
 
-    private static string? GetCloudDirectoryName(string path) => WorkGrouper.GetRemoteDirectory(path);
-
     private static string GetCloudFileName(string path) => WorkGrouper.GetRemoteFileName(path);
 
     /// <summary>
@@ -736,16 +819,22 @@ public partial class ScanFolderService : IDisposable
     /// (CD1, Disc 2, Vol3, mp3, wav, …) are covered by tests instead of only by scanning real libraries.
     /// </summary>
 
-    private static string DetermineWorkFolder(string filePath, string basePath, bool isCloud) =>
-        WorkFolderResolver.Resolve(filePath, basePath, isCloud);
-
     /// <summary>
-    /// Sub-album name of a track's folder beneath the work folder, or null when the file sits directly in
-    /// the work folder. Returns null rather than throwing when the folder is not actually inside the work —
-    /// an un-normalised base path used to make the old <c>Substring</c> overflow.
+    /// One spelling of the library folder. A trailing separator made every relative-path comparison wrong (BUG-m-07).
+    /// A WebDAV listing answers paths without a leading "/", while the folder picker stores one ("/Voice Work"), so
+    /// for the cloud both ends are trimmed; the server root becomes "".
     /// </summary>
-    private static string? GetSubAlbumName(string? fileDirectory, string workPath) =>
-        WorkGrouper.GetSubAlbumName(fileDirectory, workPath);
+    private static string NormalizeBasePath(string basePath, bool isCloud)
+    {
+        if (string.IsNullOrEmpty(basePath)) return basePath ?? string.Empty;
+        if (isCloud) return basePath.Replace('\\', '/').Trim('/');
+        if (basePath.Length <= 1) return basePath;
+
+        var trimmed = basePath.TrimEnd('/', '\\');
+        return trimmed.Length > 0 ? trimmed : basePath;
+    }
+
+    private bool IsScanRunning() => _scanStateService.Snapshot().Status == ScanStatus.Running;
 
     private static int GetExtensionPriority(string ext) => WorkGrouper.GetExtensionPriority(ext);
 
@@ -839,21 +928,36 @@ public partial class ScanFolderService : IDisposable
         }
     }
 
-    /// <summary>Walks a WebDAV folder through the configured cloud provider.</summary>
-    private sealed class CloudScanFileSource : IScanFileSource
+    /// <summary>
+    /// Walks a WebDAV folder through the configured cloud provider. Asks for the whole tree in one request first;
+    /// the walk lists folder by folder only when the server refuses that.
+    /// </summary>
+    private sealed class CloudScanFileSource : ITreeScanFileSource
     {
         private readonly Services.Cloud.ICloudProvider _cloudProvider;
+        private readonly bool _tryTree;
 
-        public CloudScanFileSource(Services.Cloud.ICloudProvider cloudProvider)
+        public CloudScanFileSource(Services.Cloud.ICloudProvider cloudProvider, bool tryTree = true)
         {
             _cloudProvider = cloudProvider;
+            _tryTree = tryTree;
         }
 
         public async Task<IReadOnlyList<ScanEntry>> ListAsync(string path, CancellationToken cancellationToken = default)
         {
             var items = await _cloudProvider.ListFilesAsync(path).ConfigureAwait(false);
             return items
-                .Select(item => new ScanEntry(item.Path, item.IsDirectory))
+                .Select(item => new ScanEntry(item.Path, item.IsDirectory, item.ETag))
+                .ToList();
+        }
+
+        public async Task<IReadOnlyList<ScanEntry>?> TryListTreeAsync(string rootPath, CancellationToken cancellationToken = default)
+        {
+            if (!_tryTree) return null;
+
+            var items = await _cloudProvider.TryListTreeAsync(rootPath, cancellationToken).ConfigureAwait(false);
+            return items?
+                .Select(item => new ScanEntry(item.Path, item.IsDirectory, item.ETag))
                 .ToList();
         }
     }

@@ -137,59 +137,33 @@ public class AlbumPage : ContentPage
             }
         }.Glass(strong: true, elevated: true);
 
-        var tracksPanel = new Border
-        {
-            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassSheetRadius },
-            Padding = new Thickness(18),
-            Content = new VerticalStackLayout
-            {
-                Spacing = AppLayout.SpacingSection,
-                Children =
-                {
-                    GlassTheme.SectionLabel("TRACKS"),
-
-                    // Virtualised list: folder headers and tracks are rows, so only what is on screen is
-                    // materialised. Grouping was tried first and rendered one group on Android (PERF-07).
-                    new CollectionView
-                    {
-                        ItemsSource = _rows,
-                        SelectionMode = SelectionMode.None,
-                        ItemTemplate = BuildRowSelector(),
-                        Footer = new BoxView { HeightRequest = 96, Color = Colors.Transparent }
-                    }
-                }
-            }
-        }.Glass(strong: true, elevated: true);
-
-        var metaColumn = new VerticalStackLayout
+        // The cover and metadata are the list's header, so the page is one virtualised scroll. They used to sit in an
+        // Auto row above the list, and on a phone the metadata could take the whole height and leave the tracks none.
+        var header = new VerticalStackLayout
         {
             Spacing = AppLayout.GlassSectionGap,
-            VerticalOptions = LayoutOptions.Start,
-            Children = { hero, metaSheet }
-        };
-
-        // Two rows, not a ScrollView: the list must be bounded or it is measured with unbounded height and stops
-        // virtualising (that is what the earlier attempts got wrong). The metadata keeps its own scroll so a long
-        // genre list cannot push the tracks off-screen (PERF-07).
-        var metaScroll = new ScrollView
-        {
-            Content = new VerticalStackLayout
-            {
-                Padding = AppLayout.GlassContentPadding,
-                Children = { metaColumn }
-            },
-            VerticalOptions = LayoutOptions.Fill
-        };
-
-        var body = new Grid
-        {
-            RowDefinitions = Rows.Define(GridLength.Auto, Star),
+            Padding = new Thickness(0, 6, 0, 0),
             Children =
             {
-                metaScroll.Row(0),
-                tracksPanel.Row(1)
+                hero,
+                metaSheet,
+                GlassTheme.SectionLabel("TRACKS").Margin(new Thickness(2, 4, 2, 0))
             }
         };
+
+        // Folder headers and tracks are rows, so only what is on screen is materialised. Grouping was tried first
+        // and rendered one group on Android (PERF-07).
+        var trackList = new CollectionView
+        {
+            ItemsSource = _rows,
+            SelectionMode = SelectionMode.None,
+            ItemTemplate = BuildRowSelector(),
+            Header = header,
+            Footer = new BoxView { HeightRequest = 130, Color = Colors.Transparent },
+            Margin = new Thickness(16, 0)
+        };
+
+        var body = trackList;
 
         var scaffold = new GlassScaffold("Album", back: true);
         scaffold.SetBody(new Grid { Children = { body, loading } });
@@ -248,6 +222,22 @@ public class AlbumPage : ContentPage
     {
         if (e.PropertyName == nameof(AlbumViewModel.Album) && sender is AlbumViewModel viewModel)
             RebuildRows(viewModel);
+    }
+
+    /// <summary>
+    /// Listens for the album and builds the rows now. The album usually arrives (through the query property) before
+    /// the page appears, so waiting for a change alone left the list empty; this subscription was lost in 03c5bd3.
+    /// </summary>
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+
+        if (BindingContext is AlbumViewModel viewModel)
+        {
+            viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            viewModel.PropertyChanged += OnViewModelPropertyChanged;
+            RebuildRows(viewModel);
+        }
     }
 
     protected override void OnDisappearing()

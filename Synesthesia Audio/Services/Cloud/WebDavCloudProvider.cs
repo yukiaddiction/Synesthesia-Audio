@@ -16,21 +16,41 @@ namespace Synesthesia_Audio.Services.Cloud;
 public class WebDavCloudProvider : ICloudProvider
 {
     private readonly HttpClient _httpClient;
+
+    /// <summary>
+    /// Same connection pool, longer timeout: a whole-library listing can take longer than the default 100 seconds
+    /// on a slow server, and that is still far cheaper than one request per folder.
+    /// </summary>
+    private readonly HttpClient _treeClient;
+
     private readonly SettingsService _settingsService;
     private readonly ILogger<WebDavCloudProvider> _logger;
+
+    /// <summary>Server URLs that refused (or silently shortened) a <c>Depth: infinity</c> listing this session.</summary>
+    private readonly HashSet<string> _treeRefusedFor = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _treeLock = new();
+
+    private volatile bool _propagatesFolderETags;
+
+    public static readonly TimeSpan TreeListingTimeout = TimeSpan.FromMinutes(5);
 
     public WebDavCloudProvider(SettingsService settingsService, ILogger<WebDavCloudProvider> logger)
     {
         _settingsService = settingsService;
         _logger = logger;
-        
+
         var handler = new SocketsHttpHandler
         {
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
         };
-        _httpClient = new HttpClient(handler);
+        _httpClient = new HttpClient(handler, disposeHandler: false);
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(DLsiteService.DefaultUserAgent);
+
+        _treeClient = new HttpClient(handler, disposeHandler: false) { Timeout = TreeListingTimeout };
+        _treeClient.DefaultRequestHeaders.UserAgent.ParseAdd(DLsiteService.DefaultUserAgent);
     }
+
+    public bool PropagatesFolderETags => _propagatesFolderETags;
 
     public bool IsConfigured
     {
@@ -208,57 +228,7 @@ public class WebDavCloudProvider : ICloudProvider
             }
 
             var xmlContent = await response.Content.ReadAsStringAsync();
-            var doc = XDocument.Parse(xmlContent);
-            
-            var responses = doc.Descendants().Where(e => e.Name.LocalName == "response");
-            bool isFirst = true;
-
-            foreach (var resp in responses)
-            {
-                var hrefNode = resp.Elements().FirstOrDefault(e => e.Name.LocalName == "href");
-                if (hrefNode == null) continue;
-
-                var href = Uri.UnescapeDataString(hrefNode.Value);
-                
-                var propstatNode = resp.Elements().FirstOrDefault(e => e.Name.LocalName == "propstat");
-                var propNode = propstatNode?.Elements().FirstOrDefault(e => e.Name.LocalName == "prop");
-                if (propNode == null) continue;
-
-                var displayNameNode = propNode.Elements().FirstOrDefault(e => e.Name.LocalName == "displayname");
-                var resourceTypeNode = propNode.Elements().FirstOrDefault(e => e.Name.LocalName == "resourcetype");
-                var contentLengthNode = propNode.Elements().FirstOrDefault(e => e.Name.LocalName == "getcontentlength");
-
-                string displayName = displayNameNode?.Value ?? Path.GetFileName(href.TrimEnd('/'));
-                bool isDirectory = resourceTypeNode?.Elements().Any(e => e.Name.LocalName == "collection") ?? false;
-                long size = 0;
-                if (contentLengthNode != null && long.TryParse(contentLengthNode.Value, out long parsedSize))
-                {
-                    size = parsedSize;
-                }
-
-                var baseUri = new Uri(baseUrl);
-                var itemUri = new Uri(baseUri, href);
-                var relativePath = baseUri.MakeRelativeUri(itemUri).ToString();
-                relativePath = Uri.UnescapeDataString(relativePath).TrimEnd('/');
-
-                if (isFirst)
-                {
-                    isFirst = false;
-                    if (string.Equals(relativePath, path?.Replace('\\', '/').TrimEnd('/'), StringComparison.OrdinalIgnoreCase) || 
-                        string.IsNullOrEmpty(relativePath))
-                    {
-                        continue;
-                    }
-                }
-
-                fileList.Add(new CloudFileInfo
-                {
-                    Path = relativePath.Replace('\\', '/'),
-                    Name = displayName,
-                    IsDirectory = isDirectory,
-                    Size = size
-                });
-            }
+            fileList.AddRange(ToCloudFiles(xmlContent, baseUrl, path));
         }
         catch (CloudAccessDeniedException) { throw; }
         catch (CloudRequestFailedException) { throw; }
@@ -375,8 +345,99 @@ public class WebDavCloudProvider : ICloudProvider
         }
     }
 
-    private string GetPropFindRequestBody()
+    /// <summary>
+    /// One <c>Depth: infinity</c> PROPFIND for the whole tree. Returns null - and remembers the refusal for this
+    /// server - when the server rejects it, answers only one level, or the request fails, so the caller falls back to
+    /// listing folder by folder. Access-denied is still thrown: a wrong password is not a reason to try another way.
+    /// </summary>
+    public async Task<List<CloudFileInfo>?> TryListTreeAsync(string path, CancellationToken cancellationToken = default)
     {
-        return "<?xml version=\"1.0\" encoding=\"utf-8\" ?><propfind xmlns=\"DAV:\"><prop><displayname/><resourcetype/><getcontentlength/></prop></propfind>";
+        var conn = ResolveConnection(null);
+        if (conn == null) return null;
+
+        var baseUrl = conn.NormalizedServerUrl;
+        lock (_treeLock)
+        {
+            if (_treeRefusedFor.Contains(baseUrl)) return null;
+        }
+
+        var targetUrl = baseUrl;
+        var relative = BuildRelativeUrlPath(path);
+        if (relative.Length > 0) targetUrl = baseUrl + Uri.EscapeDataString(relative).Replace("%2F", "/");
+        if (!targetUrl.EndsWith("/")) targetUrl += "/";
+
+        try
+        {
+            using var request = new HttpRequestMessage(new HttpMethod("PROPFIND"), targetUrl)
+            {
+                Content = new StringContent(GetPropFindRequestBody(), Encoding.UTF8, "text/xml")
+            };
+            request.Headers.Authorization = await BuildAuthHeaderAsync(conn).ConfigureAwait(false);
+            request.Headers.Add("Depth", "infinity");
+
+            using var response = await _treeClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            var statusCode = (int)response.StatusCode;
+
+            if (CloudStatusClassifier.IsAccessDenied(statusCode) && statusCode != 403)
+            {
+                throw new CloudAccessDeniedException(CloudStatusClassifier.Describe(statusCode, response.ReasonPhrase));
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // 403 with "propfind-finite-depth" is the standard refusal; 400/501 are the common variants.
+                RememberTreeRefused(baseUrl, $"HTTP {statusCode}");
+                return null;
+            }
+
+            var xmlContent = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var files = ToCloudFiles(xmlContent, baseUrl, path);
+
+            // An empty answer is not trusted either: falling back costs one listing, believing it would empty the library.
+            if (files.Count == 0) return null;
+
+            if (WebDavMultistatus.LooksShallow(files.Select(f => new WebDavEntry(f.Path, f.Name, f.IsDirectory, f.Size, f.ETag)).ToList(), path))
+            {
+                RememberTreeRefused(baseUrl, "answered one level only");
+                return null;
+            }
+
+            _logger.LogInformation("WebDAV tree listing returned {Count} entries in one request", files.Count);
+            return files;
+        }
+        catch (CloudAccessDeniedException) { throw; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            // A timeout or a broken body is not remembered: the server may simply have been slow this time.
+            _logger.LogWarning(ex, "WebDAV tree listing failed; falling back to folder-by-folder listing");
+            return null;
+        }
     }
+
+    private void RememberTreeRefused(string baseUrl, string reason)
+    {
+        lock (_treeLock)
+        {
+            _treeRefusedFor.Add(baseUrl);
+        }
+        _logger.LogInformation("WebDAV server declined a one-request listing ({Reason}) - this is normal for pCloud and many servers, not an error; listing folder by folder", reason);
+    }
+
+    private List<CloudFileInfo> ToCloudFiles(string xmlContent, string baseUrl, string? requestedPath)
+    {
+        var listing = WebDavMultistatus.Parse(xmlContent, baseUrl, requestedPath);
+        if (listing.HasOwnCloudFileIds) _propagatesFolderETags = true;
+
+        return listing.Entries.Select(e => new CloudFileInfo
+        {
+            Path = e.Path,
+            Name = e.Name,
+            IsDirectory = e.IsDirectory,
+            Size = e.Size,
+            ETag = e.ETag
+        }).ToList();
+    }
+
+    private static string GetPropFindRequestBody() => WebDavMultistatus.RequestBody;
 }
