@@ -546,30 +546,29 @@ public partial class ScanFolderService : IDisposable
                 work.TranslatedTitle = previous.WorkTranslatedTitle!;
             }
 
-            var subAlbumGroups = files.GroupBy(f =>
-            {
-                var fileDir = isCloud ? GetCloudDirectoryName(f) : Path.GetDirectoryName(f);
-                return GetSubAlbumName(fileDir, workPath) ?? "Main folder";
-            });
+            // Sections come from Core: one per folder, keyed by its path relative to the work, with files
+            // directly in the work forming the main section. The old grouping keyed off a single leaf name and
+            // special-cased some names away, which is how folders went missing (verified by SectionBuilderTests).
+            var sections = Synesthesia_Audio.Core.SectionBuilder.Build(files, workPath);
 
-            foreach (var subGroup in subAlbumGroups)
+            foreach (var section in sections)
             {
-                var subAlbum = new SubAlbum { Title = subGroup.Key, FolderPath = workPath };
+                var subAlbum = new SubAlbum { Title = section.Title, FolderPath = workPath };
 
-                var tracksGrouped = subGroup.GroupBy(f => isCloud ? GetCloudFileName(f) : Path.GetFileNameWithoutExtension(f));
+                var tracksGrouped = section.Files.GroupBy(f => isCloud ? Path.GetFileNameWithoutExtension(GetCloudFileName(f)) : Path.GetFileNameWithoutExtension(f));
                 foreach (var tg in tracksGrouped)
                 {
                     var bestFile = tg.OrderBy(f => GetExtensionPriority(Path.GetExtension(f.Replace('\\', '/')))).First();
                     var trackTitle = isCloud ? Path.GetFileNameWithoutExtension(GetCloudFileName(bestFile)) : Path.GetFileNameWithoutExtension(bestFile);
 
                     var cachedTrack = cachedWork?.SubAlbums
-                        .FirstOrDefault(sa => sa.Title.Equals(subGroup.Key, StringComparison.OrdinalIgnoreCase))?
+                        .FirstOrDefault(sa => sa.Title.Equals(section.Title, StringComparison.OrdinalIgnoreCase))?
                         .Tracks.FirstOrDefault(t => t.Title.Equals(trackTitle, StringComparison.OrdinalIgnoreCase));
 
                     var translatedTitle = cachedTrack?.TranslatedTitle ?? string.Empty;
                     if (translatedTitle.Length == 0 && previous != null)
                     {
-                        translatedTitle = previous.GetTrackTranslation(subGroup.Key, trackTitle) ?? string.Empty;
+                        translatedTitle = previous.GetTrackTranslation(section.Title, trackTitle) ?? string.Empty;
                     }
 
                     var track = new Track
