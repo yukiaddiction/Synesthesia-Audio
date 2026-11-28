@@ -34,21 +34,32 @@ public sealed class GlassSidebar : Border
         Margin = new Thickness(12, 12, 0, 12);
         Padding = new Thickness(10);
 
-        _all = new GlassNavItem("All", (_, _) => NavigateAsync(MainViewModel.FilterAll, "//Library"));
+        _all = new GlassNavItem("All works", (_, _) => NavigateAsync(MainViewModel.FilterAll, "//Library"));
         _allAge = new GlassNavItem("All Age", (_, _) => NavigateAsync(MainViewModel.FilterAllAge, "//Library"));
         _r18 = new GlassNavItem("R-18", (_, _) => NavigateAsync(MainViewModel.FilterR18, "//Library"));
         _settings = new GlassNavItem("Settings", (_, _) => NavigateAsync(null, "//Settings"));
 
-        var brand = new VerticalStackLayout
+        var brand = new Grid
         {
-            Spacing = 0,
+            ColumnDefinitions = Columns.Define(Auto, Star),
+            ColumnSpacing = AppLayout.SpacingLarge,
             Padding = new Thickness(8, 8, 8, 10),
             Children =
             {
-                new Label { Text = "Synesthesia Audio", FontSize = AppFontSizes.GroupTitle, FontAttributes = AppFonts.Bold }
-                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
-                new Label { Text = "Audio library", FontSize = AppFontSizes.Caption }
-                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark)
+                GlassTheme.BrandMark("\u266B").Column(0),
+
+                new VerticalStackLayout
+                {
+                    Spacing = 0,
+                    VerticalOptions = LayoutOptions.Center,
+                    Children =
+                    {
+                        new Label { Text = "Synesthesia Audio", FontSize = AppFontSizes.GroupTitle, FontAttributes = AppFonts.Bold }
+                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
+                        new Label { Text = "ASMR \u00B7 Voice drama", FontSize = AppFontSizes.Caption }
+                            .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark)
+                    }
+                }.Column(1)
             }
         };
 
@@ -57,7 +68,7 @@ public sealed class GlassSidebar : Border
             Spacing = 0,
             Children =
             {
-                GlassTheme.SectionLabel("LIBRARY"),
+                GlassTheme.SectionLabel("SHELF"),
                 _all,
                 _allAge,
                 _r18,
@@ -67,12 +78,21 @@ public sealed class GlassSidebar : Border
             }
         };
 
-        var footer = new Label
+        var footer = new VerticalStackLayout
         {
-            Text = $"Version {AppInfo.Current.VersionString}",
-            FontSize = AppFontSizes.Caption,
-            Margin = new Thickness(8, 8, 8, 4)
-        }.AppThemeBinding(Label.TextColorProperty, AppColors.TextTertiaryLight, AppColors.TextSecondaryDark);
+            Spacing = 3,
+            Margin = new Thickness(8, 8, 8, 4),
+            Children =
+            {
+                new Label { Text = "\uD83C\uDFA7  Headphones recommended", FontSize = AppFontSizes.Overline }
+                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark),
+                new Label
+                {
+                    Text = $"Version {AppInfo.Current.VersionString}",
+                    FontSize = AppFontSizes.Caption
+                }.AppThemeBinding(Label.TextColorProperty, AppColors.TextTertiaryLight, AppColors.TextSecondaryDark)
+            }
+        };
 
         Content = new Grid
         {

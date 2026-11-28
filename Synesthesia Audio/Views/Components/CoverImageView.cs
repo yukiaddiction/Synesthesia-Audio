@@ -49,6 +49,6 @@ public static class CoverImageView
         return grid;
     }
 
-    public static View Card(string pathBinding) =>
+    public static Grid Card(string pathBinding) =>
         Create(pathBinding, CoverThumbnails.CardEdge, AppLayout.GlassCardCoverHeight);
 }

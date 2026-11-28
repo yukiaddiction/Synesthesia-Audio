@@ -78,6 +78,30 @@ public static class GlassTheme
         }.GlassSoft();
     }
 
+    /// <summary>Round glass tile holding a glyph; the app's only mark, reused by the rail and the flyout.</summary>
+    public static Border BrandMark(string glyph, double size = 40, double fontSize = 18)
+    {
+        var label = new Label
+        {
+            Text = glyph,
+            FontSize = fontSize,
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center
+        }
+        .AppThemeBinding(Label.TextColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark);
+
+        return new Border
+        {
+            StrokeShape = new RoundRectangle { CornerRadius = (int)(size / 2) },
+            StrokeThickness = 1,
+            WidthRequest = size,
+            HeightRequest = size,
+            Padding = 0,
+            VerticalOptions = LayoutOptions.Center,
+            Content = label
+        }.GlassSoft();
+    }
+
     public static Button IconButton(string glyph, double fontSize = 15, double size = AppLayout.GlassBarButtonSize)
     {
         var button = new Button
@@ -175,6 +199,49 @@ public static class GlassExtensions
             Border.StrokeProperty,
             new SolidColorBrush(AppColors.GlassStrokeEdgeLight),
             new SolidColorBrush(AppColors.GlassStrokeEdgeDark));
+
+        return border;
+    }
+
+    /// <summary>
+    /// The playback bar floats over scene lists, so it uses denser glass than a panel: the page can still be
+    /// glimpsed through it, but the cast line and waveform stay readable.
+    /// </summary>
+    public static TBorder GlassPlayer<TBorder>(this TBorder border) where TBorder : Border
+    {
+        border.StrokeThickness = 1;
+
+        border.AppThemeBinding(
+            VisualElement.BackgroundColorProperty,
+            AppColors.GlassFillPlayerLight,
+            AppColors.GlassFillPlayerDark);
+
+        border.AppThemeBinding(
+            Border.StrokeProperty,
+            new SolidColorBrush(AppColors.GlassStrokeTopLight),
+            new SolidColorBrush(AppColors.GlassStrokeTopDark));
+
+        border.Shadow = GlassTheme.Elevation();
+        return border;
+    }
+
+    /// <summary>
+    /// The plate under a shelf card's artwork. Near-opaque by design: the title and credits must stay readable
+    /// whether the cover behind the card is a dark illustration or a white photograph.
+    /// </summary>
+    public static TBorder GlassLabel<TBorder>(this TBorder border) where TBorder : Border
+    {
+        border.StrokeThickness = 1;
+
+        border.AppThemeBinding(
+            VisualElement.BackgroundColorProperty,
+            AppColors.GlassLabelLight,
+            AppColors.GlassLabelDark);
+
+        border.AppThemeBinding(
+            Border.StrokeProperty,
+            new SolidColorBrush(AppColors.GlassStrokeTopLight),
+            new SolidColorBrush(AppColors.GlassStrokeTopDark));
 
         return border;
     }

@@ -117,7 +117,7 @@ public class AppShell : Shell
     private View CreateFlyoutContent()
     {
         // "All" keeps works with an unknown age rating reachable, since they are excluded from All Age.
-        _allNav = CreateNavItem("All");
+        _allNav = CreateNavItem("All works");
         _allNav.Container.GestureRecognizers.Add(new TapGestureRecognizer
         {
             Command = new Command(async () =>
@@ -198,20 +198,44 @@ public class AppShell : Shell
             Spacing = AppLayout.SpacingSmall,
             Children =
             {
-                new Label
+                new Grid
                 {
-                    Text = "Synesthesia Audio",
-                    FontSize = AppFontSizes.GroupTitle,
-                    FontAttributes = AppFonts.Bold,
+                    ColumnDefinitions = Columns.Define(Auto, Star),
+                    ColumnSpacing = AppLayout.SpacingLarge,
                     Padding = new Thickness(8, 8, 8, 16),
-                    VerticalOptions = LayoutOptions.Center
-                }
-                .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
+                    Children =
+                    {
+                        GlassTheme.BrandMark("\u266B", 44, 20).Column(0),
+
+                        new VerticalStackLayout
+                        {
+                            Spacing = 0,
+                            VerticalOptions = LayoutOptions.Center,
+                            Children =
+                            {
+                                new Label
+                                {
+                                    Text = "Synesthesia Audio",
+                                    FontSize = AppFontSizes.GroupTitle,
+                                    FontAttributes = AppFonts.Bold
+                                }
+                                .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
+
+                                new Label
+                                {
+                                    Text = "ASMR \u00B7 Voice drama",
+                                    FontSize = AppFontSizes.Caption
+                                }
+                                .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark)
+                            }
+                        }.Column(1)
+                    }
+                },
 
                 new BoxView { HeightRequest = 1, Margin = new Thickness(4, 0, 4, 12) }
                     .AppThemeBinding(BoxView.ColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark),
 
-                GlassTheme.SectionLabel("LIBRARY"),
+                GlassTheme.SectionLabel("SHELF"),
 
                 _allNav.Container,
                 _allAgeNav.Container,

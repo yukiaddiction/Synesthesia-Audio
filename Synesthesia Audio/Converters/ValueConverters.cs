@@ -117,3 +117,36 @@ public sealed class BoolToArrowConverter : IValueConverter
         Binding.DoNothing;
 }
 
+/// <summary>
+/// Compares a card's folder with the folder that is currently playing, so only the active work's jacket is marked.
+/// </summary>
+public sealed class FolderPathMatchConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length < 2 || values[0] is not string playing || values[1] is not string folder)
+            return false;
+
+        return !string.IsNullOrEmpty(playing)
+            && !string.IsNullOrEmpty(folder)
+            && string.Equals(playing, folder, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>Turns the stored "SFW"/"NSFW" codes into the words the shelf uses.</summary>
+public sealed class AgeRatingLabelConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (Synesthesia_Audio.Core.AgeRatings.IsNsfw(value as string)) return "R-18";
+        if (Synesthesia_Audio.Core.AgeRatings.IsSfw(value as string)) return "All Age";
+        return "Unrated";
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        Binding.DoNothing;
+}
+

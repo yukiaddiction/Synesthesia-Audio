@@ -34,8 +34,8 @@ public sealed class TransportDock : Border
                 {
                     StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassFooterRadius },
                     StrokeThickness = 0,
-                    WidthRequest = 44,
-                    HeightRequest = 44,
+                    WidthRequest = 52,
+                    HeightRequest = 52,
                     Padding = 0,
                     BackgroundColor = AppColors.CoverPlaceholder,
                     Content = new Image { Aspect = Aspect.AspectFill }
@@ -49,9 +49,33 @@ public sealed class TransportDock : Border
                     VerticalOptions = LayoutOptions.Center,
                     Children =
                     {
+                        new Label
+                        {
+                            FontSize = AppFontSizes.Overline,
+                            FontAttributes = AppFonts.Bold,
+                            CharacterSpacing = 1.4,
+                            LineBreakMode = LineBreakMode.TailTruncation,
+                            MaxLines = 1
+                        }
+                        .Bind(Label.TextProperty, nameof(AudioService.QueuePositionText))
+                        .Bind(VisualElement.IsVisibleProperty, nameof(AudioService.QueuePositionText), converter: new EmptyStringToFalseConverter())
+                        .AppThemeBinding(Label.TextColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark),
+
                         new Label { FontSize = AppFontSizes.FloatingPlayerTitle, FontAttributes = AppFonts.Bold, LineBreakMode = LineBreakMode.TailTruncation, MaxLines = 1 }
                             .Bind(Label.TextProperty, $"{nameof(AudioService.CurrentTrack)}.{nameof(Track.Title)}")
                             .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
+
+                        new Label
+                        {
+                            FontSize = AppFontSizes.Overline,
+                            FontAttributes = AppFonts.Bold,
+                            CharacterSpacing = 0.8,
+                            LineBreakMode = LineBreakMode.TailTruncation,
+                            MaxLines = 1
+                        }
+                        .Bind(Label.TextProperty, $"{nameof(AudioService.CurrentTrack)}.{nameof(Track.VoiceActors)}", stringFormat: "CV \u00B7 {0}")
+                        .Bind(VisualElement.IsVisibleProperty, $"{nameof(AudioService.CurrentTrack)}.{nameof(Track.VoiceActors)}", converter: new EmptyStringToFalseConverter())
+                        .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark),
 
                         new Label { FontSize = AppFontSizes.DetailText }
                             .Bind(Label.TextProperty, nameof(AudioService.PlaybackProgressText))
@@ -63,7 +87,7 @@ public sealed class TransportDock : Border
 
         var transport = TransportControls.BuildButtons("Dock", AppLayout.SpacingLarge, playButtonSize: 42);
 
-        var seek = TransportControls.BuildSeekBar(audioService, "DockSeekSlider");
+        var seek = new WaveformSeekBar(audioService, "DockSeekSlider");
 
         var mute = GlassTheme.IconButton(string.Empty, AppFontSizes.ButtonMedium, 32)
             .Bind(Button.TextProperty, nameof(AudioService.VolumeIcon))
@@ -112,7 +136,7 @@ public sealed class TransportDock : Border
 
         Content = new Grid
         {
-            ColumnDefinitions = Columns.Define(new GridLength(280), Star, Auto),
+            ColumnDefinitions = Columns.Define(new GridLength(300), Star, Auto),
             ColumnSpacing = AppLayout.SpacingSection,
             Children =
             {
@@ -132,7 +156,7 @@ public sealed class TransportDock : Border
             }
         };
 
-        this.Glass(strong: true, elevated: true);
+        this.GlassPlayer();
         this.Bind(VisualElement.IsVisibleProperty, nameof(AudioService.CurrentTrack), converter: new NotNullToTrueConverter());
     }
 }

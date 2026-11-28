@@ -7,6 +7,7 @@ namespace Synesthesia_Audio.Views.Components;
 
 /// <summary>
 /// Aurora backdrop of soft radial gradient blobs, which fake frosted glass since MAUI has no backdrop blur.
+/// A vignette and a fixed dust field turn the wallpaper into a dim room, so the page reads as a place to listen.
 /// Theme arrives through a bound <see cref="IsDark"/>: subscribing to RequestedThemeChanged would leak transient pages.
 /// </summary>
 public sealed class GlassBackdrop : GraphicsView
@@ -51,11 +52,24 @@ internal sealed class AuroraDrawable : IDrawable
         (0.50, 0.38, 0.70)
     };
 
+    // Fixed dust motes, not random: a field that never settles would read as noise rather than atmosphere.
+    private static readonly (double X, double Y, double Size, double Alpha)[] DustField =
+    {
+        (0.07, 0.18, 0.0045, 0.55), (0.16, 0.42, 0.0030, 0.40), (0.23, 0.11, 0.0055, 0.35),
+        (0.31, 0.66, 0.0035, 0.30), (0.38, 0.29, 0.0040, 0.45), (0.44, 0.82, 0.0030, 0.28),
+        (0.51, 0.14, 0.0060, 0.30), (0.57, 0.56, 0.0035, 0.38), (0.63, 0.36, 0.0045, 0.28),
+        (0.69, 0.72, 0.0030, 0.34), (0.75, 0.22, 0.0050, 0.30), (0.82, 0.49, 0.0040, 0.36),
+        (0.88, 0.12, 0.0030, 0.26), (0.93, 0.63, 0.0055, 0.30), (0.96, 0.86, 0.0035, 0.24),
+        (0.12, 0.75, 0.0060, 0.26), (0.28, 0.92, 0.0040, 0.22), (0.72, 0.94, 0.0045, 0.22)
+    };
+
     private readonly GlassBackdrop _owner;
 
     // Built once per theme, not per repaint: paints don't depend on blob bounds and the backdrop repaints on every resize.
     private static readonly RadialGradientPaint[] LightPaints = BuildPaints(LightBlobs());
     private static readonly RadialGradientPaint[] DarkPaints = BuildPaints(DarkBlobs());
+    private static readonly RadialGradientPaint LightVignette = BuildVignette(AppColors.VignetteLight);
+    private static readonly RadialGradientPaint DarkVignette = BuildVignette(AppColors.VignetteDark);
 
     public AuroraDrawable(GlassBackdrop owner) => _owner = owner;
 
@@ -80,6 +94,22 @@ internal sealed class AuroraDrawable : IDrawable
         }
 
         return paints;
+    }
+
+    /// <summary>Transparent through the middle, darkening only the edges, like a room lit from one side.</summary>
+    private static RadialGradientPaint BuildVignette(Color edge)
+    {
+        return new RadialGradientPaint
+        {
+            Center = new Point(0.5, 0.42),
+            Radius = 0.92,
+            GradientStops =
+            [
+                new PaintGradientStop(0f, edge.WithAlpha(0f)),
+                new PaintGradientStop(0.58f, edge.WithAlpha(0f)),
+                new PaintGradientStop(1f, edge)
+            ]
+        };
     }
 
     public void Draw(ICanvas canvas, RectF dirtyRect)
@@ -107,6 +137,31 @@ internal sealed class AuroraDrawable : IDrawable
 
             canvas.FillEllipse(blob.X, blob.Y, blob.Width, blob.Height);
         }
+
+        canvas.SetFillPaint(isDark ? DarkVignette : LightVignette, dirtyRect);
+        canvas.FillRectangle(dirtyRect);
+
+        var dust = isDark ? AppColors.MoteDark : AppColors.MoteLight;
+        foreach (var (x, y, size, alpha) in DustField)
+        {
+            var radius = MathF.Max(1f, shortSide * (float)size * 0.72f);
+            canvas.FillColor = dust.WithAlpha((float)alpha * 0.72f);
+            canvas.FillEllipse(
+                dirtyRect.X + (dirtyRect.Width * (float)x) - radius,
+                dirtyRect.Y + (dirtyRect.Height * (float)y) - radius,
+                radius * 2f,
+                radius * 2f);
+        }
+
+        // A last faint pool of light on the floor of the page, under the glass panels.
+        var poolWidth = dirtyRect.Width * 0.9f;
+        var poolHeight = dirtyRect.Height * 0.22f;
+        canvas.FillColor = (isDark ? AppColors.PrimaryLight : Colors.White).WithAlpha(isDark ? 0.10f : 0.35f);
+        canvas.FillEllipse(
+            dirtyRect.X + (dirtyRect.Width / 2f) - (poolWidth / 2f),
+            dirtyRect.Y + dirtyRect.Height - (poolHeight / 1.4f),
+            poolWidth,
+            poolHeight);
     }
 
     private static Color[] LightBlobs() => new[]

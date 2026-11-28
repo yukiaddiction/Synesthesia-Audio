@@ -31,9 +31,26 @@ public class FloatingPlayerBar : Border
             VerticalOptions = LayoutOptions.Center,
             Children =
             {
+                new Label
+                {
+                    FontSize = AppFontSizes.Overline,
+                    FontAttributes = AppFonts.Bold,
+                    CharacterSpacing = 1.4,
+                    LineBreakMode = LineBreakMode.TailTruncation,
+                    MaxLines = 1
+                }
+                .Bind(Label.TextProperty, nameof(AudioService.QueuePositionText))
+                .Bind(VisualElement.IsVisibleProperty, nameof(AudioService.QueuePositionText), converter: new EmptyStringToFalseConverter())
+                .AppThemeBinding(Label.TextColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark),
+
                 new Label { FontSize = AppFontSizes.FloatingPlayerTitle, FontAttributes = AppFonts.Bold, LineBreakMode = LineBreakMode.TailTruncation }
                     .Bind(Label.TextProperty, $"{nameof(AudioService.CurrentTrack)}.{nameof(Track.Title)}")
                     .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
+
+                new Label { FontSize = AppFontSizes.Overline, FontAttributes = AppFonts.Bold, CharacterSpacing = 0.8, LineBreakMode = LineBreakMode.TailTruncation }
+                    .Bind(Label.TextProperty, $"{nameof(AudioService.CurrentTrack)}.{nameof(Track.VoiceActors)}", stringFormat: "CV \u00B7 {0}")
+                    .Bind(VisualElement.IsVisibleProperty, $"{nameof(AudioService.CurrentTrack)}.{nameof(Track.VoiceActors)}", converter: new EmptyStringToFalseConverter())
+                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark),
 
                 new Label { FontSize = AppFontSizes.DetailText }
                     .Bind(Label.TextProperty, nameof(AudioService.PlaybackProgressText))
@@ -106,13 +123,12 @@ public class FloatingPlayerBar : Border
                     }
                 }.Row(0),
 
-                TransportControls.BuildSeekBar(audioService, "SeekSlider")
-                    .Invoke(s => s.Margin = AppLayout.FloatingPlayerSliderMargin)
-                    .Row(1)
-            }
+                new WaveformSeekBar(audioService, "SeekSlider")
+                    .Invoke(s => s.Margin = new Thickness(-4, 2, -4, 0))
+                    .Row(1)            }
         };
 
-        this.Glass(strong: true, elevated: true);
+        this.GlassPlayer();
         this.Bind(VisualElement.IsVisibleProperty, nameof(AudioService.CurrentTrack), converter: new NotNullToTrueConverter());
 
         GestureRecognizers.Add(new TapGestureRecognizer

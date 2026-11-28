@@ -57,6 +57,32 @@ public partial class AudioService : ObservableObject, IDisposable
     [ObservableProperty]
     private Track? _currentTrack;
 
+    /// <summary>
+    /// Folder of the work being listened to, or empty when nothing is loaded. Library cards bind to this so the
+    /// jacket of the active work can say "Now playing" without each card reaching into the playlist.
+    /// </summary>
+    public string NowPlayingFolderPath => CurrentTrack != null ? _currentAlbumFolderPath : string.Empty;
+
+    /// <summary>Read as chapters in a voice drama rather than anonymous tracks; empty for a single file.</summary>
+    public string QueuePositionText
+    {
+        get
+        {
+            lock (_playlistLock)
+            {
+                return CurrentTrack != null && _currentIndex >= 0 && _playlist.Count > 1
+                    ? $"Scene {_currentIndex + 1:00} / {_playlist.Count:00}"
+                    : string.Empty;
+            }
+        }
+    }
+
+    partial void OnCurrentTrackChanged(Track? value)
+    {
+        OnPropertyChanged(nameof(NowPlayingFolderPath));
+        OnPropertyChanged(nameof(QueuePositionText));
+    }
+
     private string _currentAlbumFolderPath = string.Empty;
 
     public string CurrentAlbumFolderPath => _currentAlbumFolderPath;
@@ -751,6 +777,7 @@ ShowPlaybackAlertAsync(message).FireAndForget(ex => _logger.LogWarning(ex, "Back
     public void SetCurrentAlbumFolderPath(string folderPath)
     {
         _currentAlbumFolderPath = folderPath;
+        OnPropertyChanged(nameof(NowPlayingFolderPath));
         _platformService.OnAlbumChanged(folderPath);
     }
 

@@ -45,37 +45,4 @@ public static class TransportControls
             Children = { previous, playPause, next }
         };
     }
-
-    public static Slider BuildSeekBar(AudioService audioService, string automationId)
-    {
-        var seek = new Slider
-        {
-            Minimum = 0,
-            Maximum = 1,
-            // 44 px is the minimum comfortable touch target.
-            HeightRequest = 44,
-            AutomationId = automationId
-        }
-        .Invoke(s => SemanticProperties.SetDescription(s, "Playback position"))
-        .Invoke(s => SemanticProperties.SetHint(s, "Drag to seek within the track"))
-        .Bind(Slider.ValueProperty, nameof(AudioService.PlaybackProgress), BindingMode.OneWay)
-        .AppThemeBinding(Slider.ThumbColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
-        .AppThemeBinding(Slider.MinimumTrackColorProperty, AppColors.SuccessLight, AppColors.PrimaryDark)
-        .AppThemeBinding(Slider.MaximumTrackColorProperty, AppColors.GlassStrokeEdgeLight, AppColors.GlassStrokeEdgeDark);
-
-        seek.DragStarted += (_, _) =>
-        {
-            if (audioService.BeginSeekCommand.CanExecute(null))
-                audioService.BeginSeekCommand.Execute(null);
-        };
-
-        seek.DragCompleted += (_, _) =>
-        {
-            audioService.SeekProgress = seek.Value;
-            if (audioService.EndSeekCommand.CanExecute(null))
-                audioService.EndSeekCommand.Execute(null);
-        };
-
-        return seek;
-    }
 }

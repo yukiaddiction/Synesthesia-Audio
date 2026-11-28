@@ -46,44 +46,67 @@ public class AlbumPage : ContentPage
             Content = BuildHeroCover()
         };
 
-        var chips = new HorizontalStackLayout
+        var chips = new FlexLayout
         {
-            Spacing = AppLayout.SpacingLarge,
-            HorizontalOptions = LayoutOptions.Center,
+            Wrap = FlexWrap.Wrap,
+            Direction = FlexDirection.Row,
+            JustifyContent = FlexJustify.Center,
+            AlignItems = FlexAlignItems.Center,
             Children =
             {
                 GlassTheme.Chip(new Label { FontSize = AppFontSizes.Caption }
                     .Bind(Label.TextProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.Circle)}", stringFormat: "Circle \u00B7 {0}")
                     .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark))
-                    .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.Circle)}", converter: new EmptyStringToFalseConverter()),
+                    .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.Circle)}", converter: new EmptyStringToFalseConverter())
+                    .Margin(new Thickness(3)),
 
                 GlassTheme.Chip(new Label { FontSize = AppFontSizes.Caption }
-                    .Bind(Label.TextProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.VA)}", stringFormat: "Cast \u00B7 {0}")
+                    .Bind(Label.TextProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.VA)}", stringFormat: "CV \u00B7 {0}")
                     .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark))
                     .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.VA)}", converter: new EmptyStringToFalseConverter())
+                    .Margin(new Thickness(3)),
+
+                GlassTheme.Chip(new Label { FontSize = AppFontSizes.Caption }
+                    .Bind(Label.TextProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.AgeRating)}", converter: new AgeRatingLabelConverter())
+                    .AppThemeBinding(Label.TextColorProperty, AppColors.TextFormLabelLight, AppColors.TextFormLabelDark))
+                    .Margin(new Thickness(3))
             }
         };
 
-        var editButton = GlassTheme.PillButton("Edit Work Info", AppFontSizes.Body, height: 34)
+        var playAllButton = GlassTheme.PillButton("\u25B7  Play all scenes", AppFontSizes.BodyBold, accent: true, height: 42)
+            .Bind(Button.CommandProperty, nameof(AlbumViewModel.PlayAllCommand))
+            .Invoke(b => b.HorizontalOptions = LayoutOptions.Fill);
+        ToolTipProperties.SetText(playAllButton, "Start this work at its first scene");
+        SemanticProperties.SetDescription(playAllButton, "Play all scenes");
+
+        var editButton = GlassTheme.PillButton("Edit info", AppFontSizes.Caption, height: 32)
             .Bind(Button.CommandProperty, nameof(AlbumViewModel.OpenEditDialogCommand));
         ToolTipProperties.SetText(editButton, "Edit this work's metadata");
 
-        var translateButton = GlassTheme.PillButton("Translate Info", AppFontSizes.Body, height: 34)
+        var translateButton = GlassTheme.PillButton("Translate", AppFontSizes.Caption, height: 32)
             .Bind(Button.CommandProperty, nameof(AlbumViewModel.TranslateCommand));
         ToolTipProperties.SetText(translateButton, "Translate metadata to English");
 
-        var actions = new HorizontalStackLayout
+        var actions = new VerticalStackLayout
         {
             Spacing = AppLayout.SpacingExtraLarge,
-            HorizontalOptions = LayoutOptions.Center,
             Children =
             {
-                new ActivityIndicator { HeightRequest = 20, WidthRequest = 20, IsVisible = false }
-            .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
-                    .Bind(ActivityIndicator.IsRunningProperty, nameof(AlbumViewModel.IsBusy))
-                    .Bind(VisualElement.IsVisibleProperty, nameof(AlbumViewModel.IsBusy)),
-                editButton,
-                translateButton
+                playAllButton,
+                new HorizontalStackLayout
+                {
+                    Spacing = AppLayout.SpacingExtraLarge,
+                    HorizontalOptions = LayoutOptions.Center,
+                    Children =
+                    {
+                        new ActivityIndicator { HeightRequest = 20, WidthRequest = 20, IsVisible = false }
+                            .AppThemeBinding(ActivityIndicator.ColorProperty, AppColors.PrimaryLight, AppColors.PrimaryDark)
+                            .Bind(ActivityIndicator.IsRunningProperty, nameof(AlbumViewModel.IsBusy))
+                            .Bind(VisualElement.IsVisibleProperty, nameof(AlbumViewModel.IsBusy)),
+                        editButton,
+                        translateButton
+                    }
+                }
             }
         };
 
@@ -136,8 +159,27 @@ public class AlbumPage : ContentPage
             }
         }.Glass(strong: true, elevated: true);
 
+        var scenesHeader = new Grid
+        {
+            ColumnDefinitions = Columns.Define(Star, Auto),
+            Margin = new Thickness(2, 4, 2, 0),
+            Children =
+            {
+                GlassTheme.SectionLabel("SCENES").Column(0),
+                new Label
+                {
+                    FontSize = AppFontSizes.Caption,
+                    HorizontalTextAlignment = TextAlignment.End,
+                    VerticalTextAlignment = TextAlignment.Center
+                }
+                .Bind(Label.TextProperty, nameof(AlbumViewModel.SceneCountText))
+                .AppThemeBinding(Label.TextColorProperty, AppColors.TextTertiaryLight, AppColors.TextSecondaryDark)
+                .Column(1)
+            }
+        };
+
         // Cover and metadata live in the list header so the page is one virtualised scroll; in a row above the
-        // list they could take the whole phone screen and leave the tracks no height.
+        // list they could take the whole phone screen and leave the scenes no height.
         var header = new VerticalStackLayout
         {
             Spacing = AppLayout.GlassSectionGap,
@@ -146,7 +188,7 @@ public class AlbumPage : ContentPage
             {
                 hero,
                 metaSheet,
-                GlassTheme.SectionLabel("TRACKS").Margin(new Thickness(2, 4, 2, 0))
+                scenesHeader
             }
         };
 
@@ -157,13 +199,20 @@ public class AlbumPage : ContentPage
             SelectionMode = SelectionMode.None,
             ItemTemplate = BuildRowSelector(),
             Header = header,
-            Footer = new BoxView { HeightRequest = 130, Color = Colors.Transparent },
+            Footer = new BoxView { HeightRequest = AppLayout.PlayerReserve, Color = Colors.Transparent },
             Margin = new Thickness(16, 0)
         };
 
         var body = trackList;
 
-        var scaffold = new GlassScaffold("Album", back: true);
+        var scaffold = new GlassScaffold("Work", back: true);
+        // The bar carries the work's own name, so a long scene list still says what is open when scrolled.
+        scaffold.TitleLabel.SetBinding(Label.TextProperty, new Binding(
+            $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.Title)}")
+        {
+            FallbackValue = "Work",
+            TargetNullValue = "Work"
+        });
         scaffold.SetBody(new Grid { Children = { body, loading } });
         scaffold.AddOverlay(new FloatingPlayerBar(audioService, cacheService));
 
@@ -209,10 +258,10 @@ public class AlbumPage : ContentPage
 
             if (!subAlbum.IsExpanded) continue;
 
+            var scene = 1;
             foreach (var track in subAlbum.Tracks)
-                _rows.Add(AlbumRow.ForTrack(track));
-        }
-    }
+                _rows.Add(AlbumRow.ForTrack(track, scene++));
+        }    }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -278,8 +327,8 @@ public class AlbumPage : ContentPage
                 EndPoint = new Point(0, 1),
                 GradientStops =
                 {
-                    new GradientStop(Color.FromArgb("#00000000"), 0f),
-                    new GradientStop(Color.FromArgb("#59000000"), 1f)
+                    new GradientStop(AppColors.CoverScrimClear, 0f),
+                    new GradientStop(AppColors.CoverScrimDeep, 1f)
                 }
             }
         });
@@ -296,6 +345,44 @@ public class AlbumPage : ContentPage
                 .Bind(Label.TextProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.ProductId)}")
         }
         .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.IsDlsiteWork)}"));
+
+        cover.Children.Add(new Border
+        {
+            BackgroundColor = AppColors.RjBadge,
+            Padding = new Thickness(8, 4),
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius },
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Start,
+            Margin = new Thickness(12),
+            Content = new Label
+            {
+                Text = "R-18",
+                TextColor = Colors.White,
+                FontSize = AppFontSizes.Overline,
+                FontAttributes = AppFonts.Bold,
+                CharacterSpacing = 1.2
+            }
+        }
+        .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.IsNsfw)}"));
+
+        cover.Children.Add(new Border
+        {
+            BackgroundColor = AppColors.CoverBadgeFill,
+            Padding = new Thickness(8, 4),
+            StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius },
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Start,
+            Margin = new Thickness(12),
+            Content = new Label
+            {
+                Text = "ALL AGE",
+                TextColor = AppColors.CoverBadgeText,
+                FontSize = AppFontSizes.Overline,
+                FontAttributes = AppFonts.Bold,
+                CharacterSpacing = 1.2
+            }
+        }
+        .Bind(VisualElement.IsVisibleProperty, $"{nameof(AlbumViewModel.Album)}.{nameof(WorkMetadata.IsSfw)}"));
 
         return cover;
     }

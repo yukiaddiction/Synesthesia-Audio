@@ -102,4 +102,24 @@ public static class AppColors
     // Not fully opaque: the faintly visible page behind is what makes the flyout read as glass, not a solid drawer.
     public static readonly Color GlassFlyoutLight = Color.FromArgb("#E6FFFFFF");
     public static readonly Color GlassFlyoutDark = Color.FromArgb("#E6112A3E");
+
+    // Playback bars sit over dense page content, so they need enough opacity to keep cast and time text legible.
+    public static readonly Color GlassFillPlayerLight = Color.FromArgb("#E6F7FBFE");
+    public static readonly Color GlassFillPlayerDark = Color.FromArgb("#E6102334");
+
+    // The shelf card's label plate: near-opaque on purpose, because a cover can be dark or pure white.
+    public static readonly Color GlassLabelLight = Color.FromArgb("#F5FAFDFF");
+    public static readonly Color GlassLabelDark = Color.FromArgb("#F50E2132");
+
+    // Artwork colours are arbitrary, so anything printed on a cover sits on the same navy scrim in both themes.
+    public static readonly Color CoverScrimClear = Color.FromArgb("#00000000");
+    public static readonly Color CoverScrimDeep = Color.FromArgb("#A6000000");
+    public static readonly Color CoverBadgeFill = Color.FromArgb("#B30B1C2B");
+    public static readonly Color CoverBadgeText = Color.FromArgb("#DAEEF1");
+
+    // The backdrop is a dim listening room: edge vignette and dust motes stop the aurora reading as wallpaper.
+    public static readonly Color VignetteLight = Color.FromArgb("#33458CC8");
+    public static readonly Color VignetteDark = Color.FromArgb("#A60B1C2B");
+    public static readonly Color MoteLight = Color.FromArgb("#458CC8");
+    public static readonly Color MoteDark = Color.FromArgb("#DAEEF1");
 }

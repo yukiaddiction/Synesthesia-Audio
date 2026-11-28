@@ -28,6 +28,7 @@ public partial class AlbumViewModel : BaseViewModel
             if (SetProperty(ref _album, value))
             {
                 OnPropertyChanged(nameof(GenreTags));
+                OnPropertyChanged(nameof(SceneCountText));
             }
         }
     }
@@ -37,6 +38,21 @@ public partial class AlbumViewModel : BaseViewModel
         .Select(t => t.Trim())
         .Where(t => !string.IsNullOrEmpty(t))
         .ToList() ?? new();
+
+    /// <summary>Counts every folder's tracks, because a voice drama's "chapters" can sit in sub-folders.</summary>
+    public string SceneCountText
+    {
+        get
+        {
+            var count = Album?.SubAlbums?.Sum(sub => sub.Tracks.Count) ?? 0;
+            return count switch
+            {
+                0 => string.Empty,
+                1 => "1 scene",
+                _ => $"{count} scenes"
+            };
+        }
+    }
 
     public AlbumViewModel(AudioService audioService, LibraryCacheService cacheService, DLsiteService dlsiteService, ITranslationService translationService, IDialogService dialogService, INavigationService navigationService, ILoggerFactory loggerFactory)
     {
@@ -119,6 +135,15 @@ public partial class AlbumViewModel : BaseViewModel
 
         AudioService.SetCurrentAlbumFolderPath(Album.FolderPath);
         AudioService.PlayTrack(track, allTracks);
+    }
+
+    /// <summary>Starts the work at its first scene, which is how a voice drama is normally listened to.</summary>
+    [RelayCommand]
+    private void PlayAll()
+    {
+        var first = Album?.SubAlbums.SelectMany(sa => sa.Tracks).FirstOrDefault();
+        if (first != null)
+            PlayTrack(first);
     }
 
     [RelayCommand]

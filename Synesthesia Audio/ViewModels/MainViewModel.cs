@@ -35,9 +35,9 @@ public partial class MainViewModel : BaseViewModel
 
     private static string FilterTitle(string? filter)
     {
-        if (string.Equals(filter, FilterR18, StringComparison.OrdinalIgnoreCase)) return "Library (R-18)";
-        if (string.Equals(filter, FilterAllAge, StringComparison.OrdinalIgnoreCase)) return "Library (All Age)";
-        return "Library (All)";
+        if (string.Equals(filter, FilterR18, StringComparison.OrdinalIgnoreCase)) return "Voice Works (R-18)";
+        if (string.Equals(filter, FilterAllAge, StringComparison.OrdinalIgnoreCase)) return "Voice Works (All Age)";
+        return "Voice Works";
     }
 
     [ObservableProperty]
@@ -420,6 +420,7 @@ public partial class MainViewModel : BaseViewModel
             filtered = filtered.Where(w => 
                 w.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 w.Genre.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                w.Circle.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 w.VA.Contains(query, StringComparison.OrdinalIgnoreCase)
             );
         }

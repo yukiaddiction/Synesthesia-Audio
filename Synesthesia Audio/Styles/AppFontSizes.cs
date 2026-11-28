@@ -17,6 +17,8 @@ public static class AppFontSizes
     public static double SmallText => 12;
     public static double Caption => 12;
     public static double ButtonSmall => 12;
+    // Uppercase prefixes such as "CV" and "CIRCLE" are labels, not body text, so they can sit one step down.
+    public static double Overline => 11;
     // 12 is the minimum for readable body text; watch for overflow in dense metadata rows on narrow cards.
     public static double DetailText => 12;
     public static double CoverPlaceholderIcon => 50;

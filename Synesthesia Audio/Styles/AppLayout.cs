@@ -16,7 +16,6 @@ public static class AppLayout
     public static readonly Thickness MainScrollPadding = new Thickness(15, 5, 15, 20);
 
     public static readonly Thickness FloatingPlayerMargin = new Thickness(15, 10, 15, 15);
-    public static readonly Thickness FloatingPlayerSliderMargin = new Thickness(-15, 8, -15, -12);
     public static readonly Thickness HeaderImageNegativeMargin = new Thickness(-20, -20, -20, 20);
     public static readonly Thickness WorkCardMargin = new Thickness(5);
     public static readonly Thickness TextStackMargin = new Thickness(8, 4, 8, 0);
@@ -58,15 +57,19 @@ public static class AppLayout
     public static readonly Thickness GlassBarMargin = new Thickness(16, 12, 16, 4);
     public static readonly Thickness GlassBarPadding = new Thickness(10);
     public static readonly Thickness GlassCardPadding = new Thickness(18);
-    public static readonly Thickness GlassContentPadding = new Thickness(16, 6, 16, 130);
+    public static readonly Thickness GlassContentPadding = new Thickness(16, 6, 16, PlayerReserve);
     public static readonly Thickness GlassSheetOverlap = new Thickness(0, -36, 0, 0);
-    public static readonly Thickness GlassCardFooterMargin = new Thickness(8, -18, 8, 8);
 
     public const double GlassBarHeight = 58;
     public const double GlassBarButtonSize = 38;
     public const double GlassSectionGap = 18;
     public const double GlassCardGap = 12;
-    public const double GlassHeroHeight = 260;
-    public const double GlassCardCoverHeight = 150;
+    public const double GlassHeroHeight = 272;
+    public const double GlassCardCoverHeight = 168;
+    // Tall enough for a two-line title plus the CV and CIRCLE rows at every font scale the app supports.
+    public const double GlassCardLabelHeight = 100;
     public const double GlassTintBorderSize = 3;
+
+    // Content keeps clear of the floating player, which is one cast line taller than the old bar.
+    public const double PlayerReserve = 150;
 }

@@ -36,7 +36,7 @@ public class SettingsPage : ContentPage
         this.Bind(ContentPage.TitleProperty, nameof(SettingsViewModel.Title));
         Shell.SetNavBarIsVisible(this, false);
 
-        _scaffold = new GlassScaffold("Settings", "Manage library source, appearance and diagnostics", back: true);
+        _scaffold = new GlassScaffold("Settings", "Your shelf, appearance and diagnostics", back: true);
 
         _libraryGroup = new VerticalStackLayout
         {
@@ -160,6 +160,7 @@ public class SettingsPage : ContentPage
                     {
                         new Label { Text = "Synesthesia Audio", FontSize = AppFontSizes.GroupTitle, FontAttributes = AppFonts.Bold }
                             .AppThemeBinding(Label.TextColorProperty, AppColors.TextPrimaryLight, AppColors.TextPrimaryDark),
+                        CreateCardCaption("ASMR \u00B7 Voice drama"),
                         CreateCardCaption(_viewModel.AppVersionText),
 
                         GlassTheme.PillButton("About & Sources", AppFontSizes.Caption)
@@ -220,7 +221,7 @@ public class SettingsPage : ContentPage
             Children =
             {
                 CreateCardTitle("Library Source"),
-                CreateCardCaption("Choose where your audio works library is stored"),
+                CreateCardCaption("Choose where your voice works live"),
 
                 CreateFormLabel("Storage Source"),
 

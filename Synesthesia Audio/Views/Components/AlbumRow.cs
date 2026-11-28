@@ -26,6 +26,9 @@ public sealed class AlbumRow
 
     public string Arrow => IsExpanded ? "\u25BE" : "\u25B8";
 
+    /// <summary>Scene number inside its folder, printed on the row's chapter badge.</summary>
+    public string SceneNumber { get; private init; } = string.Empty;
+
     /// <summary>Shown so a collapsed folder still says what it contains.</summary>
     public string TrackCount { get; private init; } = string.Empty;
 
@@ -38,15 +41,16 @@ public sealed class AlbumRow
             SubAlbum = subAlbum,
             Title = subAlbum.Title,
             IsExpanded = subAlbum.IsExpanded,
-            TrackCount = count == 1 ? "1 track" : $"{count} tracks"
+            TrackCount = count == 1 ? "1 scene" : $"{count} scenes"
         };
     }
 
-    public static AlbumRow ForTrack(Track track) => new()
+    public static AlbumRow ForTrack(Track track, int sceneNumber) => new()
     {
         IsHeader = false,
         Track = track,
         Title = track.Title,
-        TranslatedTitle = track.TranslatedTitle
+        TranslatedTitle = track.TranslatedTitle,
+        SceneNumber = sceneNumber.ToString("00")
     };
 }

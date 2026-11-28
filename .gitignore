@@ -58,3 +58,6 @@ nunit-*.xml
 # IDE and publish-profile user settings: machine-specific, never committed (SEC-m-08).
 *.user
 *.pubxml.user
+
+# Locally built release APKs are deliverables, not source.
+/dist/

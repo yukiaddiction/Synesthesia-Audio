@@ -36,23 +36,22 @@ public class MainPage : ContentPage
             // A blank area reads as a broken screen rather than a search with no matches.
             EmptyView = new Label
             {
-                Text = "No albums match your search",
+                Text = "No works on this shelf match your search",
                 FontSize = AppFontSizes.Body,
                 HorizontalTextAlignment = TextAlignment.Center,
                 VerticalOptions = LayoutOptions.Center,
                 HorizontalOptions = LayoutOptions.Center
             }
-                .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark)
                 .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark),
 
             ItemsLayout = new GridItemsLayout(2, ItemsLayoutOrientation.Vertical),
-            ItemTemplate = new DataTemplate(() => new AlbumCardView(viewModel, () => _scaffold?.IsWide ?? false))
+            ItemTemplate = new DataTemplate(() => new AlbumCardView(viewModel, () => _scaffold?.IsWide ?? false, audioService))
         };
 
         this.Bind(ContentPage.TitleProperty, nameof(MainViewModel.Title));
         Shell.SetNavBarIsVisible(this, false);
 
-        var scaffold = new GlassScaffold("Library");
+        var scaffold = new GlassScaffold("Voice Works");
         _scaffold = scaffold;
         _subtitleLabel = scaffold.SubtitleLabel;
         scaffold.TitleLabel.Bind(Label.TextProperty, nameof(MainViewModel.Title));
@@ -61,16 +60,16 @@ public class MainPage : ContentPage
             .Bind(Button.CommandProperty, nameof(MainViewModel.ShowSortOptionsCommand))
             .Bind(VisualElement.IsVisibleProperty, nameof(MainViewModel.HasFolderSelected))
             .Invoke(b => b.AutomationId = "SortButton");
-        ToolTipProperties.SetText(sortButton, "Sort library");
-        SemanticProperties.SetDescription(sortButton, "Sort library");
+        ToolTipProperties.SetText(sortButton, "Sort shelf");
+        SemanticProperties.SetDescription(sortButton, "Sort shelf");
         SemanticProperties.SetHint(sortButton, "Opens the sort options");
 
         var rescanButton = GlassTheme.IconButton("\u27F3", AppFontSizes.ButtonLarge)
             .Bind(Button.CommandProperty, nameof(MainViewModel.ScanLibraryCommand))
             .Bind(VisualElement.IsVisibleProperty, nameof(MainViewModel.HasFolderSelected))
             .Invoke(b => b.AutomationId = "RescanButton");
-        ToolTipProperties.SetText(rescanButton, "Rescan library");
-        SemanticProperties.SetDescription(rescanButton, "Rescan library");
+        ToolTipProperties.SetText(rescanButton, "Rescan shelf");
+        SemanticProperties.SetDescription(rescanButton, "Rescan shelf");
         SemanticProperties.SetHint(rescanButton, "Scans the selected folder again");
 
         scaffold.Actions.Add(sortButton);
@@ -78,7 +77,7 @@ public class MainPage : ContentPage
 
         var searchBar = new SearchBar
         {
-            Placeholder = "Search titles, circles, VAs...",
+            Placeholder = "Search works, cast, circles\u2026",
             BackgroundColor = Colors.Transparent
         }
         .Bind(SearchBar.TextProperty, nameof(MainViewModel.SearchText))
@@ -87,8 +86,8 @@ public class MainPage : ContentPage
         .AppThemeBinding(SearchBar.PlaceholderColorProperty, AppColors.TextTertiaryLight, AppColors.TextSecondaryDark);
 
         // Screen readers don't reliably announce the placeholder, so the field's purpose is stated explicitly.
-        SemanticProperties.SetDescription(searchBar, "Search library");
-        SemanticProperties.SetHint(searchBar, "Filters albums by title as you type");
+        SemanticProperties.SetDescription(searchBar, "Search the shelf");
+        SemanticProperties.SetHint(searchBar, "Filters works by title, cast, circle or genre as you type");
         var searchPill = new Border
         {
             StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassPillRadius },
@@ -116,7 +115,7 @@ public class MainPage : ContentPage
                 {
                     new Label
                     {
-                        Text = "\u266B",
+                        Text = "\uD83C\uDFA7",
                         FontSize = AppFontSizes.CoverPlaceholderIcon,
                         HorizontalTextAlignment = TextAlignment.Center
                     }
@@ -124,7 +123,7 @@ public class MainPage : ContentPage
 
                     new Label
                     {
-                        Text = "Welcome to Synesthesia Audio",
+                        Text = "Your listening room is empty",
                         FontSize = AppFontSizes.SectionTitle,
                         FontAttributes = AppFonts.Bold,
                         HorizontalTextAlignment = TextAlignment.Center
@@ -133,14 +132,14 @@ public class MainPage : ContentPage
 
                     new Label
                     {
-                        Text = "Set up your audio library folder to get started. Choose a local folder or connect to cloud storage.",
+                        Text = "Point the app at a folder of voice works and the shelf fills itself. Covers, cast, circles and scenes come from DLsite, or from the folders themselves.",
                         FontSize = AppFontSizes.Body,
                         HorizontalTextAlignment = TextAlignment.Center,
                         Margin = new Thickness(0, 2, 0, 14)
                     }
                     .AppThemeBinding(Label.TextColorProperty, AppColors.TextSecondaryLight, AppColors.TextSecondaryDark),
 
-                    GlassTheme.PillButton("Go to Settings", AppFontSizes.BodyBold, accent: true, height: AppLayout.ButtonHeightDefault)
+                    GlassTheme.PillButton("Set up your shelf", AppFontSizes.BodyBold, accent: true, height: AppLayout.ButtonHeightDefault)
                         .Bind(Button.CommandProperty, nameof(MainViewModel.GoToSettingsCommand))
                         .Invoke(b => b.HorizontalOptions = LayoutOptions.Center)
                 }
@@ -154,7 +153,7 @@ public class MainPage : ContentPage
             StrokeShape = new RoundRectangle { CornerRadius = AppLayout.GlassChipRadius },
             VerticalOptions = LayoutOptions.End,
             HorizontalOptions = LayoutOptions.Fill,
-            Margin = new Thickness(16, 0, 16, 112),
+            Margin = new Thickness(16, 0, 16, AppLayout.PlayerReserve),
             Padding = new Thickness(14, 10),
             Content = new VerticalStackLayout
             {
@@ -190,7 +189,9 @@ public class MainPage : ContentPage
                     .Bind(View.MarginProperty,
                         path: nameof(audioService.CurrentTrack),
                         source: audioService,
-                        convert: (Track? track) => track != null ? new Thickness(0, 0, 0, 120) : new Thickness(0, 0, 0, 16))
+                        convert: (Track? track) => track != null
+                            ? new Thickness(0, 0, 0, AppLayout.PlayerReserve)
+                            : new Thickness(0, 0, 0, 16))
                     .Column(0),
 
                 emptyState.Column(0),
@@ -259,7 +260,13 @@ public class MainPage : ContentPage
 
     private void UpdateSubtitle()
     {
-        var filter = _viewModel.SelectedFilter == "NSFW" ? "R-18" : "All Age";
+        var filter = _viewModel.SelectedFilter switch
+        {
+            MainViewModel.FilterR18 => "R-18 shelf",
+            MainViewModel.FilterAllAge => "All Age shelf",
+            _ => "Whole shelf"
+        };
+
         var count = _viewModel.Albums?.Count ?? 0;
         _subtitleLabel.Text = count > 0 ? $"{filter} \u00B7 {count} works" : filter;
         _subtitleLabel.IsVisible = true;
